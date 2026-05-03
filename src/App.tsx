@@ -56,8 +56,8 @@ import {
 } from "./calculations";
 import { addDays, parseDateKey, todayKey } from "./dateUtils";
 import {
-  createSeedDailyRecords,
-  createSeedState,
+  createEmptyDailyRecords,
+  createEmptyState,
   loadAppState,
   loadDailyRecords,
   loadSettings,
@@ -78,6 +78,51 @@ declare global {
 }
 
 const APP_VERSION = "0.1.0";
+
+const onboardingCopy = {
+  en: {
+    appLabel: "PerDay",
+    title: "First launch",
+    subtitle: "Let’s quickly set up the app and show how it works.",
+    language: "Language",
+    russian: "Russian",
+    english: "English",
+    theme: "Theme",
+    lightTheme: "Light",
+    darkTheme: "Dark",
+    systemTheme: "System",
+    hints: "Hints",
+    hintsText: "Show short tips at the right moment",
+    howItWorks: "How it works",
+    learningPoints: [
+      "Create actions for a day, week, month, or custom period.",
+      "Track progress with a checkmark or a number.",
+      "Follow your daily rhythm, calendar, and statistics.",
+    ],
+    continue: "Continue",
+  },
+  ru: {
+    appLabel: "PerDay",
+    title: "Первый запуск",
+    subtitle: "Быстро настроим приложение и покажем, как всё работает.",
+    language: "Язык",
+    russian: "Русский",
+    english: "English",
+    theme: "Тема",
+    lightTheme: "Светлая",
+    darkTheme: "Темная",
+    systemTheme: "Системная",
+    hints: "Подсказки",
+    hintsText: "Показывать короткие подсказки в нужный момент",
+    howItWorks: "Как это работает",
+    learningPoints: [
+      "Создавай действия на день, неделю, месяц или свой период.",
+      "Отмечай прогресс галочкой или числом.",
+      "Следи за ритмом дня, календарём и статистикой.",
+    ],
+    continue: "Продолжить",
+  },
+} as const;
 
 const profileCopy = {
   en: {
@@ -189,6 +234,7 @@ const uiCopy = {
     actionsCount: (completed: number, total: number) => `${completed} of ${total} actions`,
     left: "Left",
     allClosed: "All closed",
+    addFirstAction: "Add the first action",
     week: "Week",
     month: "Month",
     streak: "Streak",
@@ -204,6 +250,14 @@ const uiCopy = {
     allTasks: "All tasks",
     noGoalsToday: "No goals due today.",
     noTasksToday: "No tasks due today.",
+    emptyChecklistTitle: "No tasks yet",
+    emptyChecklistText: "Add a done / not done action.",
+    emptyProgressTitle: "No progress goals yet",
+    emptyProgressText: "Add an action with a quantity.",
+    deleteAction: "Delete action",
+    deleteActionTitle: "Delete action?",
+    deleteActionText: "This will delete the action and its progress.",
+    deleteConfirm: "Delete",
     addProgress: "Add progress",
     requiredToday: "Required today",
     completedInput: "Completed",
@@ -275,6 +329,7 @@ const uiCopy = {
     actionsCount: (completed: number, total: number) => `${completed} из ${total} действий`,
     left: "Осталось",
     allClosed: "Все закрыто",
+    addFirstAction: "Добавь первое действие",
     week: "Неделя",
     month: "Месяц",
     streak: "Streak",
@@ -290,6 +345,14 @@ const uiCopy = {
     allTasks: "Все задачи",
     noGoalsToday: "На сегодня целей нет.",
     noTasksToday: "На сегодня задач нет.",
+    emptyChecklistTitle: "Пока нет задач",
+    emptyChecklistText: "Добавь действие с отметкой “готово / не готово”.",
+    emptyProgressTitle: "Пока нет целей с прогрессом",
+    emptyProgressText: "Добавь действие с количеством.",
+    deleteAction: "Удалить действие",
+    deleteActionTitle: "Удалить действие?",
+    deleteActionText: "Это удалит действие и его прогресс.",
+    deleteConfirm: "Удалить",
     addProgress: "Внести прогресс",
     requiredToday: "Нужно сегодня",
     completedInput: "Выполнено",
@@ -367,6 +430,17 @@ type ConfirmState = {
 } | null;
 
 type ViewAllState = "goals" | "tasks" | null;
+
+type DeleteState =
+  | {
+      type: "goal";
+      goal: ProgressGoal;
+    }
+  | {
+      type: "task";
+      task: TaskItem;
+    }
+  | null;
 
 function createId(prefix: string): string {
   return `${prefix}-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
@@ -493,6 +567,7 @@ export default function App() {
   const [dayRecords, setDayRecords] = useState(() => loadDailyRecords());
   const [progressSheet, setProgressSheet] = useState<ProgressSheetState>(null);
   const [confirmState, setConfirmState] = useState<ConfirmState>(null);
+  const [deleteState, setDeleteState] = useState<DeleteState>(null);
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [viewAllSheet, setViewAllSheet] = useState<ViewAllState>(null);
   const [statsExpanded, setStatsExpanded] = useState(false);
@@ -547,8 +622,14 @@ export default function App() {
   }, [appState]);
 
   useEffect(() => {
-    setDayRecords((records) => upsertDailyRecord(records, today, daily.percent));
-  }, [daily.percent, today]);
+    setDayRecords((records) => {
+      if (daily.totalTodayItems === 0 && daily.percent === 0) {
+        return records.filter((record) => record.date !== today);
+      }
+
+      return upsertDailyRecord(records, today, daily.percent);
+    });
+  }, [daily.percent, daily.totalTodayItems, today]);
 
   useEffect(() => {
     saveDailyRecords(dayRecords);
@@ -584,16 +665,45 @@ export default function App() {
   }, []);
 
   function resetDemoData() {
-    const seedState = createSeedState();
-    const seedRecords = createSeedDailyRecords();
+    const emptyState = createEmptyState();
+    const emptyRecords = createEmptyDailyRecords();
 
     resetPerDayStorage();
-    setAppState(seedState);
-    setDayRecords(seedRecords);
-    saveAppState(seedState);
-    saveDailyRecords(seedRecords);
+    setAppState(emptyState);
+    setDayRecords(emptyRecords);
+    saveAppState(emptyState);
+    saveDailyRecords(emptyRecords);
+    setSettings((current) => ({
+      ...current,
+      onboardingCompleted: false,
+    }));
     setResetConfirmOpen(false);
+    setAddSheetOpen(false);
+    setProgressSheet(null);
+    setConfirmState(null);
+    setDeleteState(null);
+    setStatsExpanded(false);
     setActiveScreen("today");
+  }
+
+  function deleteAction() {
+    if (!deleteState) {
+      return;
+    }
+
+    if (deleteState.type === "goal") {
+      setAppState((state) => ({
+        ...state,
+        goals: state.goals.filter((goal) => goal.id !== deleteState.goal.id),
+      }));
+    } else {
+      setAppState((state) => ({
+        ...state,
+        tasks: state.tasks.filter((task) => task.id !== deleteState.task.id),
+      }));
+    }
+
+    setDeleteState(null);
   }
 
   function addProgress(goalId: string, amount: number, note?: string) {
@@ -720,159 +830,303 @@ export default function App() {
   return (
     <div className="app-shell">
       <div className="background-glow" />
-      {activeScreen === "profile" ? (
-        <ProfileScreen
+      {!settings.onboardingCompleted ? (
+        <OnboardingScreen
           settings={settings}
-          counts={profileCounts}
-          isTelegramMiniApp={isTelegramMiniApp}
           onSettingsChange={(nextSettings) => setSettings((current) => ({ ...current, ...nextSettings }))}
-          onResetRequest={() => setResetConfirmOpen(true)}
+          onComplete={() => {
+            setSettings((current) => ({
+              ...current,
+              onboardingCompleted: true,
+            }));
+            setActiveScreen("today");
+          }}
         />
       ) : (
-        <main className="today-screen">
-          <Header dateLabel={todayLabel} copy={activeUiCopy} onAdd={() => setAddSheetOpen(true)} />
-          <RhythmCard
-            daily={daily}
-            trend={rhythmTrend}
-            copy={activeUiCopy}
-            language={settings.language}
-            statsExpanded={statsExpanded}
-            onToggleStats={() => setStatsExpanded((expanded) => !expanded)}
-          />
-          {statsExpanded && (
-            <MiniStatsPanel
-              weekPercent={miniStats.weekPercent}
-              monthPercent={miniStats.monthPercent}
-              streak={miniStats.streak}
-              copy={activeUiCopy}
-              language={settings.language}
+        <>
+          {activeScreen === "profile" ? (
+            <ProfileScreen
+              settings={settings}
+              counts={profileCounts}
+              isTelegramMiniApp={isTelegramMiniApp}
+              onSettingsChange={(nextSettings) => setSettings((current) => ({ ...current, ...nextSettings }))}
+              onResetRequest={() => setResetConfirmOpen(true)}
+            />
+          ) : (
+            <main className="today-screen">
+              <Header dateLabel={todayLabel} copy={activeUiCopy} onAdd={() => setAddSheetOpen(true)} />
+              <RhythmCard
+                daily={daily}
+                trend={rhythmTrend}
+                copy={activeUiCopy}
+                language={settings.language}
+                statsExpanded={statsExpanded}
+                onToggleStats={() => setStatsExpanded((expanded) => !expanded)}
+              />
+              {statsExpanded && (
+                <MiniStatsPanel
+                  weekPercent={miniStats.weekPercent}
+                  monthPercent={miniStats.monthPercent}
+                  streak={miniStats.streak}
+                  copy={activeUiCopy}
+                  language={settings.language}
+                />
+              )}
+
+              <section className="section-block">
+                <SectionHeader title={activeUiCopy.checklistSection} />
+                <div className="task-list">
+                  {visibleTodayTasks.length > 0 ? visibleTodayTasks.map((task) => {
+                    const completedToday = isTaskCompletedOnDate(task, today);
+
+                    return (
+                      <TaskRow
+                        key={task.id}
+                        task={task}
+                        completed={completedToday}
+                        isToday
+                        deleteLabel={activeUiCopy.deleteAction}
+                        onClick={() =>
+                          setConfirmState({
+                            task,
+                            nextCompleted: !completedToday,
+                          })
+                        }
+                        onDelete={() => setDeleteState({ type: "task", task })}
+                      />
+                    );
+                  }) : (
+                    <EmptySectionCard title={activeUiCopy.emptyChecklistTitle} text={activeUiCopy.emptyChecklistText} buttonLabel={activeUiCopy.add} onAdd={() => setAddSheetOpen(true)} />
+                  )}
+                </div>
+              </section>
+
+              <section className="section-block">
+                <SectionHeader title={activeUiCopy.progressSection} />
+                <div className="goal-list">
+                  {todayGoals.length > 0 ? todayGoals.map((goal) => (
+                    <GoalCard
+                      key={goal.id}
+                      goal={goal}
+                      today={today}
+                      copy={activeUiCopy}
+                      onQuickAdd={(amount) => addProgress(goal.id, amount)}
+                      onOpenManual={() => setProgressSheet({ goal })}
+                      onDelete={() => setDeleteState({ type: "goal", goal })}
+                    />
+                  )) : (
+                    <EmptySectionCard title={activeUiCopy.emptyProgressTitle} text={activeUiCopy.emptyProgressText} buttonLabel={activeUiCopy.add} onAdd={() => setAddSheetOpen(true)} />
+                  )}
+                </div>
+              </section>
+            </main>
+          )}
+
+          <BottomNav activeScreen={activeScreen} language={settings.language} onSelect={setActiveScreen} />
+
+          {resetConfirmOpen && (
+            <ConfirmDialog
+              title={activeProfileCopy.resetTitle}
+              description={activeProfileCopy.resetText}
+              confirmLabel={activeProfileCopy.resetConfirm}
+              cancelLabel={activeProfileCopy.cancel}
+              danger
+              onCancel={() => setResetConfirmOpen(false)}
+              onConfirm={resetDemoData}
             />
           )}
 
-          <section className="section-block">
-            <SectionHeader title={activeUiCopy.progressSection} viewAllLabel={activeUiCopy.viewAll} onViewAll={() => setViewAllSheet("goals")} />
-            <div className="goal-list">
-              {todayGoals.map((goal) => (
-                <GoalCard
-                  key={goal.id}
-                  goal={goal}
-                  today={today}
-                  copy={activeUiCopy}
-                  onQuickAdd={(amount) => addProgress(goal.id, amount)}
-                  onOpenManual={() => setProgressSheet({ goal })}
-                />
-              ))}
-            </div>
-          </section>
+          {progressSheet && (
+            <ProgressSheet
+              goal={progressSheet.goal}
+              today={today}
+              copy={activeUiCopy}
+              onClose={() => setProgressSheet(null)}
+              onSave={(amount, note) => {
+                addProgress(progressSheet.goal.id, amount, note);
+                setProgressSheet(null);
+              }}
+            />
+          )}
 
-          <section className="section-block">
-            <SectionHeader title={activeUiCopy.checklistSection} viewAllLabel={activeUiCopy.viewAll} onViewAll={() => setViewAllSheet("tasks")} />
-            <div className="task-list">
-              {visibleTodayTasks.map((task) => {
+          {confirmState && (
+            <ConfirmDialog
+              title={confirmState.nextCompleted ? activeUiCopy.markDoneTitle : activeUiCopy.undoDoneTitle}
+              confirmLabel={confirmState.nextCompleted ? activeUiCopy.yesDone : activeUiCopy.yes}
+              cancelLabel={activeUiCopy.cancel}
+              onCancel={() => setConfirmState(null)}
+              onConfirm={() => {
+                setTaskCompleted(confirmState.task.id, confirmState.nextCompleted);
+                setConfirmState(null);
+              }}
+            />
+          )}
+
+          {deleteState && (
+            <ConfirmDialog
+              title={activeUiCopy.deleteActionTitle}
+              description={activeUiCopy.deleteActionText}
+              confirmLabel={activeUiCopy.deleteConfirm}
+              cancelLabel={activeUiCopy.cancel}
+              danger
+              onCancel={() => setDeleteState(null)}
+              onConfirm={deleteAction}
+            />
+          )}
+
+          {addSheetOpen && (
+            <AddSheet
+              today={today}
+              language={settings.language}
+              copy={activeUiCopy}
+              onClose={() => setAddSheetOpen(false)}
+              onCreateGoal={(goal) => {
+                createGoal(goal);
+                setAddSheetOpen(false);
+              }}
+              onCreateTask={(task) => {
+                createTask(task);
+                setAddSheetOpen(false);
+              }}
+            />
+          )}
+
+          {viewAllSheet && (
+            <ViewAllSheet
+              type={viewAllSheet}
+              today={today}
+              goals={viewAllGoals}
+              tasks={visibleTodayTasks}
+              copy={activeUiCopy}
+              onClose={() => setViewAllSheet(null)}
+              onQuickAdd={(goalId, amount) => addProgress(goalId, amount)}
+              onOpenManual={(goal) => {
+                setViewAllSheet(null);
+                setProgressSheet({ goal });
+              }}
+              onToggleTask={(task) => {
                 const completedToday = isTaskCompletedOnDate(task, today);
 
-                return (
-                  <TaskRow
-                    key={task.id}
-                    task={task}
-                    completed={completedToday}
-                    isToday
-                    onClick={() =>
-                      setConfirmState({
-                        task,
-                        nextCompleted: !completedToday,
-                      })
-                    }
-                  />
-                );
-              })}
-            </div>
-          </section>
-        </main>
-      )}
-
-      <BottomNav activeScreen={activeScreen} language={settings.language} onSelect={setActiveScreen} />
-
-      {resetConfirmOpen && (
-        <ConfirmDialog
-          title={activeProfileCopy.resetTitle}
-          description={activeProfileCopy.resetText}
-          confirmLabel={activeProfileCopy.resetConfirm}
-          cancelLabel={activeProfileCopy.cancel}
-          danger
-          onCancel={() => setResetConfirmOpen(false)}
-          onConfirm={resetDemoData}
-        />
-      )}
-
-      {progressSheet && (
-        <ProgressSheet
-          goal={progressSheet.goal}
-          today={today}
-          copy={activeUiCopy}
-          onClose={() => setProgressSheet(null)}
-          onSave={(amount, note) => {
-            addProgress(progressSheet.goal.id, amount, note);
-            setProgressSheet(null);
-          }}
-        />
-      )}
-
-      {confirmState && (
-        <ConfirmDialog
-          title={confirmState.nextCompleted ? activeUiCopy.markDoneTitle : activeUiCopy.undoDoneTitle}
-          confirmLabel={confirmState.nextCompleted ? activeUiCopy.yesDone : activeUiCopy.yes}
-          cancelLabel={activeUiCopy.cancel}
-          onCancel={() => setConfirmState(null)}
-          onConfirm={() => {
-            setTaskCompleted(confirmState.task.id, confirmState.nextCompleted);
-            setConfirmState(null);
-          }}
-        />
-      )}
-
-      {addSheetOpen && (
-        <AddSheet
-          today={today}
-          language={settings.language}
-          copy={activeUiCopy}
-          onClose={() => setAddSheetOpen(false)}
-          onCreateGoal={(goal) => {
-            createGoal(goal);
-            setAddSheetOpen(false);
-          }}
-          onCreateTask={(task) => {
-            createTask(task);
-            setAddSheetOpen(false);
-          }}
-        />
-      )}
-
-      {viewAllSheet && (
-        <ViewAllSheet
-          type={viewAllSheet}
-          today={today}
-          goals={viewAllGoals}
-          tasks={visibleTodayTasks}
-          copy={activeUiCopy}
-          onClose={() => setViewAllSheet(null)}
-          onQuickAdd={(goalId, amount) => addProgress(goalId, amount)}
-          onOpenManual={(goal) => {
-            setViewAllSheet(null);
-            setProgressSheet({ goal });
-          }}
-          onToggleTask={(task) => {
-            const completedToday = isTaskCompletedOnDate(task, today);
-
-            setViewAllSheet(null);
-            setConfirmState({
-              task,
-              nextCompleted: !completedToday,
-            });
-          }}
-        />
+                setViewAllSheet(null);
+                setConfirmState({
+                  task,
+                  nextCompleted: !completedToday,
+                });
+              }}
+            />
+          )}
+        </>
       )}
     </div>
+  );
+}
+
+function OnboardingScreen({
+  settings,
+  onSettingsChange,
+  onComplete,
+}: {
+  settings: AppSettings;
+  onSettingsChange: (settings: Partial<AppSettings>) => void;
+  onComplete: () => void;
+}) {
+  const copy = onboardingCopy[settings.language];
+  const learningIcons = [CirclePlus, Check, BarChart3];
+
+  return (
+    <main className="onboarding-screen">
+      <header className="onboarding-header">
+        <p className="brand">{copy.appLabel}</p>
+        <h1>{copy.title}</h1>
+        <p>{copy.subtitle}</p>
+      </header>
+
+      <section className="onboarding-card" aria-labelledby="onboarding-settings-title">
+        <h2 id="onboarding-settings-title" className="sr-only">
+          {copy.title}
+        </h2>
+
+        <div className="onboarding-setting-row">
+          <span className="onboarding-setting-label">
+            <Languages size={23} aria-hidden="true" />
+            {copy.language}
+          </span>
+          <div className="onboarding-segmented" role="group" aria-label={copy.language}>
+            <button
+              type="button"
+              className={settings.language === "ru" ? "active" : ""}
+              aria-pressed={settings.language === "ru"}
+              onClick={() => onSettingsChange({ language: "ru" })}
+            >
+              {copy.russian}
+            </button>
+            <button
+              type="button"
+              className={settings.language === "en" ? "active" : ""}
+              aria-pressed={settings.language === "en"}
+              onClick={() => onSettingsChange({ language: "en" })}
+            >
+              {copy.english}
+            </button>
+          </div>
+        </div>
+
+        <div className="onboarding-setting-row">
+          <span className="onboarding-setting-label">
+            <Monitor size={23} aria-hidden="true" />
+            {copy.theme}
+          </span>
+          <ThemeIconSelector
+            value={settings.theme}
+            labels={{
+              light: copy.lightTheme,
+              dark: copy.darkTheme,
+              system: copy.systemTheme,
+            }}
+            onChange={(theme) => onSettingsChange({ theme })}
+          />
+        </div>
+
+        <button
+          type="button"
+          className={`onboarding-toggle ${settings.hintsEnabled ? "enabled" : ""}`}
+          aria-pressed={settings.hintsEnabled}
+          onClick={() => onSettingsChange({ hintsEnabled: !settings.hintsEnabled })}
+        >
+          <span className="onboarding-toggle-copy">
+            <strong>{copy.hints}</strong>
+            <small>{copy.hintsText}</small>
+          </span>
+          <span className="toggle-switch" aria-hidden="true">
+            <span>
+              <Check size={15} />
+            </span>
+          </span>
+        </button>
+
+        <div className="onboarding-learn-card">
+          <h2>{copy.howItWorks}</h2>
+          <div className="onboarding-learn-list">
+            {copy.learningPoints.map((point, index) => {
+              const Icon = learningIcons[index] ?? CirclePlus;
+
+              return (
+                <div className="onboarding-learn-row" key={point}>
+                  <span className="onboarding-learn-icon" aria-hidden="true">
+                    <Icon size={21} />
+                  </span>
+                  <p>{point}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <button type="button" className="onboarding-continue" onClick={onComplete}>
+          {copy.continue}
+        </button>
+      </section>
+    </main>
   );
 }
 
@@ -908,7 +1162,7 @@ function RhythmCard({
   onToggleStats: () => void;
 }) {
   const cardStyle = { "--daily-percent": `${daily.percent}%` } as CSSProperties;
-  const nextAction = daily.remainingItems === 0 ? copy.allClosed : daily.nextAction;
+  const nextAction = daily.totalTodayItems === 0 ? copy.addFirstAction : daily.remainingItems === 0 ? copy.allClosed : daily.nextAction;
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLElement>) {
     if (event.key === "Enter" || event.key === " ") {
@@ -988,16 +1242,41 @@ function MiniRhythmChart({ values, ariaLabel }: { values: number[]; ariaLabel: s
   );
 }
 
-function SectionHeader({ title, viewAllLabel, onViewAll }: { title: string; viewAllLabel: string; onViewAll?: () => void }) {
+function SectionHeader({ title, viewAllLabel, onViewAll }: { title: string; viewAllLabel?: string; onViewAll?: () => void }) {
   return (
     <div className="section-header">
       <h2>{title}</h2>
-      {onViewAll && (
+      {onViewAll && viewAllLabel && (
         <button type="button" className="view-all" onClick={onViewAll}>
           {viewAllLabel}
           <ChevronRight size={18} />
         </button>
       )}
+    </div>
+  );
+}
+
+function EmptySectionCard({
+  title,
+  text,
+  buttonLabel,
+  onAdd,
+}: {
+  title: string;
+  text: string;
+  buttonLabel: string;
+  onAdd: () => void;
+}) {
+  return (
+    <div className="empty-section-card">
+      <div>
+        <strong>{title}</strong>
+        <p>{text}</p>
+      </div>
+      <button type="button" onClick={onAdd}>
+        <Plus size={17} aria-hidden="true" />
+        {buttonLabel}
+      </button>
     </div>
   );
 }
@@ -1008,12 +1287,14 @@ function GoalCard({
   copy,
   onQuickAdd,
   onOpenManual,
+  onDelete,
 }: {
   goal: ProgressGoal;
   today: string;
   copy: UiCopy;
   onQuickAdd: (amount: number) => void;
   onOpenManual: () => void;
+  onDelete: () => void;
 }) {
   const progressPercent = getGoalProgressPercent(goal);
   const requiredToday = getRequiredToday(goal, today);
@@ -1029,9 +1310,14 @@ function GoalCard({
         <div className="goal-content">
           <div className="goal-title-row">
             <h3>{goal.title}</h3>
-            <span className="today-need">
-              {isGoalCompleted ? copy.done : `${copy.todayLabel}: ${formatNumber(requiredToday)} ${goal.unit}`}
-            </span>
+            <div className="goal-title-actions">
+              <span className="today-need">
+                {isGoalCompleted ? copy.done : `${copy.todayLabel}: ${formatNumber(requiredToday)} ${goal.unit}`}
+              </span>
+              <button type="button" className="item-delete-button" aria-label={copy.deleteAction} onClick={onDelete}>
+                <Trash2 size={16} />
+              </button>
+            </div>
           </div>
           <div className="goal-numbers">
             <strong>{formatNumber(goal.currentValue)}</strong>
@@ -1066,28 +1352,33 @@ function TaskRow({
   task,
   completed,
   isToday,
+  deleteLabel,
   onClick,
+  onDelete,
 }: {
   task: TaskItem;
   completed: boolean;
   isToday: boolean;
+  deleteLabel: string;
   onClick: () => void;
+  onDelete: () => void;
 }) {
   return (
-    <button
-      type="button"
-      className={`task-row ${completed ? "completed" : ""} priority-${task.priority ?? "medium"}`}
-      onClick={onClick}
-    >
-      <ActionIconBadge className="task-icon" iconKey={task.iconKey} title={task.title} />
-      <span className="task-title">
-        {task.title}
-        {!isToday && <small>{task.date}</small>}
-      </span>
-      <span className="task-check" aria-hidden="true">
-        {completed && <Check size={23} />}
-      </span>
-    </button>
+    <div className={`task-row ${completed ? "completed" : ""} priority-${task.priority ?? "medium"}`}>
+      <button type="button" className="task-row-main" onClick={onClick}>
+        <ActionIconBadge className="task-icon" iconKey={task.iconKey} title={task.title} />
+        <span className="task-title">
+          {task.title}
+          {!isToday && <small>{task.date}</small>}
+        </span>
+        <span className="task-check" aria-hidden="true">
+          {completed && <Check size={23} />}
+        </span>
+      </button>
+      <button type="button" className="item-delete-button task-delete-button" aria-label={deleteLabel} onClick={onDelete}>
+        <Trash2 size={15} />
+      </button>
+    </div>
   );
 }
 
@@ -1165,6 +1456,7 @@ function ViewAllSheet({
               copy={copy}
               onQuickAdd={(amount) => onQuickAdd(goal.id, amount)}
               onOpenManual={() => onOpenManual(goal)}
+              onDelete={() => undefined}
             />
           ))}
         {!isGoals &&
@@ -1177,7 +1469,9 @@ function ViewAllSheet({
                 task={task}
                 completed={completedToday}
                 isToday
+                deleteLabel={copy.deleteAction}
                 onClick={() => onToggleTask(task)}
+                onDelete={() => undefined}
               />
             );
           })}

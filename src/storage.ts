@@ -6,13 +6,25 @@ export const PERDAY_DAILY_RECORDS_KEY = "perday:daily-records:v1";
 export const PERDAY_SETTINGS_KEY = "perday:settings:v1";
 
 const defaultSettings: AppSettings = {
-  language: "en",
+  language: "ru",
   theme: "dark",
   hintsEnabled: true,
+  onboardingCompleted: false,
 };
 
 function id(prefix: string): string {
   return `${prefix}-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
+}
+
+export function createEmptyState(): AppState {
+  return {
+    goals: [],
+    tasks: [],
+  };
+}
+
+export function createEmptyDailyRecords(): DailyRecord[] {
+  return [];
 }
 
 export function createSeedState(): AppState {
@@ -119,18 +131,18 @@ export function loadAppState(): AppState {
   const stored = localStorage.getItem(PERDAY_APP_STATE_KEY);
 
   if (!stored) {
-    return createSeedState();
+    return createEmptyState();
   }
 
   try {
     const parsed = JSON.parse(stored) as AppState;
     if (!Array.isArray(parsed.goals) || !Array.isArray(parsed.tasks)) {
-      return createSeedState();
+      return createEmptyState();
     }
 
     return migrateAppState(parsed);
   } catch {
-    return createSeedState();
+    return createEmptyState();
   }
 }
 
@@ -186,18 +198,18 @@ export function loadDailyRecords(): DailyRecord[] {
   const stored = localStorage.getItem(PERDAY_DAILY_RECORDS_KEY);
 
   if (!stored) {
-    return createSeedDailyRecords();
+    return createEmptyDailyRecords();
   }
 
   try {
     const parsed = JSON.parse(stored) as DailyRecord[];
     if (!Array.isArray(parsed)) {
-      return createSeedDailyRecords();
+      return createEmptyDailyRecords();
     }
 
     return parsed;
   } catch {
-    return createSeedDailyRecords();
+    return createEmptyDailyRecords();
   }
 }
 
@@ -219,6 +231,10 @@ export function loadSettings(): AppSettings {
       language: parsed.language === "en" || parsed.language === "ru" ? parsed.language : defaultSettings.language,
       theme: parsed.theme === "light" || parsed.theme === "dark" || parsed.theme === "system" ? parsed.theme : defaultSettings.theme,
       hintsEnabled: typeof parsed.hintsEnabled === "boolean" ? parsed.hintsEnabled : defaultSettings.hintsEnabled,
+      onboardingCompleted:
+        typeof parsed.onboardingCompleted === "boolean"
+          ? parsed.onboardingCompleted
+          : defaultSettings.onboardingCompleted,
     };
   } catch {
     return defaultSettings;

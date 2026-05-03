@@ -61,4 +61,5 @@ export type AppSettings = {
   language: AppLanguage;
   theme: ThemePreference;
   hintsEnabled: boolean;
+  onboardingCompleted: boolean;
 };
