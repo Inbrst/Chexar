@@ -1,9 +1,11 @@
 import {
+  ArrowLeft,
   BarChart3,
   Bell,
   BookOpen,
   CalendarDays,
   Check,
+  ChevronDown,
   ChevronRight,
   CirclePlus,
   Clock3,
@@ -11,6 +13,7 @@ import {
   Droplet,
   Dumbbell,
   ExternalLink,
+  Filter,
   Flame,
   Footprints,
   GraduationCap,
@@ -42,6 +45,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   calculateDailyProgress,
   getCurrentStreak,
+  getDailyCompletionPercent,
   getGoalSchedulePreview,
   getGoalProgressPercent,
   getLastNDaysCompletionTrend,
@@ -54,7 +58,7 @@ import {
   isTaskDueOnDate,
   upsertDailyRecord,
 } from "./calculations";
-import { addDays, parseDateKey, todayKey } from "./dateUtils";
+import { addDays, parseDateKey, todayKey, toDateKey } from "./dateUtils";
 import {
   createEmptyDailyRecords,
   createEmptyState,
@@ -218,6 +222,65 @@ const navCopy = {
   },
 } as const;
 
+const calendarCopy = {
+  en: {
+    title: "Calendar",
+    subtitle: "How the days are going",
+    resetToToday: "Back to current month",
+    filter: "Filter active days",
+    monthPicker: "Month picker",
+    previousMonth: "Previous",
+    nextMonth: "Next",
+    today: "Today",
+    closed: "Closed",
+    partial: "Partial",
+    skipped: "Skipped",
+    selectedToday: "Today",
+    dayClosed: (percent: number) => `${percent}% of day closed`,
+    completed: "Completed",
+    remaining: "Remaining",
+    missed: "Missed",
+    progressEntries: "Progress entries",
+    noCompleted: "Nothing completed yet",
+    noRemaining: "Nothing left",
+    noMissed: "No misses",
+    noProgressEntries: "No progress entries",
+    bestDay: "Best day",
+    average: "Average",
+    streak: "Streak",
+    progress: "progress",
+    emptyDay: "No actions for this day",
+  },
+  ru: {
+    title: "Календарь",
+    subtitle: "Как идут дни",
+    resetToToday: "Вернуться к текущему месяцу",
+    filter: "Фильтр активных дней",
+    monthPicker: "Выбор месяца",
+    previousMonth: "Назад",
+    nextMonth: "Вперед",
+    today: "Сегодня",
+    closed: "Закрыт",
+    partial: "Частично",
+    skipped: "Пропуск",
+    selectedToday: "Сегодня",
+    dayClosed: (percent: number) => `${percent}% дня закрыто`,
+    completed: "Выполнено",
+    remaining: "Осталось",
+    missed: "Пропущено",
+    progressEntries: "Записи прогресса",
+    noCompleted: "Пока ничего",
+    noRemaining: "Ничего не осталось",
+    noMissed: "Без пропусков",
+    noProgressEntries: "Записей прогресса нет",
+    bestDay: "Лучший день",
+    average: "Среднее",
+    streak: "Streak",
+    progress: "прогресс",
+    emptyDay: "На этот день действий нет",
+  },
+} as const;
+
 const uiCopy = {
   en: {
     add: "Add",
@@ -235,6 +298,9 @@ const uiCopy = {
     left: "Left",
     allClosed: "All closed",
     addFirstAction: "Add the first action",
+    backToCalendar: "Calendar",
+    plannedDay: "Planned day",
+    pastDay: "Past day",
     week: "Week",
     month: "Month",
     streak: "Streak",
@@ -254,6 +320,8 @@ const uiCopy = {
     emptyChecklistText: "Add a done / not done action.",
     emptyProgressTitle: "No progress goals yet",
     emptyProgressText: "Add an action with a quantity.",
+    emptySelectedDayTitle: "Nothing for this day",
+    emptySelectedDayText: "Add an action or choose another day.",
     deleteAction: "Delete action",
     deleteActionTitle: "Delete action?",
     deleteActionText: "This will delete the action and its progress.",
@@ -330,6 +398,9 @@ const uiCopy = {
     left: "Осталось",
     allClosed: "Все закрыто",
     addFirstAction: "Добавь первое действие",
+    backToCalendar: "К календарю",
+    plannedDay: "Запланированный день",
+    pastDay: "Прошлый день",
     week: "Неделя",
     month: "Месяц",
     streak: "Streak",
@@ -349,6 +420,8 @@ const uiCopy = {
     emptyChecklistText: "Добавь действие с отметкой “готово / не готово”.",
     emptyProgressTitle: "Пока нет целей с прогрессом",
     emptyProgressText: "Добавь действие с количеством.",
+    emptySelectedDayTitle: "На этот день пусто",
+    emptySelectedDayText: "Добавь действие или выбери другой день.",
     deleteAction: "Удалить действие",
     deleteActionTitle: "Удалить действие?",
     deleteActionText: "Это удалит действие и его прогресс.",
@@ -442,6 +515,21 @@ type DeleteState =
     }
   | null;
 
+type CalendarDayDetail = {
+  id: string;
+  title: string;
+  detail?: string;
+};
+
+type CalendarDayDetails = {
+  percent: number;
+  completed: CalendarDayDetail[];
+  remaining: CalendarDayDetail[];
+  missed: CalendarDayDetail[];
+  progressEntries: CalendarDayDetail[];
+  hasData: boolean;
+};
+
 function createId(prefix: string): string {
   return `${prefix}-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
 }
@@ -450,6 +538,10 @@ function formatNumber(value: number): string {
   return new Intl.NumberFormat("ru-RU", {
     maximumFractionDigits: Number.isInteger(value) ? 0 : 1,
   }).format(value);
+}
+
+function getActiveDate(selectedDate: string | null, todayDateKey: string): string {
+  return selectedDate ?? todayDateKey;
 }
 
 function getDayPlural(value: number, language: AppSettings["language"] = "ru"): string {
@@ -512,8 +604,13 @@ function formatDateLabel(dateKey: string): string {
 
 const ruWeekdaysShort = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
 const ruMonthsShort = ["янв.", "февр.", "мар.", "апр.", "мая", "июн.", "июл.", "авг.", "сент.", "окт.", "нояб.", "дек."];
+const ruMonthsLong = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
+const ruMonthsGenitive = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+const ruWeekdaysLower = ["воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота"];
 const enWeekdaysShort = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const enMonthsShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec"];
+const enMonthsLong = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const enWeekdaysLong = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 function formatTodayDate(date: Date, language: AppSettings["language"]): string {
   if (language === "en") {
@@ -521,6 +618,251 @@ function formatTodayDate(date: Date, language: AppSettings["language"]): string 
   }
 
   return `${ruWeekdaysShort[date.getDay()]}, ${date.getDate()} ${ruMonthsShort[date.getMonth()]}`;
+}
+
+function formatCalendarMonth(date: Date, language: AppSettings["language"]): string {
+  if (language === "en") {
+    return `${enMonthsLong[date.getMonth()]} ${date.getFullYear()}`;
+  }
+
+  return `${ruMonthsLong[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+function formatCalendarSelectedDate(date: Date, language: AppSettings["language"]): string {
+  if (language === "en") {
+    return `${enMonthsLong[date.getMonth()]} ${date.getDate()}`;
+  }
+
+  return `${date.getDate()} ${ruMonthsGenitive[date.getMonth()]}`;
+}
+
+function formatCalendarBestWeekday(date: Date | null, language: AppSettings["language"]): string {
+  if (!date) {
+    return "—";
+  }
+
+  return language === "en" ? enWeekdaysLong[date.getDay()].toLowerCase() : ruWeekdaysLower[date.getDay()];
+}
+
+function getCalendarWeekdayLabels(language: AppSettings["language"]): string[] {
+  return language === "en" ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+}
+
+function getCalendarMonthGrid(monthDate: Date): Date[] {
+  const firstDate = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+  const lastDate = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
+  const start = new Date(firstDate);
+  start.setDate(firstDate.getDate() - ((firstDate.getDay() + 6) % 7));
+  const end = new Date(lastDate);
+  end.setDate(lastDate.getDate() + (7 - (lastDate.getDay() || 7)));
+
+  const dates: Date[] = [];
+  const cursor = new Date(start);
+
+  while (cursor <= end) {
+    dates.push(new Date(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return dates;
+}
+
+function getCalendarDayDetails(
+  date: Date,
+  appState: AppState,
+  dayRecords: Array<{ date: string; percent: number }>,
+  today: string,
+  todayPercent: number,
+): CalendarDayDetails {
+  const dateKey = toDateKey(date);
+  const record = dayRecords.find((item) => item.date === dateKey);
+  const dueGoals = appState.goals.filter((goal) => isGoalDueOnDate(goal, date, dateKey));
+  const dueTasks = appState.tasks.filter((task) => isTaskDueOnDate(task, date, dateKey));
+  const completed: CalendarDayDetail[] = [];
+  const remaining: CalendarDayDetail[] = [];
+  const missed: CalendarDayDetail[] = [];
+  const progressEntries: CalendarDayDetail[] = [];
+  const isPast = dateKey < today;
+
+  dueGoals.forEach((goal) => {
+    const required = getCalendarRequiredForDate(goal, dateKey);
+    const logged = getCalendarLoggedAmount(goal, dateKey);
+    const completedGoal = required <= 0 || logged >= required || getCalendarGoalValueAtEndOfDate(goal, dateKey) >= goal.targetValue;
+    const detail = required > 0 ? `${formatNumber(logged)} / ${formatNumber(required)}` : `${formatNumber(logged)} ${goal.unit}`;
+    const item = {
+      id: goal.id,
+      title: goal.title,
+      detail,
+    };
+
+    if (completedGoal) {
+      completed.push(item);
+    } else {
+      remaining.push(item);
+    }
+  });
+
+  appState.goals.forEach((goal) => {
+    goal.progressEntries
+      .filter((entry) => entry.date === dateKey)
+      .forEach((entry) => {
+        progressEntries.push({
+          id: entry.id,
+          title: goal.title,
+          detail: `+${formatNumber(entry.amount)} ${goal.unit}${entry.note ? ` · ${entry.note}` : ""}`,
+        });
+      });
+  });
+
+  dueTasks.forEach((task) => {
+    const item = {
+      id: task.id,
+      title: task.title,
+    };
+
+    if (isTaskCompletedOnDate(task, dateKey)) {
+      completed.push(item);
+    } else if (isPast) {
+      missed.push(item);
+    } else {
+      missed.push(item);
+    }
+  });
+
+  const computedPercent = getDailyCompletionPercent(date, appState.goals, appState.tasks);
+  const percent = dateKey === today ? todayPercent : (record?.percent ?? computedPercent);
+  const hasActivity =
+    appState.goals.some((goal) => goal.progressEntries.some((entry) => entry.date === dateKey)) ||
+    appState.tasks.some((task) => isTaskCompletedOnDate(task, dateKey));
+  const hasData = dueGoals.length + dueTasks.length > 0 || hasActivity || Boolean(record);
+
+  return {
+    percent,
+    completed,
+    remaining,
+    missed,
+    progressEntries,
+    hasData,
+  };
+}
+
+function getCalendarLoggedAmount(goal: ProgressGoal, dateKey: string): number {
+  return goal.progressEntries
+    .filter((entry) => entry.date === dateKey)
+    .reduce((total, entry) => total + entry.amount, 0);
+}
+
+function getCalendarEntriesTotal(goal: ProgressGoal, predicate: (dateKey: string) => boolean): number {
+  return goal.progressEntries
+    .filter((entry) => predicate(entry.date))
+    .reduce((total, entry) => total + entry.amount, 0);
+}
+
+function getCalendarGoalBaseline(goal: ProgressGoal): number {
+  return Math.max(goal.currentValue - getCalendarEntriesTotal(goal, () => true), 0);
+}
+
+function getCalendarGoalValueBeforeDate(goal: ProgressGoal, dateKey: string): number {
+  return getCalendarGoalBaseline(goal) + getCalendarEntriesTotal(goal, (entryDate) => entryDate < dateKey);
+}
+
+function getCalendarGoalValueAtEndOfDate(goal: ProgressGoal, dateKey: string): number {
+  if (dateKey === todayKey()) {
+    return goal.currentValue;
+  }
+
+  return getCalendarGoalBaseline(goal) + getCalendarEntriesTotal(goal, (entryDate) => entryDate <= dateKey);
+}
+
+function countCalendarActiveDays(goal: ProgressGoal, startDate: string): number {
+  if (startDate > goal.endDate) {
+    return 0;
+  }
+
+  let count = 0;
+  let cursor = startDate;
+
+  while (cursor <= goal.endDate) {
+    if (isGoalDueOnDate(goal, parseDateKey(cursor), cursor)) {
+      count += 1;
+    }
+
+    cursor = addDays(cursor, 1);
+  }
+
+  return count;
+}
+
+function getCalendarRequiredForDate(goal: ProgressGoal, dateKey: string): number {
+  if (!isGoalDueOnDate(goal, parseDateKey(dateKey), dateKey)) {
+    return 0;
+  }
+
+  if (dateKey === todayKey()) {
+    return getRequiredToday(goal, dateKey);
+  }
+
+  const valueAtStart = getCalendarGoalValueBeforeDate(goal, dateKey);
+  const remaining = Math.max(goal.targetValue - valueAtStart, 0);
+  const remainingActiveDays = countCalendarActiveDays(goal, dateKey);
+
+  if (remaining <= 0) {
+    return 0;
+  }
+
+  return remainingActiveDays <= 0 ? remaining : Math.ceil(remaining / remainingActiveDays);
+}
+
+function getCalendarDayTone(percent: number, hasData: boolean): "closed" | "good" | "partial" | "missed" | "empty" {
+  if (!hasData) {
+    return "empty";
+  }
+
+  if (percent >= 100) {
+    return "closed";
+  }
+
+  if (percent >= 70) {
+    return "good";
+  }
+
+  if (percent > 0) {
+    return "partial";
+  }
+
+  return "missed";
+}
+
+function getCalendarMonthStats(
+  monthDate: Date,
+  appState: AppState,
+  dayRecords: Array<{ date: string; percent: number }>,
+  today: string,
+  todayPercent: number,
+) {
+  const days = Array.from(
+    { length: new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate() },
+    (_, index) => new Date(monthDate.getFullYear(), monthDate.getMonth(), index + 1),
+  );
+  const summaries = days.map((date) => ({
+    date,
+    ...getCalendarDayDetails(date, appState, dayRecords, today, todayPercent),
+  })).filter((summary) => summary.hasData);
+
+  if (summaries.length === 0) {
+    return {
+      average: 0,
+      bestDay: null as Date | null,
+    };
+  }
+
+  const best = summaries.reduce((currentBest, summary) => (summary.percent > currentBest.percent ? summary : currentBest), summaries[0]);
+  const total = summaries.reduce((sum, summary) => sum + summary.percent, 0);
+
+  return {
+    average: Math.round(total / summaries.length),
+    bestDay: best.date,
+  };
 }
 
 function getLocalizedDayStatus(percent: number, language: AppSettings["language"]): string {
@@ -562,7 +904,6 @@ function dedupeTodayTasks(tasks: TaskItem[], dateKey: string): TaskItem[] {
 
 export default function App() {
   const today = useMemo(() => todayKey(), []);
-  const todayDate = useMemo(() => parseDateKey(today), [today]);
   const [appState, setAppState] = useState<AppState>(() => loadAppState());
   const [dayRecords, setDayRecords] = useState(() => loadDailyRecords());
   const [progressSheet, setProgressSheet] = useState<ProgressSheetState>(null);
@@ -572,38 +913,55 @@ export default function App() {
   const [viewAllSheet, setViewAllSheet] = useState<ViewAllState>(null);
   const [statsExpanded, setStatsExpanded] = useState(false);
   const [activeScreen, setActiveScreen] = useState<AppScreen>("today");
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
-  const todayLabel = useMemo(() => formatTodayDate(todayDate, settings.language), [settings.language, todayDate]);
+  const activeProfileCopy = profileCopy[settings.language];
+  const activeUiCopy = uiCopy[settings.language];
+  const activeDate = getActiveDate(selectedDate, today);
+  const activeDateDate = useMemo(() => parseDateKey(activeDate), [activeDate]);
+  const activeDateLabel = useMemo(() => formatTodayDate(activeDateDate, settings.language), [activeDateDate, settings.language]);
+  const isSelectedDateMode = selectedDate !== null;
+  const selectedDateNote =
+    selectedDate && activeDate > today
+      ? activeUiCopy.plannedDay
+      : selectedDate && activeDate < today
+        ? activeUiCopy.pastDay
+        : undefined;
   const isTelegramMiniApp = typeof window !== "undefined" && Boolean(window.Telegram?.WebApp);
 
   const daily = useMemo(
-    () => calculateDailyProgress(appState.goals, appState.tasks, today),
-    [appState.goals, appState.tasks, today],
+    () => calculateDailyProgress(appState.goals, appState.tasks, activeDate),
+    [activeDate, appState.goals, appState.tasks],
+  );
+  const actualTodayDaily = useMemo(
+    () => (activeDate === today ? daily : calculateDailyProgress(appState.goals, appState.tasks, today)),
+    [activeDate, appState.goals, appState.tasks, daily, today],
   );
   const miniStats = useMemo(() => {
     return {
-      weekPercent: getWeekAverageCompletion(todayDate, appState.goals, appState.tasks),
-      monthPercent: getMonthAverageCompletion(todayDate, appState.goals, appState.tasks),
-      streak: getCurrentStreak(todayDate, appState.goals, appState.tasks),
+      weekPercent: getWeekAverageCompletion(activeDateDate, appState.goals, appState.tasks),
+      monthPercent: getMonthAverageCompletion(activeDateDate, appState.goals, appState.tasks),
+      streak: getCurrentStreak(activeDateDate, appState.goals, appState.tasks),
     };
-  }, [appState.goals, appState.tasks, todayDate]);
+  }, [activeDateDate, appState.goals, appState.tasks]);
   const todayGoals = useMemo(
-    () => appState.goals.filter((goal) => isGoalDueOnDate(goal, todayDate, today)),
-    [appState.goals, today, todayDate],
+    () => appState.goals.filter((goal) => isGoalDueOnDate(goal, activeDateDate, activeDate)),
+    [activeDate, activeDateDate, appState.goals],
   );
   const todayTasks = useMemo(
-    () => appState.tasks.filter((task) => isTaskDueOnDate(task, todayDate, today)),
-    [appState.tasks, today, todayDate],
+    () => appState.tasks.filter((task) => isTaskDueOnDate(task, activeDateDate, activeDate)),
+    [activeDate, activeDateDate, appState.tasks],
   );
-  const visibleTodayTasks = useMemo(() => dedupeTodayTasks(todayTasks, today), [todayTasks, today]);
+  const visibleTodayTasks = useMemo(() => dedupeTodayTasks(todayTasks, activeDate), [activeDate, todayTasks]);
+  const hasActiveDateItems = todayGoals.length > 0 || visibleTodayTasks.length > 0;
   const viewAllGoals = useMemo(
-    () => appState.goals.filter((goal) => isGoalDueOnDate(goal, todayDate, today) || goal.currentValue >= goal.targetValue),
-    [appState.goals, today, todayDate],
+    () => appState.goals.filter((goal) => isGoalDueOnDate(goal, activeDateDate, activeDate) || goal.currentValue >= goal.targetValue),
+    [activeDate, activeDateDate, appState.goals],
   );
   const rhythmTrend = useMemo(
-    () => getLastNDaysCompletionTrend(7, dayRecords, daily.percent, today),
-    [daily.percent, dayRecords, today],
+    () => getLastNDaysCompletionTrend(7, dayRecords, daily.percent, activeDate),
+    [activeDate, daily.percent, dayRecords],
   );
   const profileCounts = useMemo(
     () => ({
@@ -614,9 +972,6 @@ export default function App() {
     }),
     [appState.goals.length, appState.tasks.length, dayRecords.length],
   );
-  const activeProfileCopy = profileCopy[settings.language];
-  const activeUiCopy = uiCopy[settings.language];
-
   useEffect(() => {
     saveAppState(appState);
   }, [appState]);
@@ -624,12 +979,12 @@ export default function App() {
   useEffect(() => {
     setDayRecords((records) => {
       if (daily.totalTodayItems === 0 && daily.percent === 0) {
-        return records.filter((record) => record.date !== today);
+        return records.filter((record) => record.date !== activeDate);
       }
 
-      return upsertDailyRecord(records, today, daily.percent);
+      return upsertDailyRecord(records, activeDate, daily.percent);
     });
-  }, [daily.percent, daily.totalTodayItems, today]);
+  }, [activeDate, daily.percent, daily.totalTodayItems]);
 
   useEffect(() => {
     saveDailyRecords(dayRecords);
@@ -682,7 +1037,9 @@ export default function App() {
     setProgressSheet(null);
     setConfirmState(null);
     setDeleteState(null);
+    setViewAllSheet(null);
     setStatsExpanded(false);
+    setSelectedDate(null);
     setActiveScreen("today");
   }
 
@@ -722,7 +1079,7 @@ export default function App() {
                 ...goal.progressEntries,
                 {
                   id: createId("entry"),
-                  date: today,
+                  date: activeDate,
                   amount,
                   note: note?.trim() || undefined,
                 },
@@ -744,14 +1101,14 @@ export default function App() {
         const completedDates = new Set(task.completedDates ?? []);
 
         if (completed) {
-          completedDates.add(today);
+          completedDates.add(activeDate);
         } else {
-          completedDates.delete(today);
+          completedDates.delete(activeDate);
         }
 
         return {
           ...task,
-          completed,
+          completed: completedDates.has(today),
           completedDates: Array.from(completedDates).sort(),
         };
       }),
@@ -827,6 +1184,24 @@ export default function App() {
     }));
   }
 
+  function selectScreen(screen: AppScreen) {
+    setSelectedDate(null);
+    setActiveScreen(screen);
+  }
+
+  function openSelectedDate(dateKey: string) {
+    setSelectedDate(dateKey);
+    setActiveScreen("today");
+    setStatsExpanded(false);
+    setViewAllSheet(null);
+  }
+
+  function returnToCalendar() {
+    setSelectedDate(null);
+    setActiveScreen("calendar");
+    setStatsExpanded(false);
+  }
+
   return (
     <div className="app-shell">
       <div className="background-glow" />
@@ -852,9 +1227,26 @@ export default function App() {
               onSettingsChange={(nextSettings) => setSettings((current) => ({ ...current, ...nextSettings }))}
               onResetRequest={() => setResetConfirmOpen(true)}
             />
+          ) : activeScreen === "calendar" ? (
+            <CalendarScreen
+              appState={appState}
+              dayRecords={dayRecords}
+              today={today}
+              todayPercent={actualTodayDaily.percent}
+              streak={miniStats.streak}
+              language={settings.language}
+              onSelectDate={openSelectedDate}
+            />
           ) : (
             <main className="today-screen">
-              <Header dateLabel={todayLabel} copy={activeUiCopy} onAdd={() => setAddSheetOpen(true)} />
+              <Header
+                dateLabel={activeDateLabel}
+                copy={activeUiCopy}
+                dateNote={selectedDateNote}
+                selectedMode={isSelectedDateMode}
+                onBackToCalendar={returnToCalendar}
+                onAdd={() => setAddSheetOpen(true)}
+              />
               <RhythmCard
                 daily={daily}
                 trend={rhythmTrend}
@@ -873,56 +1265,69 @@ export default function App() {
                 />
               )}
 
-              <section className="section-block">
-                <SectionHeader title={activeUiCopy.checklistSection} />
-                <div className="task-list">
-                  {visibleTodayTasks.length > 0 ? visibleTodayTasks.map((task) => {
-                    const completedToday = isTaskCompletedOnDate(task, today);
+              {isSelectedDateMode && !hasActiveDateItems ? (
+                <section className="section-block">
+                  <EmptySectionCard
+                    title={activeUiCopy.emptySelectedDayTitle}
+                    text={activeUiCopy.emptySelectedDayText}
+                    buttonLabel={activeUiCopy.add}
+                    onAdd={() => setAddSheetOpen(true)}
+                  />
+                </section>
+              ) : (
+                <>
+                  <section className="section-block">
+                    <SectionHeader title={activeUiCopy.checklistSection} />
+                    <div className="task-list">
+                      {visibleTodayTasks.length > 0 ? visibleTodayTasks.map((task) => {
+                        const completedToday = isTaskCompletedOnDate(task, activeDate);
 
-                    return (
-                      <TaskRow
-                        key={task.id}
-                        task={task}
-                        completed={completedToday}
-                        isToday
-                        deleteLabel={activeUiCopy.deleteAction}
-                        onClick={() =>
-                          setConfirmState({
-                            task,
-                            nextCompleted: !completedToday,
-                          })
-                        }
-                        onDelete={() => setDeleteState({ type: "task", task })}
-                      />
-                    );
-                  }) : (
-                    <EmptySectionCard title={activeUiCopy.emptyChecklistTitle} text={activeUiCopy.emptyChecklistText} buttonLabel={activeUiCopy.add} onAdd={() => setAddSheetOpen(true)} />
-                  )}
-                </div>
-              </section>
+                        return (
+                          <TaskRow
+                            key={task.id}
+                            task={task}
+                            completed={completedToday}
+                            isToday={activeDate === today}
+                            deleteLabel={activeUiCopy.deleteAction}
+                            onClick={() =>
+                              setConfirmState({
+                                task,
+                                nextCompleted: !completedToday,
+                              })
+                            }
+                            onDelete={() => setDeleteState({ type: "task", task })}
+                          />
+                        );
+                      }) : (
+                        <EmptySectionCard title={activeUiCopy.emptyChecklistTitle} text={activeUiCopy.emptyChecklistText} buttonLabel={activeUiCopy.add} onAdd={() => setAddSheetOpen(true)} />
+                      )}
+                    </div>
+                  </section>
 
-              <section className="section-block">
-                <SectionHeader title={activeUiCopy.progressSection} />
-                <div className="goal-list">
-                  {todayGoals.length > 0 ? todayGoals.map((goal) => (
-                    <GoalCard
-                      key={goal.id}
-                      goal={goal}
-                      today={today}
-                      copy={activeUiCopy}
-                      onQuickAdd={(amount) => addProgress(goal.id, amount)}
-                      onOpenManual={() => setProgressSheet({ goal })}
-                      onDelete={() => setDeleteState({ type: "goal", goal })}
-                    />
-                  )) : (
-                    <EmptySectionCard title={activeUiCopy.emptyProgressTitle} text={activeUiCopy.emptyProgressText} buttonLabel={activeUiCopy.add} onAdd={() => setAddSheetOpen(true)} />
-                  )}
-                </div>
-              </section>
+                  <section className="section-block">
+                    <SectionHeader title={activeUiCopy.progressSection} />
+                    <div className="goal-list">
+                      {todayGoals.length > 0 ? todayGoals.map((goal) => (
+                        <GoalCard
+                          key={goal.id}
+                          goal={goal}
+                          today={activeDate}
+                          copy={activeUiCopy}
+                          onQuickAdd={(amount) => addProgress(goal.id, amount)}
+                          onOpenManual={() => setProgressSheet({ goal })}
+                          onDelete={() => setDeleteState({ type: "goal", goal })}
+                        />
+                      )) : (
+                        <EmptySectionCard title={activeUiCopy.emptyProgressTitle} text={activeUiCopy.emptyProgressText} buttonLabel={activeUiCopy.add} onAdd={() => setAddSheetOpen(true)} />
+                      )}
+                    </div>
+                  </section>
+                </>
+              )}
             </main>
           )}
 
-          <BottomNav activeScreen={activeScreen} language={settings.language} onSelect={setActiveScreen} />
+          <BottomNav activeScreen={activeScreen} language={settings.language} onSelect={selectScreen} />
 
           {resetConfirmOpen && (
             <ConfirmDialog
@@ -939,7 +1344,7 @@ export default function App() {
           {progressSheet && (
             <ProgressSheet
               goal={progressSheet.goal}
-              today={today}
+              today={activeDate}
               copy={activeUiCopy}
               onClose={() => setProgressSheet(null)}
               onSave={(amount, note) => {
@@ -976,7 +1381,7 @@ export default function App() {
 
           {addSheetOpen && (
             <AddSheet
-              today={today}
+              today={activeDate}
               language={settings.language}
               copy={activeUiCopy}
               onClose={() => setAddSheetOpen(false)}
@@ -994,7 +1399,7 @@ export default function App() {
           {viewAllSheet && (
             <ViewAllSheet
               type={viewAllSheet}
-              today={today}
+              today={activeDate}
               goals={viewAllGoals}
               tasks={visibleTodayTasks}
               copy={activeUiCopy}
@@ -1005,7 +1410,7 @@ export default function App() {
                 setProgressSheet({ goal });
               }}
               onToggleTask={(task) => {
-                const completedToday = isTaskCompletedOnDate(task, today);
+                const completedToday = isTaskCompletedOnDate(task, activeDate);
 
                 setViewAllSheet(null);
                 setConfirmState({
@@ -1130,12 +1535,34 @@ function OnboardingScreen({
   );
 }
 
-function Header({ dateLabel, copy, onAdd }: { dateLabel: string; copy: UiCopy; onAdd: () => void }) {
+function Header({
+  dateLabel,
+  copy,
+  dateNote,
+  selectedMode = false,
+  onBackToCalendar,
+  onAdd,
+}: {
+  dateLabel: string;
+  copy: UiCopy;
+  dateNote?: string;
+  selectedMode?: boolean;
+  onBackToCalendar?: () => void;
+  onAdd: () => void;
+}) {
   return (
     <header className="hero-header">
       <div>
-        <p className="brand">PerDay</p>
+        {selectedMode && onBackToCalendar ? (
+          <button type="button" className="calendar-back-button" onClick={onBackToCalendar}>
+            <ArrowLeft size={16} aria-hidden="true" />
+            {copy.backToCalendar}
+          </button>
+        ) : (
+          <p className="brand">PerDay</p>
+        )}
         <h1>{dateLabel}</h1>
+        {dateNote && <p className="selected-date-note">{dateNote}</p>}
       </div>
       <div className="header-actions">
         <button className="icon-button primary-action" type="button" aria-label={copy.add} onClick={onAdd}>
@@ -1532,7 +1959,7 @@ function BottomNav({
   const copy = navCopy[language];
   const navItems = [
     { label: copy.today, icon: Sun, screen: "today", disabled: false },
-    { label: copy.calendar, icon: CalendarDays, screen: "calendar", disabled: true },
+    { label: copy.calendar, icon: CalendarDays, screen: "calendar", disabled: false },
     { label: copy.progress, icon: BarChart3, screen: "progress", disabled: true },
     { label: copy.profile, icon: UserRound, screen: "profile", disabled: false },
   ];
@@ -1558,6 +1985,314 @@ function BottomNav({
         );
       })}
     </nav>
+  );
+}
+
+function CalendarScreen({
+  appState,
+  dayRecords,
+  today,
+  todayPercent,
+  streak,
+  language,
+  onSelectDate,
+}: {
+  appState: AppState;
+  dayRecords: Array<{ date: string; percent: number }>;
+  today: string;
+  todayPercent: number;
+  streak: number;
+  language: AppSettings["language"];
+  onSelectDate: (dateKey: string) => void;
+}) {
+  const copy = calendarCopy[language];
+  const todayDate = parseDateKey(today);
+  const [visibleMonth, setVisibleMonth] = useState(() => new Date(todayDate.getFullYear(), todayDate.getMonth(), 1));
+  const [selectedDateKey, setSelectedDateKey] = useState(today);
+  const [monthControlsOpen, setMonthControlsOpen] = useState(false);
+  const [activeFilter, setActiveFilter] = useState(false);
+  const calendarDays = useMemo(() => getCalendarMonthGrid(visibleMonth), [visibleMonth]);
+  const selectedDate = useMemo(() => parseDateKey(selectedDateKey), [selectedDateKey]);
+  const selectedDetails = useMemo(
+    () => getCalendarDayDetails(selectedDate, appState, dayRecords, today, todayPercent),
+    [appState, dayRecords, selectedDate, today, todayPercent],
+  );
+  const monthStats = useMemo(
+    () => getCalendarMonthStats(visibleMonth, appState, dayRecords, today, todayPercent),
+    [appState, dayRecords, today, todayPercent, visibleMonth],
+  );
+  const monthLabel = formatCalendarMonth(visibleMonth, language);
+
+  function shiftMonth(offset: number) {
+    setVisibleMonth((month) => new Date(month.getFullYear(), month.getMonth() + offset, 1));
+    setMonthControlsOpen(false);
+  }
+
+  function jumpToToday() {
+    setVisibleMonth(new Date(todayDate.getFullYear(), todayDate.getMonth(), 1));
+    setSelectedDateKey(today);
+    setMonthControlsOpen(false);
+  }
+
+  return (
+    <main className="calendar-screen">
+      <header className="calendar-header">
+        <div>
+          <p className="brand">PerDay</p>
+          <h1>{copy.title}</h1>
+          <p>{copy.subtitle}</p>
+        </div>
+        <div className="calendar-header-actions">
+          <button type="button" className="icon-button calendar-icon-button" aria-label={copy.resetToToday} onClick={jumpToToday}>
+            <CalendarDays size={25} />
+          </button>
+          <button
+            type="button"
+            className={`icon-button calendar-icon-button ${activeFilter ? "active" : ""}`}
+            aria-label={copy.filter}
+            aria-pressed={activeFilter}
+            onClick={() => setActiveFilter((filter) => !filter)}
+          >
+            <Filter size={25} />
+          </button>
+        </div>
+      </header>
+
+      <div className="calendar-month-control">
+        <button
+          type="button"
+          className="calendar-month-pill"
+          aria-expanded={monthControlsOpen}
+          aria-label={copy.monthPicker}
+          onClick={() => setMonthControlsOpen((open) => !open)}
+        >
+          <CalendarDays size={18} aria-hidden="true" />
+          <span>{monthLabel}</span>
+          <ChevronDown size={18} aria-hidden="true" />
+        </button>
+        {monthControlsOpen && (
+          <div className="calendar-month-popover">
+            <button type="button" onClick={() => shiftMonth(-1)}>
+              {copy.previousMonth}
+            </button>
+            <button type="button" onClick={jumpToToday}>
+              {copy.today}
+            </button>
+            <button type="button" onClick={() => shiftMonth(1)}>
+              {copy.nextMonth}
+            </button>
+          </div>
+        )}
+      </div>
+
+      <section className="calendar-grid-card" aria-label={monthLabel}>
+        <div className="calendar-weekdays">
+          {getCalendarWeekdayLabels(language).map((weekday) => (
+            <span key={weekday}>{weekday}</span>
+          ))}
+        </div>
+        <div className="calendar-grid">
+          {calendarDays.map((date) => {
+            const dateKey = toDateKey(date);
+            const dayDetails = getCalendarDayDetails(date, appState, dayRecords, today, todayPercent);
+            const inMonth = date.getMonth() === visibleMonth.getMonth();
+            const selected = selectedDateKey === dateKey;
+            const isToday = today === dateKey;
+            const tone = getCalendarDayTone(dayDetails.percent, dayDetails.hasData);
+
+            return (
+              <button
+                type="button"
+                key={dateKey}
+                className={[
+                  "calendar-day",
+                  `tone-${tone}`,
+                  inMonth ? "" : "outside-month",
+                  selected ? "selected" : "",
+                  isToday ? "is-today" : "",
+                  activeFilter && !dayDetails.hasData ? "filtered" : "",
+                ].filter(Boolean).join(" ")}
+                aria-current={isToday ? "date" : undefined}
+                onClick={() => {
+                  setSelectedDateKey(dateKey);
+                  if (!inMonth) {
+                    setVisibleMonth(new Date(date.getFullYear(), date.getMonth(), 1));
+                  }
+                  onSelectDate(dateKey);
+                }}
+              >
+                <strong>{date.getDate()}</strong>
+                <span>{dayDetails.hasData ? `${dayDetails.percent}%` : "-"}</span>
+                <i aria-hidden="true" />
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="calendar-legend" aria-label="Legend">
+        <CalendarLegendItem className="closed" label={copy.closed} />
+        <CalendarLegendItem className="partial" label={copy.partial} />
+        <CalendarLegendItem className="missed" label={copy.skipped} />
+        <CalendarLegendItem className="today" label={copy.selectedToday} />
+      </section>
+
+      <section className="calendar-day-card">
+        <div className="calendar-day-card-header">
+          <div>
+            <h2>{formatCalendarSelectedDate(selectedDate, language)}</h2>
+            <p>{selectedDetails.hasData ? copy.dayClosed(selectedDetails.percent) : copy.emptyDay}</p>
+          </div>
+          <CalendarProgressRing percent={selectedDetails.percent} />
+        </div>
+        {selectedDetails.hasData ? (
+          <>
+            <div className="calendar-detail-grid">
+              <CalendarDetailColumn
+                title={copy.completed}
+                icon={Check}
+                tone="done"
+                items={selectedDetails.completed}
+                emptyText={copy.noCompleted}
+              />
+              <CalendarDetailColumn
+                title={copy.remaining}
+                icon={Clock3}
+                tone="partial"
+                items={selectedDetails.remaining}
+                emptyText={copy.noRemaining}
+              />
+              <CalendarDetailColumn
+                title={copy.missed}
+                icon={X}
+                tone="missed"
+                items={selectedDetails.missed}
+                emptyText={copy.noMissed}
+              />
+            </div>
+            <CalendarProgressEntrySection
+              title={copy.progressEntries}
+              items={selectedDetails.progressEntries}
+              emptyText={copy.noProgressEntries}
+            />
+          </>
+        ) : (
+          <div className="calendar-empty-state">
+            <CalendarDays size={24} aria-hidden="true" />
+            <p>{copy.emptyDay}</p>
+          </div>
+        )}
+      </section>
+
+      <section className="calendar-summary-card">
+        <div className="calendar-summary-item">
+          <Star size={28} aria-hidden="true" />
+          <span>{copy.bestDay}</span>
+          <strong>{formatCalendarBestWeekday(monthStats.bestDay, language)}</strong>
+        </div>
+        <div className="calendar-summary-item">
+          <BarChart3 size={28} aria-hidden="true" />
+          <span>{copy.average}</span>
+          <strong>{monthStats.average}%</strong>
+        </div>
+        <div className="calendar-summary-item">
+          <Flame size={28} aria-hidden="true" />
+          <span>{copy.streak}</span>
+          <strong>{streak}</strong>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function CalendarLegendItem({ className, label }: { className: string; label: string }) {
+  return (
+    <span className={`calendar-legend-item ${className}`}>
+      <i aria-hidden="true" />
+      {label}
+    </span>
+  );
+}
+
+function CalendarProgressRing({ percent }: { percent: number }) {
+  const radius = 21;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (Math.min(Math.max(percent, 0), 100) / 100) * circumference;
+
+  return (
+    <div className="calendar-progress-ring" aria-label={`${percent}%`}>
+      <svg viewBox="0 0 56 56" aria-hidden="true">
+        <circle cx="28" cy="28" r={radius} />
+        <circle cx="28" cy="28" r={radius} style={{ strokeDasharray: circumference, strokeDashoffset: offset }} />
+      </svg>
+      <strong>{percent}%</strong>
+    </div>
+  );
+}
+
+function CalendarDetailColumn({
+  title,
+  icon: Icon,
+  tone,
+  items,
+  emptyText,
+}: {
+  title: string;
+  icon: LucideIcon;
+  tone: "done" | "partial" | "missed";
+  items: CalendarDayDetail[];
+  emptyText: string;
+}) {
+  return (
+    <div className={`calendar-detail-column tone-${tone}`}>
+      <h3>{title}</h3>
+      <div className="calendar-detail-list">
+        {items.length > 0 ? items.map((item) => (
+          <div className="calendar-detail-row" key={item.id}>
+            <span aria-hidden="true">
+              <Icon size={13} />
+            </span>
+            <p>
+              {item.title}
+              {item.detail && <small>{item.detail}</small>}
+            </p>
+          </div>
+        )) : (
+          <p className="calendar-detail-empty">{emptyText}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CalendarProgressEntrySection({
+  title,
+  items,
+  emptyText,
+}: {
+  title: string;
+  items: CalendarDayDetail[];
+  emptyText: string;
+}) {
+  return (
+    <div className="calendar-progress-entry-section">
+      <h3>{title}</h3>
+      <div className="calendar-progress-entry-list">
+        {items.length > 0 ? items.map((item) => (
+          <div className="calendar-progress-entry-row" key={item.id}>
+            <span aria-hidden="true">
+              <TrendingUp size={14} />
+            </span>
+            <p>
+              {item.title}
+              {item.detail && <small>{item.detail}</small>}
+            </p>
+          </div>
+        )) : (
+          <p className="calendar-detail-empty">{emptyText}</p>
+        )}
+      </div>
+    </div>
   );
 }
 
