@@ -245,7 +245,7 @@ export function saveSettings(settings: AppSettings): void {
   localStorage.setItem(PERDAY_SETTINGS_KEY, JSON.stringify(settings));
 }
 
-export function resetPerDayStorage(): void {
+export function resetChexarStorage(): void {
   localStorage.removeItem(PERDAY_APP_STATE_KEY);
   localStorage.removeItem(PERDAY_DAILY_RECORDS_KEY);
 }

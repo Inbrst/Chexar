@@ -40,7 +40,7 @@ import {
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { CSSProperties, FormEvent } from "react";
+import type { CSSProperties, FormEvent, KeyboardEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
   calculateDailyProgress,
@@ -68,7 +68,7 @@ import {
   loadAppState,
   loadDailyRecords,
   loadSettings,
-  resetPerDayStorage,
+  resetChexarStorage,
   saveAppState,
   saveDailyRecords,
   saveSettings,
@@ -77,7 +77,7 @@ import type { AppScreen, AppSettings, AppState, GoalRepeatMode, Priority, Progre
 
 declare global {
   interface Window {
-    perDayResetDemo?: () => void;
+    chexarResetDemo?: () => void;
     Telegram?: {
       WebApp?: unknown;
     };
@@ -88,7 +88,7 @@ const APP_VERSION = "0.1.0";
 
 const onboardingCopy = {
   en: {
-    appLabel: "PerDay",
+    appLabel: "Chexar",
     title: "First launch",
     subtitle: "Let’s quickly set up the app and show how it works.",
     language: "Language",
@@ -109,7 +109,7 @@ const onboardingCopy = {
     continue: "Continue",
   },
   ru: {
-    appLabel: "PerDay",
+    appLabel: "Chexar",
     title: "Первый запуск",
     subtitle: "Быстро настроим приложение и покажем, как всё работает.",
     language: "Язык",
@@ -256,6 +256,12 @@ const calendarCopy = {
     streak: "Streak",
     progress: "progress",
     emptyDay: "No actions for this day",
+    thisMonth: "This month",
+    allDays: "All days",
+    withActivity: "With activity",
+    completedFilter: "Completed",
+    partialFilter: "Partial",
+    missedFilter: "Missed",
   },
   ru: {
     title: "Календарь",
@@ -566,13 +572,6 @@ const uiCopy = {
 
 type UiCopy = (typeof uiCopy)[AppSettings["language"]];
 
-type ProfileCounts = {
-  actions: number;
-  quantityActions: number;
-  checklistActions: number;
-  dayRecords: number;
-};
-
 type ProgressSheetState = {
   goal: ProgressGoal;
 } | null;
@@ -611,6 +610,7 @@ type CalendarDayDetails = {
 };
 
 type ProgressPeriod = "week" | "month" | "year" | "period";
+type CalendarFilterMode = "all" | "activity" | "closed" | "partial" | "missed";
 
 type ProgressChartPoint = {
   label: string;
@@ -922,6 +922,26 @@ function getCalendarDayTone(percent: number, hasData: boolean): "closed" | "part
   }
 
   return "missed";
+}
+
+function getCalendarFilterMatch(mode: CalendarFilterMode, details: CalendarDayDetails, tone: ReturnType<typeof getCalendarDayTone>): boolean {
+  if (mode === "all") {
+    return true;
+  }
+
+  if (mode === "activity") {
+    return details.hasData;
+  }
+
+  if (mode === "closed") {
+    return tone === "closed";
+  }
+
+  if (mode === "partial") {
+    return tone === "partial";
+  }
+
+  return tone === "missed" || details.missed.length > 0;
 }
 
 function getCalendarMonthStats(
@@ -1257,7 +1277,6 @@ export default function App() {
   const [deleteState, setDeleteState] = useState<DeleteState>(null);
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [viewAllSheet, setViewAllSheet] = useState<ViewAllState>(null);
-  const [statsExpanded, setStatsExpanded] = useState(false);
   const [activeScreen, setActiveScreen] = useState<AppScreen>("today");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
@@ -1309,15 +1328,6 @@ export default function App() {
     () => getLastNDaysCompletionTrend(7, dayRecords, daily.percent, activeDate),
     [activeDate, daily.percent, dayRecords],
   );
-  const profileCounts = useMemo(
-    () => ({
-      actions: appState.goals.length + appState.tasks.length,
-      quantityActions: appState.goals.length,
-      checklistActions: appState.tasks.length,
-      dayRecords: dayRecords.length,
-    }),
-    [appState.goals.length, appState.tasks.length, dayRecords.length],
-  );
   useEffect(() => {
     saveAppState(appState);
   }, [appState]);
@@ -1358,8 +1368,8 @@ export default function App() {
 
   useEffect(() => {
     if (import.meta.env.DEV) {
-      window.perDayResetDemo = () => {
-        resetPerDayStorage();
+      window.chexarResetDemo = () => {
+        resetChexarStorage();
         window.location.reload();
       };
     }
@@ -1369,7 +1379,7 @@ export default function App() {
     const emptyState = createEmptyState();
     const emptyRecords = createEmptyDailyRecords();
 
-    resetPerDayStorage();
+    resetChexarStorage();
     setAppState(emptyState);
     setDayRecords(emptyRecords);
     saveAppState(emptyState);
@@ -1384,7 +1394,6 @@ export default function App() {
     setConfirmState(null);
     setDeleteState(null);
     setViewAllSheet(null);
-    setStatsExpanded(false);
     setSelectedDate(null);
     setActiveScreen("today");
   }
@@ -1538,14 +1547,12 @@ export default function App() {
   function openSelectedDate(dateKey: string) {
     setSelectedDate(dateKey);
     setActiveScreen("today");
-    setStatsExpanded(false);
     setViewAllSheet(null);
   }
 
   function returnToCalendar() {
     setSelectedDate(null);
     setActiveScreen("calendar");
-    setStatsExpanded(false);
   }
 
   return (
@@ -1568,7 +1575,6 @@ export default function App() {
           {activeScreen === "profile" ? (
             <ProfileScreen
               settings={settings}
-              counts={profileCounts}
               isTelegramMiniApp={isTelegramMiniApp}
               onSettingsChange={(nextSettings) => setSettings((current) => ({ ...current, ...nextSettings }))}
               onResetRequest={() => setResetConfirmOpen(true)}
@@ -1590,12 +1596,10 @@ export default function App() {
               today={today}
               todayPercent={actualTodayDaily.percent}
               language={settings.language}
-              onAdd={() => setAddSheetOpen(true)}
             />
           ) : (
             <main className="today-screen">
               <Header
-                dateLabel={activeDateLabel}
                 copy={activeUiCopy}
                 dateNote={selectedDateNote}
                 selectedMode={isSelectedDateMode}
@@ -1606,19 +1610,16 @@ export default function App() {
                 daily={daily}
                 trend={rhythmTrend}
                 copy={activeUiCopy}
+                dateLabel={activeDateLabel}
                 language={settings.language}
-                statsExpanded={statsExpanded}
-                onToggleStats={() => setStatsExpanded((expanded) => !expanded)}
               />
-              {statsExpanded && (
-                <MiniStatsPanel
-                  weekPercent={miniStats.weekPercent}
-                  monthPercent={miniStats.monthPercent}
-                  streak={miniStats.streak}
-                  copy={activeUiCopy}
-                  language={settings.language}
-                />
-              )}
+              <MiniStatsPanel
+                weekPercent={miniStats.weekPercent}
+                monthPercent={miniStats.monthPercent}
+                streak={miniStats.streak}
+                copy={activeUiCopy}
+                language={settings.language}
+              />
 
               {isSelectedDateMode && !hasActiveDateItems ? (
                 <section className="section-block">
@@ -1668,7 +1669,6 @@ export default function App() {
                           goal={goal}
                           today={activeDate}
                           copy={activeUiCopy}
-                          onQuickAdd={(amount) => addProgress(goal.id, amount)}
                           onOpenManual={() => setProgressSheet({ goal })}
                           onDelete={() => setDeleteState({ type: "goal", goal })}
                         />
@@ -1759,7 +1759,6 @@ export default function App() {
               tasks={visibleTodayTasks}
               copy={activeUiCopy}
               onClose={() => setViewAllSheet(null)}
-              onQuickAdd={(goalId, amount) => addProgress(goalId, amount)}
               onOpenManual={(goal) => {
                 setViewAllSheet(null);
                 setProgressSheet({ goal });
@@ -1891,14 +1890,12 @@ function OnboardingScreen({
 }
 
 function Header({
-  dateLabel,
   copy,
   dateNote,
   selectedMode = false,
   onBackToCalendar,
   onAdd,
 }: {
-  dateLabel: string;
   copy: UiCopy;
   dateNote?: string;
   selectedMode?: boolean;
@@ -1914,14 +1911,16 @@ function Header({
             {copy.backToCalendar}
           </button>
         ) : (
-          <p className="brand">PerDay</p>
+          <p className="brand">Chexar</p>
         )}
-        <h1>{dateLabel}</h1>
         {dateNote && <p className="selected-date-note">{dateNote}</p>}
       </div>
       <div className="header-actions">
         <button className="icon-button primary-action" type="button" aria-label={copy.add} onClick={onAdd}>
-          <Plus size={34} strokeWidth={2.1} />
+          <span className="header-plus-mark" aria-hidden="true">
+            <span />
+            <span />
+          </span>
         </button>
       </div>
     </header>
@@ -1932,41 +1931,30 @@ function RhythmCard({
   daily,
   trend,
   copy,
+  dateLabel,
   language,
-  statsExpanded,
-  onToggleStats,
 }: {
   daily: ReturnType<typeof calculateDailyProgress>;
   trend: number[];
   copy: UiCopy;
+  dateLabel: string;
   language: AppSettings["language"];
-  statsExpanded: boolean;
-  onToggleStats: () => void;
 }) {
   const cardStyle = { "--daily-percent": `${daily.percent}%` } as CSSProperties;
   const nextAction = daily.totalTodayItems === 0 ? copy.addFirstAction : daily.remainingItems === 0 ? copy.allClosed : daily.nextAction;
-
-  function handleKeyDown(event: React.KeyboardEvent<HTMLElement>) {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      onToggleStats();
-    }
-  }
 
   return (
     <section
       className="rhythm-card"
       style={cardStyle}
-      role="button"
-      tabIndex={0}
-      aria-expanded={statsExpanded}
       aria-label={copy.rhythmAria}
-      onClick={onToggleStats}
-      onKeyDown={handleKeyDown}
     >
       <div className="rhythm-fill" />
       <div className="rhythm-main">
-        <span className="eyebrow">{copy.rhythmTitle}</span>
+        <div className="rhythm-label-row">
+          <span className="eyebrow">{copy.rhythmTitle}</span>
+          <span className="eyebrow rhythm-date">{dateLabel}</span>
+        </div>
         <strong>{daily.percent}%</strong>
         <p>{copy.actionsCount(daily.completedTodayItems, daily.totalTodayItems)}</p>
       </div>
@@ -1977,7 +1965,6 @@ function RhythmCard({
           <span>{copy.left}: {daily.remainingItems}</span>
           <strong>{nextAction}</strong>
         </div>
-        <ChevronRight className={`rhythm-toggle ${statsExpanded ? "open" : ""}`} size={18} aria-hidden="true" />
       </div>
     </section>
   );
@@ -2067,16 +2054,14 @@ function GoalCard({
   goal,
   today,
   copy,
-  onQuickAdd,
   onOpenManual,
   onDelete,
 }: {
   goal: ProgressGoal;
   today: string;
   copy: UiCopy;
-  onQuickAdd: (amount: number) => void;
   onOpenManual: () => void;
-  onDelete: () => void;
+  onDelete?: () => void;
 }) {
   const progressPercent = getGoalProgressPercent(goal);
   const requiredToday = getRequiredToday(goal, today);
@@ -2085,44 +2070,54 @@ function GoalCard({
   const isTodayDone = isGoalCompleted || loggedToday >= requiredToday;
   const progressStyle = { "--goal-progress": `${progressPercent}%` } as CSSProperties;
 
+  function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onOpenManual();
+    }
+  }
+
   return (
-    <article className={`goal-card ${isTodayDone ? "is-done" : ""} ${isGoalCompleted ? "is-complete" : ""}`}>
+    <article
+      className={`goal-card ${isTodayDone ? "is-done" : ""} ${isGoalCompleted ? "is-complete" : ""}`}
+      role="button"
+      tabIndex={0}
+      onClick={onOpenManual}
+      onKeyDown={handleKeyDown}
+    >
       <div className="goal-top">
         <ActionIconBadge className="goal-icon" iconKey={goal.iconKey ?? (goal.iconType === "book" ? "book" : undefined)} title={goal.title} />
         <div className="goal-content">
           <div className="goal-title-row">
-            <h3>{goal.title}</h3>
+            <div className="goal-title-progress">
+              <h3>{goal.title}</h3>
+              <div className="goal-progress-stack">
+                <div className="progress-track" style={progressStyle}>
+                  <span />
+                </div>
+                <span className="goal-numbers">
+                  {formatNumber(goal.currentValue)} / {formatNumber(goal.targetValue)} ({formatNumber(Math.round(progressPercent))}%)
+                </span>
+              </div>
+            </div>
             <div className="goal-title-actions">
               <span className="today-need">
                 {isGoalCompleted ? copy.done : `${copy.todayLabel}: ${formatNumber(requiredToday)} ${goal.unit}`}
               </span>
-              <button type="button" className="item-delete-button" aria-label={copy.deleteAction} onClick={onDelete}>
-                <Trash2 size={16} />
-              </button>
+              {onDelete && (
+                <button
+                  type="button"
+                  className="item-delete-button"
+                  aria-label={copy.deleteAction}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onDelete();
+                  }}
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
             </div>
-          </div>
-          <div className="goal-numbers">
-            <strong>{formatNumber(goal.currentValue)}</strong>
-            <span>/ {formatNumber(goal.targetValue)}</span>
-            <em>{isGoalCompleted ? copy.goalClosed : `${copy.pace}: ${formatNumber(requiredToday)} ${copy.perDay}`}</em>
-          </div>
-          <div className="progress-track" style={progressStyle}>
-            <span />
-          </div>
-          <div className="goal-actions">
-            {goal.quickAddValues.map((value) => (
-              <button key={value} type="button" onClick={() => onQuickAdd(value)}>
-                +{formatNumber(value)}
-              </button>
-            ))}
-            {goal.quickAddValues.length === 0 && (
-              <button type="button" onClick={() => onQuickAdd(getDefaultQuickValues(goal.unit)[0])}>
-                +{formatNumber(getDefaultQuickValues(goal.unit)[0])}
-              </button>
-            )}
-              <button type="button" className="manual-button" onClick={onOpenManual}>
-                {copy.enter}
-              </button>
           </div>
         </div>
       </div>
@@ -2154,7 +2149,12 @@ function TaskRow({
           {!isToday && <small>{task.date}</small>}
         </span>
         <span className="task-check" aria-hidden="true">
-          {completed && <Check size={23} />}
+          {completed && (
+            <span className="task-x-mark">
+              <span />
+              <span />
+            </span>
+          )}
         </span>
       </button>
       <button type="button" className="item-delete-button task-delete-button" aria-label={deleteLabel} onClick={onDelete}>
@@ -2210,7 +2210,6 @@ function ViewAllSheet({
   tasks,
   copy,
   onClose,
-  onQuickAdd,
   onOpenManual,
   onToggleTask,
 }: {
@@ -2220,7 +2219,6 @@ function ViewAllSheet({
   tasks: TaskItem[];
   copy: UiCopy;
   onClose: () => void;
-  onQuickAdd: (goalId: string, amount: number) => void;
   onOpenManual: (goal: ProgressGoal) => void;
   onToggleTask: (task: TaskItem) => void;
 }) {
@@ -2236,9 +2234,7 @@ function ViewAllSheet({
               goal={goal}
               today={today}
               copy={copy}
-              onQuickAdd={(amount) => onQuickAdd(goal.id, amount)}
               onOpenManual={() => onOpenManual(goal)}
-              onDelete={() => undefined}
             />
           ))}
         {!isGoals &&
@@ -2308,14 +2304,12 @@ function ProgressScreen({
   today,
   todayPercent,
   language,
-  onAdd,
 }: {
   appState: AppState;
   dayRecords: Array<{ date: string; percent: number }>;
   today: string;
   todayPercent: number;
   language: AppSettings["language"];
-  onAdd: () => void;
 }) {
   const copy = progressCopy[language];
   const todayDate = useMemo(() => parseDateKey(today), [today]);
@@ -2358,13 +2352,10 @@ function ProgressScreen({
     <main className="progress-screen">
       <header className="progress-header">
         <div>
-          <p className="brand">PerDay</p>
+          <p className="brand">Chexar</p>
           <h1>{copy.title}</h1>
           <p>{copy.subtitle}</p>
         </div>
-        <button type="button" className="icon-button primary-action" aria-label={copy.add} onClick={onAdd}>
-          <Plus size={31} strokeWidth={2.1} />
-        </button>
       </header>
 
       <div className="progress-period-tabs" role="group" aria-label={copy.period}>
@@ -2666,10 +2657,13 @@ function CalendarScreen({
   onSelectDate: (dateKey: string) => void;
 }) {
   const copy = calendarCopy[language];
+  const ui = uiCopy[language];
   const todayDate = parseDateKey(today);
   const [visibleMonth, setVisibleMonth] = useState(() => new Date(todayDate.getFullYear(), todayDate.getMonth(), 1));
   const [selectedDateKey, setSelectedDateKey] = useState(today);
-  const [activeFilter, setActiveFilter] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<CalendarFilterMode>("all");
+  const [calendarMenuOpen, setCalendarMenuOpen] = useState(false);
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
   const calendarDays = useMemo(() => getCalendarMonthGrid(visibleMonth), [visibleMonth]);
   const selectedDate = useMemo(() => parseDateKey(selectedDateKey), [selectedDateKey]);
   const selectedDetails = useMemo(
@@ -2697,24 +2691,54 @@ function CalendarScreen({
     setSelectedDateKey(today);
   }
 
+  const calendarMenuItems = [
+    {
+      label: copy.today,
+      icon: Sun,
+      onClick: jumpToToday,
+    },
+    {
+      label: language === "en" ? "This month" : "Этот месяц",
+      icon: CalendarDays,
+      onClick: () => setVisibleMonth(new Date(todayDate.getFullYear(), todayDate.getMonth(), 1)),
+    },
+    {
+      label: copy.previousMonth,
+      icon: ChevronLeft,
+      onClick: () => shiftMonth(-1),
+    },
+    {
+      label: copy.nextMonth,
+      icon: ChevronRight,
+      onClick: () => shiftMonth(1),
+    },
+  ];
+  const filterItems: Array<{ value: CalendarFilterMode; label: string; icon: LucideIcon }> = [
+    { value: "all", label: language === "en" ? "All days" : "Все дни", icon: CalendarDays },
+    { value: "activity", label: language === "en" ? "With activity" : "Только с активностью", icon: BarChart3 },
+    { value: "closed", label: language === "en" ? "Completed" : "Закрытые", icon: Check },
+    { value: "partial", label: language === "en" ? "Partial" : "Частичные", icon: Clock3 },
+    { value: "missed", label: language === "en" ? "Missed" : "Пропуски", icon: X },
+  ];
+
   return (
     <main className="calendar-screen">
       <header className="calendar-header">
         <div>
-          <p className="brand">PerDay</p>
+          <p className="brand">Chexar</p>
           <h1>{copy.title}</h1>
           <p>{copy.subtitle}</p>
         </div>
         <div className="calendar-header-actions">
-          <button type="button" className="icon-button calendar-icon-button" aria-label={copy.resetToToday} onClick={jumpToToday}>
+          <button type="button" className="icon-button calendar-icon-button" aria-label={copy.monthPicker} onClick={() => setCalendarMenuOpen(true)}>
             <CalendarDays size={25} />
           </button>
           <button
             type="button"
-            className={`icon-button calendar-icon-button ${activeFilter ? "active" : ""}`}
+            className={`icon-button calendar-icon-button ${activeFilter !== "all" ? "active" : ""}`}
             aria-label={copy.filter}
-            aria-pressed={activeFilter}
-            onClick={() => setActiveFilter((filter) => !filter)}
+            aria-pressed={activeFilter !== "all"}
+            onClick={() => setFilterMenuOpen(true)}
           >
             <Filter size={25} />
           </button>
@@ -2748,6 +2772,7 @@ function CalendarScreen({
             const selected = selectedDateKey === dateKey;
             const isToday = today === dateKey;
             const tone = getCalendarDayTone(dayDetails.percent, dayDetails.hasData);
+            const matchesFilter = getCalendarFilterMatch(activeFilter, dayDetails, tone);
 
             return (
               <button
@@ -2759,7 +2784,7 @@ function CalendarScreen({
                   inMonth ? "" : "outside-month",
                   selected ? "selected" : "",
                   isToday ? "is-today" : "",
-                  activeFilter && !dayDetails.hasData ? "filtered" : "",
+                  activeFilter !== "all" && !matchesFilter ? "filtered" : "",
                 ].filter(Boolean).join(" ")}
                 aria-current={isToday ? "date" : undefined}
                 onClick={() => {
@@ -2816,9 +2841,6 @@ function CalendarScreen({
             <strong>{selectedDetails.missed.length}</strong>
           </div>
         </div>
-        <button type="button" className="calendar-open-day-button" onClick={() => onSelectDate(selectedDateKey)}>
-          {copy.openDay}
-        </button>
       </section>
 
       <section className="calendar-summary-card">
@@ -2838,6 +2860,56 @@ function CalendarScreen({
           <strong>{streak}</strong>
         </div>
       </section>
+      {calendarMenuOpen && (
+        <BottomSheet title={copy.monthPicker} closeLabel={ui.close} onClose={() => setCalendarMenuOpen(false)}>
+          <div className="calendar-sheet-actions">
+            {calendarMenuItems.map((item) => {
+              const Icon = item.icon;
+
+              return (
+                <button
+                  key={item.label}
+                  type="button"
+                  className="calendar-sheet-row"
+                  onClick={() => {
+                    item.onClick();
+                    setCalendarMenuOpen(false);
+                  }}
+                >
+                  <Icon size={18} aria-hidden="true" />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </BottomSheet>
+      )}
+      {filterMenuOpen && (
+        <BottomSheet title={copy.filter} closeLabel={ui.close} onClose={() => setFilterMenuOpen(false)}>
+          <div className="calendar-sheet-actions">
+            {filterItems.map((item) => {
+              const Icon = item.icon;
+              const active = activeFilter === item.value;
+
+              return (
+                <button
+                  key={item.value}
+                  type="button"
+                  className={`calendar-sheet-row ${active ? "active" : ""}`}
+                  onClick={() => {
+                    setActiveFilter(item.value);
+                    setFilterMenuOpen(false);
+                  }}
+                >
+                  <Icon size={18} aria-hidden="true" />
+                  <span>{item.label}</span>
+                  {active && <Check size={16} aria-hidden="true" />}
+                </button>
+              );
+            })}
+          </div>
+        </BottomSheet>
+      )}
     </main>
   );
 }
@@ -2935,13 +3007,11 @@ function CalendarProgressEntrySection({
 
 function ProfileScreen({
   settings,
-  counts,
   isTelegramMiniApp,
   onSettingsChange,
   onResetRequest,
 }: {
   settings: AppSettings;
-  counts: ProfileCounts;
   isTelegramMiniApp: boolean;
   onSettingsChange: (settings: Partial<AppSettings>) => void;
   onResetRequest: () => void;
@@ -2953,7 +3023,7 @@ function ProfileScreen({
     <main className="profile-screen">
       <header className="profile-header">
         <div>
-          <p className="brand">PerDay</p>
+          <p className="brand">Chexar</p>
           <h1>{copy.profile}</h1>
           <p>{copy.profileSubtitle}</p>
         </div>
@@ -3002,10 +3072,6 @@ function ProfileScreen({
 
       <ProfileCard title={copy.data}>
         <ProfileRow icon={Database} label={copy.storage} value={copy.onDevice} accent="violet" />
-        <ProfileRow icon={BarChart3} label={copy.actionsCount} value={formatNumber(counts.actions)} accent="cyan" />
-        <ProfileRow icon={Target} label={copy.quantityActionsCount} value={formatNumber(counts.quantityActions)} accent="mint" />
-        <ProfileRow icon={Check} label={copy.checklistActionsCount} value={formatNumber(counts.checklistActions)} accent="violet" />
-        <ProfileRow icon={CalendarDays} label={copy.dayRecordsCount} value={formatNumber(counts.dayRecords)} accent="cyan" />
         <ProfileRow icon={ExternalLink} label={copy.export} value={copy.soon} muted accent="cyan" />
         <ProfileRow icon={Bell} label={copy.reminders} value={copy.later} muted accent="violet" />
       </ProfileCard>
@@ -3169,6 +3235,7 @@ function ProgressSheet({
   const requiredToday = getRequiredToday(goal, today);
   const [amount, setAmount] = useState(requiredToday > 0 ? String(requiredToday) : "");
   const [note, setNote] = useState("");
+  const amountTemplates = [1, 5, 10];
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -3187,6 +3254,17 @@ function ProgressSheet({
         <div className="sheet-summary">
           <span>{goal.title}</span>
           <strong>{copy.requiredToday}: {formatNumber(requiredToday)} {goal.unit}</strong>
+        </div>
+        <div className="progress-template-buttons" aria-label={copy.completedInput}>
+          {amountTemplates.map((value) => (
+            <button key={value} type="button" onClick={() => setAmount(String(value))}>
+              <span className="quick-plus-mark" aria-hidden="true">
+                <span />
+                <span />
+              </span>
+              <span>{formatNumber(value)}</span>
+            </button>
+          ))}
         </div>
         <label>
           <span>{copy.completedInput}</span>
