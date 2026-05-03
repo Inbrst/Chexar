@@ -1,5 +1,6 @@
 import type { AppSettings, AppState, DailyRecord } from "./types";
 import { addDays, todayKey } from "./dateUtils";
+import { mergeDuplicateActions } from "./actionMerge";
 
 export const PERDAY_APP_STATE_KEY = "perday:today-app-state:v1";
 export const PERDAY_DAILY_RECORDS_KEY = "perday:daily-records:v1";
@@ -149,7 +150,7 @@ export function loadAppState(): AppState {
 function migrateAppState(state: AppState): AppState {
   const today = todayKey();
 
-  return {
+  return mergeDuplicateActions({
     goals: state.goals.map((goal) => {
       const startDate = goal.startDate ?? today;
       const endDate = goal.endDate ?? addDays(today, 29);
@@ -158,6 +159,7 @@ function migrateAppState(state: AppState): AppState {
         ...goal,
         startDate,
         endDate,
+        note: typeof goal.note === "string" && goal.note.trim() ? goal.note.trim() : undefined,
         iconKey: goal.iconKey ?? (goal.iconType === "book" ? "book" : undefined),
         repeatMode: goal.repeatMode ?? "everyDay",
         selectedDays: Array.isArray(goal.selectedDays) ? goal.selectedDays : undefined,
@@ -178,6 +180,7 @@ function migrateAppState(state: AppState): AppState {
         ...task,
         startDate,
         endDate,
+        note: typeof task.note === "string" && task.note.trim() ? task.note.trim() : undefined,
         repeatMode: task.repeatMode ?? "once",
         selectedDays: Array.isArray(task.selectedDays) ? task.selectedDays : undefined,
         iconType: task.iconKey ? "custom" : (task.iconType ?? "letter"),
@@ -187,7 +190,7 @@ function migrateAppState(state: AppState): AppState {
         completed: completedDates.includes(today),
       };
     }),
-  };
+  });
 }
 
 export function saveAppState(state: AppState): void {

@@ -16,6 +16,7 @@ export type ProgressEntry = {
 export type ProgressGoal = {
   id: string;
   title: string;
+  note?: string;
   iconType: IconType;
   iconLabel?: string;
   iconKey?: string;
@@ -33,6 +34,7 @@ export type ProgressGoal = {
 export type TaskItem = {
   id: string;
   title: string;
+  note?: string;
   iconType?: IconType;
   iconLabel?: string;
   iconKey?: string;

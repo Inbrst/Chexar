@@ -40,8 +40,8 @@ import {
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { CSSProperties, FormEvent, KeyboardEvent } from "react";
-import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties, FormEvent, KeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   calculateDailyProgress,
   clampPercent,
@@ -74,6 +74,7 @@ import {
   saveSettings,
 } from "./storage";
 import type { AppScreen, AppSettings, AppState, GoalRepeatMode, Priority, ProgressGoal, TaskItem, TaskRepeatMode } from "./types";
+import { mergeDuplicateActions, mergeGoalIntoState, mergeTaskIntoState } from "./actionMerge";
 
 declare global {
   interface Window {
@@ -103,7 +104,7 @@ const onboardingCopy = {
     howItWorks: "How it works",
     learningPoints: [
       "Create actions for a day, week, month, or custom period.",
-      "Track progress with a checkmark or a number.",
+      "Track progress.",
       "Follow your daily rhythm, calendar, and statistics.",
     ],
     continue: "Continue",
@@ -124,7 +125,7 @@ const onboardingCopy = {
     howItWorks: "Как это работает",
     learningPoints: [
       "Создавай действия на день, неделю, месяц или свой период.",
-      "Отмечай прогресс галочкой или числом.",
+      "Отмечай прогресс.",
       "Следи за ритмом дня, календарём и статистикой.",
     ],
     continue: "Продолжить",
@@ -412,10 +413,12 @@ const uiCopy = {
     deleteActionTitle: "Delete action?",
     deleteActionText: "This will delete the action and its progress.",
     deleteConfirm: "Delete",
+    editAction: "Edit action",
     addProgress: "Add progress",
     requiredToday: "Required today",
     completedInput: "Completed",
     note: "Note",
+    comment: "Comment",
     optional: "Optional",
     markDoneTitle: "Mark as done?",
     undoDoneTitle: "Undo completion?",
@@ -449,6 +452,7 @@ const uiCopy = {
     unit: "Unit",
     unitPlaceholder: "lessons",
     alreadyDone: "Already done",
+    currentAmount: "Done now",
     quickButtons: "Quick buttons",
     preview: "Preview",
     inDay: "Per day",
@@ -512,10 +516,12 @@ const uiCopy = {
     deleteActionTitle: "Удалить действие?",
     deleteActionText: "Это удалит действие и его прогресс.",
     deleteConfirm: "Удалить",
+    editAction: "Редактировать",
     addProgress: "Внести прогресс",
     requiredToday: "Нужно сегодня",
     completedInput: "Выполнено",
     note: "Заметка",
+    comment: "Комментарий",
     optional: "Необязательно",
     markDoneTitle: "Отметить выполненной?",
     undoDoneTitle: "Отменить выполнение?",
@@ -549,6 +555,7 @@ const uiCopy = {
     unit: "Единица",
     unitPlaceholder: "уроков",
     alreadyDone: "Уже сделано",
+    currentAmount: "Сделано сейчас",
     quickButtons: "Быстрые кнопки",
     preview: "Предпросмотр",
     inDay: "В день",
@@ -584,6 +591,17 @@ type ConfirmState = {
 type ViewAllState = "goals" | "tasks" | null;
 
 type DeleteState =
+  | {
+      type: "goal";
+      goal: ProgressGoal;
+    }
+  | {
+      type: "task";
+      task: TaskItem;
+    }
+  | null;
+
+type EditState =
   | {
       type: "goal";
       goal: ProgressGoal;
@@ -955,10 +973,13 @@ function getCalendarMonthStats(
     { length: new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate() },
     (_, index) => new Date(monthDate.getFullYear(), monthDate.getMonth(), index + 1),
   );
-  const summaries = days.map((date) => ({
-    date,
-    ...getCalendarDayDetails(date, appState, dayRecords, today, todayPercent),
-  })).filter((summary) => summary.hasData);
+  const summaries = days
+    .filter((date) => toDateKey(date) <= today)
+    .map((date) => ({
+      date,
+      ...getCalendarDayDetails(date, appState, dayRecords, today, todayPercent),
+    }))
+    .filter((summary) => summary.hasData);
 
   if (summaries.length === 0) {
     return {
@@ -1268,14 +1289,57 @@ function dedupeTodayTasks(tasks: TaskItem[], dateKey: string): TaskItem[] {
   });
 }
 
+function sortTasksForToday(tasks: TaskItem[], dateKey: string): TaskItem[] {
+  return tasks
+    .map((task, index) => ({ task, index, completed: isTaskCompletedOnDate(task, dateKey) }))
+    .sort((first, second) => {
+      if (first.completed !== second.completed) {
+        return first.completed ? 1 : -1;
+      }
+
+      return first.index - second.index;
+    })
+    .map((item) => item.task);
+}
+
+function sortGoalsForToday(goals: ProgressGoal[], dateKey: string): ProgressGoal[] {
+  return goals
+    .map((goal, index) => {
+      const required = getRequiredToday(goal, dateKey);
+      const logged = getTodayLoggedAmount(goal, dateKey);
+      const completed = goal.currentValue >= goal.targetValue || logged >= required;
+      const overRatio = required <= 0 ? (completed ? Number.POSITIVE_INFINITY : 0) : logged / required;
+
+      return {
+        goal,
+        index,
+        completed,
+        overRatio,
+      };
+    })
+    .sort((first, second) => {
+      if (first.completed !== second.completed) {
+        return first.completed ? 1 : -1;
+      }
+
+      if (first.completed && second.completed && first.overRatio !== second.overRatio) {
+        return first.overRatio - second.overRatio;
+      }
+
+      return first.index - second.index;
+    })
+    .map((item) => item.goal);
+}
+
 export default function App() {
   const today = useMemo(() => todayKey(), []);
   const [appState, setAppState] = useState<AppState>(() => loadAppState());
   const [dayRecords, setDayRecords] = useState(() => loadDailyRecords());
-  const [progressSheet, setProgressSheet] = useState<ProgressSheetState>(null);
-  const [confirmState, setConfirmState] = useState<ConfirmState>(null);
-  const [deleteState, setDeleteState] = useState<DeleteState>(null);
-  const [addSheetOpen, setAddSheetOpen] = useState(false);
+    const [progressSheet, setProgressSheet] = useState<ProgressSheetState>(null);
+    const [confirmState, setConfirmState] = useState<ConfirmState>(null);
+    const [deleteState, setDeleteState] = useState<DeleteState>(null);
+    const [editState, setEditState] = useState<EditState>(null);
+    const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [viewAllSheet, setViewAllSheet] = useState<ViewAllState>(null);
   const [activeScreen, setActiveScreen] = useState<AppScreen>("today");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -1318,8 +1382,9 @@ export default function App() {
     () => appState.tasks.filter((task) => isTaskDueOnDate(task, activeDateDate, activeDate)),
     [activeDate, activeDateDate, appState.tasks],
   );
-  const visibleTodayTasks = useMemo(() => dedupeTodayTasks(todayTasks, activeDate), [activeDate, todayTasks]);
-  const hasActiveDateItems = todayGoals.length > 0 || visibleTodayTasks.length > 0;
+  const sortedTodayGoals = useMemo(() => sortGoalsForToday(todayGoals, activeDate), [activeDate, todayGoals]);
+  const visibleTodayTasks = useMemo(() => sortTasksForToday(dedupeTodayTasks(todayTasks, activeDate), activeDate), [activeDate, todayTasks]);
+  const hasActiveDateItems = sortedTodayGoals.length > 0 || visibleTodayTasks.length > 0;
   const viewAllGoals = useMemo(
     () => appState.goals.filter((goal) => isGoalDueOnDate(goal, activeDateDate, activeDate) || goal.currentValue >= goal.targetValue),
     [activeDate, activeDateDate, appState.goals],
@@ -1328,9 +1393,13 @@ export default function App() {
     () => getLastNDaysCompletionTrend(7, dayRecords, daily.percent, activeDate),
     [activeDate, daily.percent, dayRecords],
   );
-  useEffect(() => {
-    saveAppState(appState);
-  }, [appState]);
+    useEffect(() => {
+      setAppState((state) => mergeDuplicateActions(state));
+    }, []);
+
+    useEffect(() => {
+      saveAppState(appState);
+    }, [appState]);
 
   useEffect(() => {
     setDayRecords((records) => {
@@ -1391,17 +1460,18 @@ export default function App() {
     setResetConfirmOpen(false);
     setAddSheetOpen(false);
     setProgressSheet(null);
-    setConfirmState(null);
-    setDeleteState(null);
-    setViewAllSheet(null);
+      setConfirmState(null);
+      setDeleteState(null);
+      setEditState(null);
+      setViewAllSheet(null);
     setSelectedDate(null);
     setActiveScreen("today");
   }
 
-  function deleteAction() {
-    if (!deleteState) {
-      return;
-    }
+    function deleteAction() {
+      if (!deleteState) {
+        return;
+      }
 
     if (deleteState.type === "goal") {
       setAppState((state) => ({
@@ -1415,10 +1485,69 @@ export default function App() {
       }));
     }
 
-    setDeleteState(null);
-  }
+      setDeleteState(null);
+    }
 
-  function addProgress(goalId: string, amount: number, note?: string) {
+    function updateGoal(
+      goalId: string,
+      update: {
+        title: string;
+        note?: string;
+        iconKey?: string;
+        repeatMode: GoalRepeatMode;
+        selectedDays?: number[];
+        targetValue: number;
+        currentValue: number;
+        unit: string;
+        quickAddValues: number[];
+      },
+    ) {
+      setAppState((state) =>
+        mergeDuplicateActions({
+          ...state,
+          goals: state.goals.map((goal) =>
+            goal.id === goalId
+              ? {
+                  ...goal,
+                  title: update.title.trim(),
+                  note: update.note?.trim() || undefined,
+                  iconType: update.iconKey === "book" ? "book" : update.iconKey ? "custom" : "letter",
+                  iconKey: update.iconKey,
+                  targetValue: update.targetValue,
+                  currentValue: update.currentValue,
+                  unit: update.unit.trim(),
+                  repeatMode: update.repeatMode,
+                  selectedDays: update.repeatMode === "selectedDays" ? update.selectedDays : undefined,
+                  quickAddValues: update.quickAddValues,
+                }
+              : goal,
+          ),
+        }),
+      );
+    }
+
+    function updateTask(taskId: string, update: { title: string; note?: string; iconKey?: string; repeatMode: TaskRepeatMode; selectedDays?: number[] }) {
+      setAppState((state) =>
+        mergeDuplicateActions({
+          ...state,
+          tasks: state.tasks.map((task) =>
+            task.id === taskId
+              ? {
+                  ...task,
+                  title: update.title.trim(),
+                  note: update.note?.trim() || undefined,
+                  iconType: update.iconKey ? "custom" : "letter",
+                  iconKey: update.iconKey,
+                  repeatMode: update.repeatMode,
+                  selectedDays: update.repeatMode === "selectedDays" ? update.selectedDays : undefined,
+                }
+              : task,
+          ),
+        }),
+      );
+    }
+
+    function addProgress(goalId: string, amount: number, note?: string) {
     if (!Number.isFinite(amount) || amount <= 0) {
       return;
     }
@@ -1485,27 +1614,23 @@ export default function App() {
     const title = goal.title.trim();
     const unit = goal.unit.trim();
 
-    setAppState((state) => ({
-      ...state,
-      goals: [
-        ...state.goals,
-        {
-          id: createId("goal"),
-          title,
-          iconType: goal.iconKey === "book" ? "book" : goal.iconKey ? "custom" : "letter",
-          iconKey: goal.iconKey,
-          targetValue: goal.targetValue,
-          currentValue: goal.currentValue,
-          unit,
-          startDate: goal.startDate,
-          endDate: goal.endDate,
-          repeatMode: goal.repeatMode,
-          selectedDays: goal.repeatMode === "selectedDays" ? goal.selectedDays : undefined,
-          quickAddValues: goal.quickAddValues,
-          progressEntries: [],
-        },
-      ],
-    }));
+    setAppState((state) =>
+      mergeGoalIntoState(state, {
+        id: createId("goal"),
+        title,
+        iconType: goal.iconKey === "book" ? "book" : goal.iconKey ? "custom" : "letter",
+        iconKey: goal.iconKey,
+        targetValue: goal.targetValue,
+        currentValue: goal.currentValue,
+        unit,
+        startDate: goal.startDate,
+        endDate: goal.endDate,
+        repeatMode: goal.repeatMode,
+        selectedDays: goal.repeatMode === "selectedDays" ? goal.selectedDays : undefined,
+        quickAddValues: goal.quickAddValues,
+        progressEntries: [],
+      }),
+    );
   }
 
   function createTask(task: {
@@ -1517,26 +1642,22 @@ export default function App() {
     repeatMode: TaskRepeatMode;
     selectedDays?: number[];
   }) {
-    setAppState((state) => ({
-      ...state,
-      tasks: [
-        ...state.tasks,
-        {
-          id: createId("task"),
-          title: task.title.trim(),
-          iconType: task.iconKey ? "custom" : "letter",
-          iconKey: task.iconKey,
-          priority: task.priority,
-          startDate: task.startDate,
-          endDate: task.endDate,
-          repeatMode: task.repeatMode,
-          selectedDays: task.repeatMode === "selectedDays" ? task.selectedDays : undefined,
-          date: task.startDate,
-          completed: false,
-          completedDates: [],
-        },
-      ],
-    }));
+    setAppState((state) =>
+      mergeTaskIntoState(state, {
+        id: createId("task"),
+        title: task.title.trim(),
+        iconType: task.iconKey ? "custom" : "letter",
+        iconKey: task.iconKey,
+        priority: task.priority,
+        startDate: task.startDate,
+        endDate: task.endDate,
+        repeatMode: task.repeatMode,
+        selectedDays: task.repeatMode === "selectedDays" ? task.selectedDays : undefined,
+        date: task.startDate,
+        completed: false,
+        completedDates: [],
+      }),
+    );
   }
 
   function selectScreen(screen: AppScreen) {
@@ -1642,16 +1763,19 @@ export default function App() {
                           <TaskRow
                             key={task.id}
                             task={task}
-                            completed={completedToday}
-                            isToday={activeDate === today}
-                            deleteLabel={activeUiCopy.deleteAction}
-                            onClick={() =>
+                              completed={completedToday}
+                              isToday={activeDate === today}
+                              deleteLabel={activeUiCopy.deleteConfirm}
+                              editLabel={activeUiCopy.editAction}
+                              toggleLabel={completedToday ? activeUiCopy.undoDoneTitle : activeUiCopy.markDoneTitle}
+                              onClick={() =>
                               setConfirmState({
                                 task,
                                 nextCompleted: !completedToday,
                               })
                             }
                             onDelete={() => setDeleteState({ type: "task", task })}
+                            onEdit={() => setEditState({ type: "task", task })}
                           />
                         );
                       }) : (
@@ -1661,17 +1785,18 @@ export default function App() {
                   </section>
 
                   <section className="section-block">
-                    <SectionHeader title={activeUiCopy.progressSection} />
-                    <div className="goal-list">
-                      {todayGoals.length > 0 ? todayGoals.map((goal) => (
-                        <GoalCard
-                          key={goal.id}
-                          goal={goal}
+                      <SectionHeader title={activeUiCopy.progressSection} />
+                      <div className="goal-list">
+                        {sortedTodayGoals.length > 0 ? sortedTodayGoals.map((goal) => (
+                          <GoalCard
+                            key={goal.id}
+                            goal={goal}
                           today={activeDate}
-                          copy={activeUiCopy}
-                          onOpenManual={() => setProgressSheet({ goal })}
-                          onDelete={() => setDeleteState({ type: "goal", goal })}
-                        />
+                            copy={activeUiCopy}
+                            onOpenManual={() => setProgressSheet({ goal })}
+                            onDelete={() => setDeleteState({ type: "goal", goal })}
+                            onEdit={() => setEditState({ type: "goal", goal })}
+                          />
                       )) : (
                         <EmptySectionCard title={activeUiCopy.emptyProgressTitle} text={activeUiCopy.emptyProgressText} buttonLabel={activeUiCopy.add} onAdd={() => setAddSheetOpen(true)} />
                       )}
@@ -1712,6 +1837,7 @@ export default function App() {
           {confirmState && (
             <ConfirmDialog
               title={confirmState.nextCompleted ? activeUiCopy.markDoneTitle : activeUiCopy.undoDoneTitle}
+              description={confirmState.task.note}
               confirmLabel={confirmState.nextCompleted ? activeUiCopy.yesDone : activeUiCopy.yes}
               cancelLabel={activeUiCopy.cancel}
               onCancel={() => setConfirmState(null)}
@@ -1722,19 +1848,53 @@ export default function App() {
             />
           )}
 
-          {deleteState && (
-            <ConfirmDialog
-              title={activeUiCopy.deleteActionTitle}
+            {deleteState && (
+              <ConfirmDialog
+                title={activeUiCopy.deleteActionTitle}
               description={activeUiCopy.deleteActionText}
               confirmLabel={activeUiCopy.deleteConfirm}
               cancelLabel={activeUiCopy.cancel}
               danger
               onCancel={() => setDeleteState(null)}
-              onConfirm={deleteAction}
-            />
-          )}
+                onConfirm={deleteAction}
+              />
+            )}
 
-          {addSheetOpen && (
+            {editState && (
+              <EditActionSheet
+                state={editState}
+                copy={activeUiCopy}
+                language={settings.language}
+                onClose={() => setEditState(null)}
+                onSave={(update) => {
+                  if (editState.type === "goal") {
+                    updateGoal(editState.goal.id, {
+                      title: update.title,
+                      note: update.note,
+                      iconKey: update.iconKey,
+                      repeatMode: update.repeatMode as GoalRepeatMode,
+                      selectedDays: update.selectedDays,
+                      targetValue: update.targetValue ?? editState.goal.targetValue,
+                      currentValue: update.currentValue ?? editState.goal.currentValue,
+                      unit: update.unit ?? editState.goal.unit,
+                      quickAddValues: update.quickAddValues ?? editState.goal.quickAddValues,
+                    });
+                  } else {
+                    updateTask(editState.task.id, {
+                      title: update.title,
+                      note: update.note,
+                      iconKey: update.iconKey,
+                      repeatMode: update.repeatMode,
+                      selectedDays: update.selectedDays,
+                    });
+                  }
+
+                  setEditState(null);
+                }}
+              />
+            )}
+
+            {addSheetOpen && (
             <AddSheet
               today={activeDate}
               language={settings.language}
@@ -1790,7 +1950,7 @@ function OnboardingScreen({
   onComplete: () => void;
 }) {
   const copy = onboardingCopy[settings.language];
-  const learningIcons = [CirclePlus, Check, BarChart3];
+  const learningIcons: Array<LucideIcon | null> = [CirclePlus, null, BarChart3];
 
   return (
     <main className="onboarding-screen">
@@ -1865,18 +2025,18 @@ function OnboardingScreen({
 
         <div className="onboarding-learn-card">
           <h2>{copy.howItWorks}</h2>
-          <div className="onboarding-learn-list">
-            {copy.learningPoints.map((point, index) => {
-              const Icon = learningIcons[index] ?? CirclePlus;
+            <div className="onboarding-learn-list">
+              {copy.learningPoints.map((point, index) => {
+                const Icon = learningIcons[index];
 
-              return (
-                <div className="onboarding-learn-row" key={point}>
-                  <span className="onboarding-learn-icon" aria-hidden="true">
-                    <Icon size={21} />
-                  </span>
-                  <p>{point}</p>
-                </div>
-              );
+                return (
+                  <div className="onboarding-learn-row" key={point}>
+                    <span className="onboarding-learn-icon" aria-hidden="true">
+                      {Icon === null ? <ChexarCheckboxMark /> : <Icon size={21} />}
+                    </span>
+                    <p>{point}</p>
+                  </div>
+                );
             })}
           </div>
         </div>
@@ -1886,6 +2046,17 @@ function OnboardingScreen({
         </button>
       </section>
     </main>
+  );
+}
+
+function ChexarCheckboxMark() {
+  return (
+    <span className="onboarding-chexar-checkbox">
+      <span className="task-x-mark">
+        <span />
+        <span />
+      </span>
+    </span>
   );
 }
 
@@ -1962,7 +2133,8 @@ function RhythmCard({
         <span className="chip">{getLocalizedDayStatus(daily.percent, language)}</span>
         <MiniRhythmChart values={trend} ariaLabel={copy.rhythmTrendAria} />
         <div className="summary-stack">
-          <span>{copy.left}: {daily.remainingItems}</span>
+          <span>{copy.left}</span>
+          <em>{daily.remainingItems}</em>
           <strong>{nextAction}</strong>
         </div>
       </div>
@@ -2056,12 +2228,14 @@ function GoalCard({
   copy,
   onOpenManual,
   onDelete,
+  onEdit,
 }: {
   goal: ProgressGoal;
   today: string;
   copy: UiCopy;
   onOpenManual: () => void;
   onDelete?: () => void;
+  onEdit?: () => void;
 }) {
   const progressPercent = getGoalProgressPercent(goal);
   const requiredToday = getRequiredToday(goal, today);
@@ -2078,50 +2252,45 @@ function GoalCard({
   }
 
   return (
-    <article
-      className={`goal-card ${isTodayDone ? "is-done" : ""} ${isGoalCompleted ? "is-complete" : ""}`}
-      role="button"
-      tabIndex={0}
-      onClick={onOpenManual}
-      onKeyDown={handleKeyDown}
-    >
-      <div className="goal-top">
-        <ActionIconBadge className="goal-icon" iconKey={goal.iconKey ?? (goal.iconType === "book" ? "book" : undefined)} title={goal.title} />
-        <div className="goal-content">
-          <div className="goal-title-row">
-            <div className="goal-title-progress">
-              <h3>{goal.title}</h3>
-              <div className="goal-progress-stack">
-                <div className="progress-track" style={progressStyle}>
-                  <span />
+    <SwipeDeleteShell deleteLabel={copy.deleteConfirm} editLabel={copy.editAction} onDelete={onDelete} onEdit={onEdit} onTap={onOpenManual}>
+      <article
+        className={`goal-card ${isTodayDone ? "is-done" : ""} ${isGoalCompleted ? "is-complete" : ""}`}
+        role="button"
+        tabIndex={0}
+        onKeyDown={handleKeyDown}
+      >
+        <div className="goal-top">
+          <ActionIconBadge className="goal-icon" iconKey={goal.iconKey ?? (goal.iconType === "book" ? "book" : undefined)} title={goal.title} />
+          <div className="goal-content">
+            <div className="goal-title-row">
+              <div className="goal-title-progress">
+                <div className="goal-main-line">
+                  <h3 title={goal.title}>{goal.title}</h3>
+                  <span className="today-need">
+                    {isGoalCompleted ? (
+                      copy.done
+                    ) : (
+                      <>
+                        <span>{copy.todayLabel}</span>
+                        <strong>{formatNumber(requiredToday)} {goal.unit}</strong>
+                      </>
+                    )}
+                  </span>
                 </div>
-                <span className="goal-numbers">
-                  {formatNumber(goal.currentValue)} / {formatNumber(goal.targetValue)} ({formatNumber(Math.round(progressPercent))}%)
-                </span>
+                <div className="goal-progress-stack">
+                  <div className="progress-track" style={progressStyle}>
+                    <span />
+                  </div>
+                  <span className="goal-numbers">
+                    {formatNumber(goal.currentValue)} / {formatNumber(goal.targetValue)} ({formatNumber(Math.round(progressPercent))}%)
+                  </span>
+                </div>
               </div>
-            </div>
-            <div className="goal-title-actions">
-              <span className="today-need">
-                {isGoalCompleted ? copy.done : `${copy.todayLabel}: ${formatNumber(requiredToday)} ${goal.unit}`}
-              </span>
-              {onDelete && (
-                <button
-                  type="button"
-                  className="item-delete-button"
-                  aria-label={copy.deleteAction}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onDelete();
-                  }}
-                >
-                  <Trash2 size={16} />
-                </button>
-              )}
             </div>
           </div>
         </div>
-      </div>
-    </article>
+      </article>
+    </SwipeDeleteShell>
   );
 }
 
@@ -2130,36 +2299,181 @@ function TaskRow({
   completed,
   isToday,
   deleteLabel,
+  editLabel,
+  toggleLabel,
   onClick,
   onDelete,
+  onEdit,
 }: {
   task: TaskItem;
   completed: boolean;
   isToday: boolean;
   deleteLabel: string;
+  editLabel?: string;
+  toggleLabel: string;
   onClick: () => void;
-  onDelete: () => void;
+  onDelete?: () => void;
+  onEdit?: () => void;
 }) {
   return (
-    <div className={`task-row ${completed ? "completed" : ""} priority-${task.priority ?? "medium"}`}>
-      <button type="button" className="task-row-main" onClick={onClick}>
-        <ActionIconBadge className="task-icon" iconKey={task.iconKey} title={task.title} />
-        <span className="task-title">
-          {task.title}
-          {!isToday && <small>{task.date}</small>}
-        </span>
-        <span className="task-check" aria-hidden="true">
-          {completed && (
-            <span className="task-x-mark">
-              <span />
-              <span />
-            </span>
-          )}
-        </span>
-      </button>
-      <button type="button" className="item-delete-button task-delete-button" aria-label={deleteLabel} onClick={onDelete}>
-        <Trash2 size={15} />
-      </button>
+    <SwipeDeleteShell deleteLabel={deleteLabel} editLabel={editLabel} onDelete={onDelete} onEdit={onEdit}>
+      <div className={`task-row ${completed ? "completed" : ""} priority-${task.priority ?? "medium"}`}>
+        <button type="button" className="task-row-main" onClick={onClick}>
+          <ActionIconBadge className="task-icon" iconKey={task.iconKey} title={task.title} />
+          <span className="task-title">
+            {task.title}
+            {!isToday && <small>{task.date}</small>}
+          </span>
+        </button>
+        <button
+          type="button"
+          className="task-check-button"
+          aria-label={toggleLabel}
+          aria-pressed={completed}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onClick();
+          }}
+        >
+          <span className="task-check" aria-hidden="true">
+            {completed && (
+              <span className="task-x-mark">
+                <span />
+                <span />
+              </span>
+            )}
+          </span>
+        </button>
+      </div>
+    </SwipeDeleteShell>
+  );
+}
+
+function SwipeDeleteShell({
+  children,
+  deleteLabel,
+  editLabel,
+  onDelete,
+  onEdit,
+  onTap,
+}: {
+  children: ReactNode;
+  deleteLabel: string;
+  editLabel?: string;
+  onDelete?: () => void;
+  onEdit?: () => void;
+  onTap?: () => void;
+}) {
+  const [offset, setOffset] = useState(0);
+  const startPoint = useRef<{ x: number; y: number } | null>(null);
+  const offsetRef = useRef(0);
+  const suppressClick = useRef(false);
+  const isSwiping = Math.abs(offset) > 4;
+  const isEditing = offset > 4;
+  const isDeleting = offset < -4;
+  const progress = Math.min(Math.abs(offset) / 84, 1);
+
+  if (!onDelete && !onEdit && !onTap) {
+    return <>{children}</>;
+  }
+
+  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+
+    startPoint.current = { x: event.clientX, y: event.clientY };
+    suppressClick.current = false;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!startPoint.current) {
+      return;
+    }
+
+    const deltaX = event.clientX - startPoint.current.x;
+    const deltaY = event.clientY - startPoint.current.y;
+
+    if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
+      offsetRef.current = 0;
+      setOffset(0);
+      return;
+    }
+
+    if (deltaX < -6 && onDelete) {
+      event.preventDefault();
+      suppressClick.current = true;
+      const nextOffset = Math.max(deltaX, -96);
+      offsetRef.current = nextOffset;
+      setOffset(nextOffset);
+    } else if (deltaX > 6 && onEdit) {
+      event.preventDefault();
+      suppressClick.current = true;
+      const nextOffset = Math.min(deltaX, 96);
+      offsetRef.current = nextOffset;
+      setOffset(nextOffset);
+    }
+  }
+
+  function handlePointerEnd(event: ReactPointerEvent<HTMLDivElement>) {
+    const shouldDelete = offsetRef.current <= -72;
+    const shouldEdit = offsetRef.current >= 72;
+    const shouldSuppressClick = Math.abs(offsetRef.current) > 18 || shouldDelete || shouldEdit;
+
+    startPoint.current = null;
+    offsetRef.current = 0;
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    setOffset(0);
+
+    if (shouldDelete && onDelete) {
+      suppressClick.current = true;
+      onDelete();
+    } else if (shouldEdit && onEdit) {
+      suppressClick.current = true;
+      onEdit();
+    } else {
+      suppressClick.current = shouldSuppressClick;
+
+      if (!shouldSuppressClick && onTap) {
+        onTap();
+      }
+    }
+  }
+
+  return (
+    <div
+      className={`swipe-delete-shell ${isSwiping ? "is-swiping" : ""} ${isEditing ? "is-editing" : ""} ${isDeleting ? "is-deleting" : ""}`}
+      style={
+        {
+          "--swipe-x": `${offset}px`,
+          "--swipe-progress": progress,
+        } as CSSProperties
+      }
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerEnd}
+      onPointerCancel={handlePointerEnd}
+      onClickCapture={(event) => {
+        if (suppressClick.current) {
+          event.preventDefault();
+          event.stopPropagation();
+          suppressClick.current = false;
+        }
+      }}
+    >
+      <div className="swipe-edit-backdrop" aria-hidden="true">
+        <span>{editLabel}</span>
+      </div>
+      <div className="swipe-delete-backdrop" aria-hidden="true">
+        <span>{deleteLabel}</span>
+      </div>
+      <div className="swipe-delete-content">{children}</div>
     </div>
   );
 }
@@ -2197,6 +2511,206 @@ function ActionIconGlyph({ iconKey, size = 18 }: { iconKey: string; size?: numbe
   const Icon = icon.Icon;
 
   return <Icon size={size} aria-hidden="true" />;
+}
+
+function EditActionSheet({
+  state,
+  copy,
+  language,
+  onClose,
+  onSave,
+}: {
+  state: Exclude<EditState, null>;
+  copy: UiCopy;
+  language: AppSettings["language"];
+  onClose: () => void;
+  onSave: (update: {
+    title: string;
+    note?: string;
+    iconKey?: string;
+    repeatMode: TaskRepeatMode;
+    selectedDays?: number[];
+    targetValue?: number;
+    currentValue?: number;
+    unit?: string;
+    quickAddValues?: number[];
+  }) => void;
+}) {
+  const isGoal = state.type === "goal";
+  const action = isGoal ? state.goal : state.task;
+  const initialRepeatMode = isGoal ? state.goal.repeatMode : state.task.repeatMode;
+  const [title, setTitle] = useState(action.title);
+  const [note, setNote] = useState(action.note ?? "");
+  const [iconKey, setIconKey] = useState<string | undefined>(action.iconKey);
+  const [repeatMode, setRepeatMode] = useState<TaskRepeatMode>(initialRepeatMode);
+  const [selectedDays, setSelectedDays] = useState<number[]>(action.selectedDays ?? defaultGoalSelectedDays);
+  const [targetValue, setTargetValue] = useState(isGoal ? String(state.goal.targetValue) : "");
+  const [currentValue, setCurrentValue] = useState(isGoal ? String(state.goal.currentValue) : "");
+  const [unit, setUnit] = useState(isGoal ? state.goal.unit : "");
+  const [quickValues, setQuickValues] = useState(isGoal ? state.goal.quickAddValues.join(", ") : "");
+  const [iconPickerOpen, setIconPickerOpen] = useState(false);
+  const selectedIcon = iconKey ? getActionIcon(iconKey) : undefined;
+  const titleIsValid = title.trim().length > 0;
+  const numericTarget = Number(targetValue);
+  const numericCurrent = Number(currentValue);
+  const progressSettingsValid =
+    !isGoal ||
+    (Number.isFinite(numericTarget) &&
+      numericTarget > 0 &&
+      Number.isFinite(numericCurrent) &&
+      numericCurrent >= 0 &&
+      unit.trim().length > 0);
+
+  function handleRepeatChange(nextRepeatMode: TaskRepeatMode) {
+    setRepeatMode(nextRepeatMode);
+  }
+
+  function toggleWeekdaySelection(day: number) {
+    setSelectedDays((days) => toggleWeekday(days, day));
+  }
+
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+
+    if (!titleIsValid || !progressSettingsValid) {
+      return;
+    }
+
+    const update = {
+      title,
+      note,
+      iconKey,
+      repeatMode,
+      selectedDays: repeatMode === "selectedDays" ? selectedDays : undefined,
+    };
+
+    onSave(
+      isGoal
+        ? {
+            ...update,
+            targetValue: numericTarget,
+            currentValue: numericCurrent,
+            unit,
+            quickAddValues: parseQuickValues(quickValues, unit),
+          }
+        : update,
+    );
+  }
+
+  return (
+    <BottomSheet title={copy.editAction} closeLabel={copy.close} onClose={onClose}>
+      <form className="sheet-form edit-action-form" onSubmit={handleSubmit}>
+        <label>
+          <span>{copy.name}</span>
+          <input value={title} onChange={(event) => setTitle(event.target.value)} autoFocus />
+        </label>
+
+        <div className="field-group">
+          <span>{copy.icon}</span>
+          <button type="button" className="icon-picker-trigger" onClick={() => setIconPickerOpen((open) => !open)}>
+            {selectedIcon ? (
+              <>
+                <ActionIconGlyph iconKey={selectedIcon.key} size={17} />
+                {copy.changeIcon}
+              </>
+            ) : (
+              copy.chooseIcon
+            )}
+          </button>
+          {iconPickerOpen && (
+            <div className="icon-choice-grid" aria-label={copy.iconPickerAria}>
+              <button
+                type="button"
+                className={iconKey === undefined ? "active" : ""}
+                title={copy.noIcon}
+                aria-label={copy.noIcon}
+                onClick={() => setIconKey(undefined)}
+              >
+                <X size={18} />
+              </button>
+              {actionIcons.map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  className={iconKey === option.key ? "active" : ""}
+                  title={option.title}
+                  aria-label={option.title}
+                  onClick={() => setIconKey(option.key)}
+                >
+                  <ActionIconGlyph iconKey={option.key} size={18} />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="field-group">
+          <span>{copy.repeat}</span>
+          <div className={`segmented-control compact-segment ${isGoal ? "segment-three" : "segment-four"}`}>
+            {!isGoal && (
+              <button type="button" className={repeatMode === "once" ? "active" : ""} onClick={() => handleRepeatChange("once")}>
+                {copy.repeatOnce}
+              </button>
+            )}
+            <button type="button" className={repeatMode === "everyDay" ? "active" : ""} onClick={() => handleRepeatChange("everyDay")}>
+              {copy.everyDay}
+            </button>
+            <button type="button" className={repeatMode === "weekdays" ? "active" : ""} onClick={() => handleRepeatChange("weekdays")}>
+              {copy.weekdays}
+            </button>
+            <button type="button" className={repeatMode === "selectedDays" ? "active" : ""} onClick={() => handleRepeatChange("selectedDays")}>
+              {copy.selectedDays}
+            </button>
+          </div>
+        </div>
+
+        {repeatMode === "selectedDays" && <WeekdayChips selectedDays={selectedDays} language={language} onToggle={toggleWeekdaySelection} />}
+
+        {isGoal && (
+          <>
+            <div className="date-grid compact-two-column">
+              <label>
+                <span>{copy.total}</span>
+                <input type="number" min="1" step="any" value={targetValue} onChange={(event) => setTargetValue(event.target.value)} />
+              </label>
+              <label>
+                <span>{copy.unit}</span>
+                <input value={unit} onChange={(event) => setUnit(event.target.value)} placeholder={copy.unitPlaceholder} />
+              </label>
+            </div>
+            <div className="date-grid compact-two-column">
+              <label>
+                <span>{copy.currentAmount}</span>
+                <input type="number" min="0" step="any" value={currentValue} onChange={(event) => setCurrentValue(event.target.value)} />
+              </label>
+              <label>
+                <span>{copy.quickButtons}</span>
+                <input value={quickValues} onChange={(event) => setQuickValues(event.target.value)} placeholder="1, 5, 10" />
+              </label>
+            </div>
+          </>
+        )}
+
+        <label>
+          <span>{copy.comment}</span>
+          <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} placeholder={copy.optional} />
+        </label>
+
+        <div className="sheet-actions">
+          <button
+            type="submit"
+            className="primary-sheet-button"
+            disabled={!titleIsValid || !progressSettingsValid || (repeatMode === "selectedDays" && selectedDays.length === 0)}
+          >
+            {copy.save}
+          </button>
+          <button type="button" className="ghost-sheet-button" onClick={onClose}>
+            {copy.cancel}
+          </button>
+        </div>
+      </form>
+    </BottomSheet>
+  );
 }
 
 function getTitleFallbackLetter(title: string): string {
@@ -2247,9 +2761,9 @@ function ViewAllSheet({
                 task={task}
                 completed={completedToday}
                 isToday
-                deleteLabel={copy.deleteAction}
+                deleteLabel={copy.deleteConfirm}
+                toggleLabel={completedToday ? copy.undoDoneTitle : copy.markDoneTitle}
                 onClick={() => onToggleTask(task)}
-                onDelete={() => undefined}
               />
             );
           })}
@@ -2662,7 +3176,6 @@ function CalendarScreen({
   const [visibleMonth, setVisibleMonth] = useState(() => new Date(todayDate.getFullYear(), todayDate.getMonth(), 1));
   const [selectedDateKey, setSelectedDateKey] = useState(today);
   const [activeFilter, setActiveFilter] = useState<CalendarFilterMode>("all");
-  const [calendarMenuOpen, setCalendarMenuOpen] = useState(false);
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
   const calendarDays = useMemo(() => getCalendarMonthGrid(visibleMonth), [visibleMonth]);
   const selectedDate = useMemo(() => parseDateKey(selectedDateKey), [selectedDateKey]);
@@ -2730,9 +3243,6 @@ function CalendarScreen({
           <p>{copy.subtitle}</p>
         </div>
         <div className="calendar-header-actions">
-          <button type="button" className="icon-button calendar-icon-button" aria-label={copy.monthPicker} onClick={() => setCalendarMenuOpen(true)}>
-            <CalendarDays size={25} />
-          </button>
           <button
             type="button"
             className={`icon-button calendar-icon-button ${activeFilter !== "all" ? "active" : ""}`}
@@ -2771,8 +3281,10 @@ function CalendarScreen({
             const inMonth = date.getMonth() === visibleMonth.getMonth();
             const selected = selectedDateKey === dateKey;
             const isToday = today === dateKey;
-            const tone = getCalendarDayTone(dayDetails.percent, dayDetails.hasData);
-            const matchesFilter = getCalendarFilterMatch(activeFilter, dayDetails, tone);
+            const isFuture = dateKey > today;
+            const displayDetails = isFuture ? { ...dayDetails, percent: 0, hasData: false } : dayDetails;
+            const tone = getCalendarDayTone(displayDetails.percent, displayDetails.hasData);
+            const matchesFilter = getCalendarFilterMatch(activeFilter, displayDetails, tone);
 
             return (
               <button
@@ -2781,11 +3293,12 @@ function CalendarScreen({
                 className={[
                   "calendar-day",
                   `tone-${tone}`,
-                  inMonth ? "" : "outside-month",
-                  selected ? "selected" : "",
-                  isToday ? "is-today" : "",
-                  activeFilter !== "all" && !matchesFilter ? "filtered" : "",
-                ].filter(Boolean).join(" ")}
+                    inMonth ? "" : "outside-month",
+                    selected ? "selected" : "",
+                    isToday ? "is-today" : "",
+                    isFuture ? "future-day" : "",
+                    activeFilter !== "all" && !matchesFilter ? "filtered" : "",
+                  ].filter(Boolean).join(" ")}
                 aria-current={isToday ? "date" : undefined}
                 onClick={() => {
                   setSelectedDateKey(dateKey);
@@ -2794,13 +3307,13 @@ function CalendarScreen({
                   }
                   onSelectDate(dateKey);
                 }}
-              >
-                <strong>{date.getDate()}</strong>
-                <span>{dayDetails.hasData ? `${dayDetails.percent}%` : "-"}</span>
-                <i aria-hidden="true" />
-              </button>
-            );
-          })}
+                >
+                  <strong>{date.getDate()}</strong>
+                  {!isFuture && <span>{displayDetails.hasData ? `${displayDetails.percent}%` : "-"}</span>}
+                  {!isFuture && <i aria-hidden="true" />}
+                </button>
+              );
+            })}
         </div>
       </section>
 
@@ -2860,30 +3373,6 @@ function CalendarScreen({
           <strong>{streak}</strong>
         </div>
       </section>
-      {calendarMenuOpen && (
-        <BottomSheet title={copy.monthPicker} closeLabel={ui.close} onClose={() => setCalendarMenuOpen(false)}>
-          <div className="calendar-sheet-actions">
-            {calendarMenuItems.map((item) => {
-              const Icon = item.icon;
-
-              return (
-                <button
-                  key={item.label}
-                  type="button"
-                  className="calendar-sheet-row"
-                  onClick={() => {
-                    item.onClick();
-                    setCalendarMenuOpen(false);
-                  }}
-                >
-                  <Icon size={18} aria-hidden="true" />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </BottomSheet>
-      )}
       {filterMenuOpen && (
         <BottomSheet title={copy.filter} closeLabel={ui.close} onClose={() => setFilterMenuOpen(false)}>
           <div className="calendar-sheet-actions">
@@ -3254,6 +3743,7 @@ function ProgressSheet({
         <div className="sheet-summary">
           <span>{goal.title}</span>
           <strong>{copy.requiredToday}: {formatNumber(requiredToday)} {goal.unit}</strong>
+          {goal.note && <p className="action-comment">{goal.note}</p>}
         </div>
         <div className="progress-template-buttons" aria-label={copy.completedInput}>
           {amountTemplates.map((value) => (
