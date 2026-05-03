@@ -494,6 +494,81 @@ html[data-resolved-theme="light"] .calendar-open-day-button {
   box-shadow: 0 0 18px rgba(16, 185, 129, 0.18);
 }
 
+html[data-resolved-theme="light"] .progress-header h1,
+html[data-resolved-theme="light"] .progress-kpi-card span,
+html[data-resolved-theme="light"] .progress-kpi-card strong,
+html[data-resolved-theme="light"] .progress-rhythm-card span,
+html[data-resolved-theme="light"] .progress-chart-card h2,
+html[data-resolved-theme="light"] .progress-balance-card h2,
+html[data-resolved-theme="light"] .progress-best-days-card h2,
+html[data-resolved-theme="light"] .progress-best-card h2,
+html[data-resolved-theme="light"] .progress-donut strong,
+html[data-resolved-theme="light"] .progress-legend-row strong,
+html[data-resolved-theme="light"] .progress-rank-row strong,
+html[data-resolved-theme="light"] .progress-rank-row em,
+html[data-resolved-theme="light"] .progress-empty-card strong {
+  color: #111827;
+}
+
+html[data-resolved-theme="light"] .progress-header p:not(.brand),
+html[data-resolved-theme="light"] .progress-kpi-card p,
+html[data-resolved-theme="light"] .progress-rhythm-card p,
+html[data-resolved-theme="light"] .progress-chart-y-label,
+html[data-resolved-theme="light"] .progress-chart-x-label,
+html[data-resolved-theme="light"] .progress-legend-row p,
+html[data-resolved-theme="light"] .progress-donut small,
+html[data-resolved-theme="light"] .progress-day-bar span,
+html[data-resolved-theme="light"] .progress-day-bar small,
+html[data-resolved-theme="light"] .progress-no-actions,
+html[data-resolved-theme="light"] .progress-empty-card p {
+  color: #66736d;
+  fill: #66736d;
+}
+
+html[data-resolved-theme="light"] .progress-period-tabs,
+html[data-resolved-theme="light"] .progress-empty-card,
+html[data-resolved-theme="light"] .progress-kpi-card,
+html[data-resolved-theme="light"] .progress-rhythm-card,
+html[data-resolved-theme="light"] .progress-chart-card,
+html[data-resolved-theme="light"] .progress-balance-card,
+html[data-resolved-theme="light"] .progress-best-days-card,
+html[data-resolved-theme="light"] .progress-best-card {
+  border-color: rgba(15, 23, 42, 0.1);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(241, 245, 244, 0.82)),
+    rgba(255, 255, 255, 0.92);
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.1);
+}
+
+html[data-resolved-theme="light"] .progress-period-tabs button {
+  color: #647067;
+}
+
+html[data-resolved-theme="light"] .progress-period-tabs button.active {
+  color: #fff;
+  background: linear-gradient(135deg, #10b981, #059669);
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.2);
+}
+
+html[data-resolved-theme="light"] .progress-rhythm-card strong {
+  color: #059669;
+}
+
+html[data-resolved-theme="light"] .progress-donut::after {
+  background: rgba(255, 255, 255, 0.96);
+}
+
+html[data-resolved-theme="light"] .progress-rank-index,
+html[data-resolved-theme="light"] .progress-rank-icon,
+html[data-resolved-theme="light"] .progress-no-actions {
+  border-color: rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.66);
+}
+
+html[data-resolved-theme="light"] .progress-rank-icon {
+  color: #047857;
+}
+
 @media (prefers-color-scheme: light) {
   html[data-theme-preference="system"] {
     color-scheme: light;
@@ -2412,6 +2487,556 @@ button {
   white-space: nowrap;
 }
 
+.progress-screen {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 12px;
+  width: 100%;
+  max-width: 430px;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 22px 18px var(--bottom-stack-padding);
+}
+
+.progress-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 4px;
+}
+
+.progress-header h1 {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(2.25rem, 11vw, 3rem);
+  line-height: 0.95;
+  font-weight: 850;
+  letter-spacing: 0;
+}
+
+.progress-header p:not(.brand) {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.2;
+}
+
+.progress-period-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  min-height: 48px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012)),
+    rgba(18, 19, 27, 0.88);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.012), 0 10px 22px rgba(0, 0, 0, 0.18);
+}
+
+.progress-period-tabs button {
+  min-width: 0;
+  min-height: 38px;
+  border: 0;
+  border-radius: 12px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 0.85rem;
+  font-weight: 760;
+}
+
+.progress-period-tabs button.active {
+  color: #fff;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(97, 215, 255, 0.16), transparent 62%),
+    linear-gradient(135deg, rgba(124, 92, 255, 0.72), rgba(97, 86, 207, 0.82));
+  box-shadow: 0 0 16px rgba(124, 92, 255, 0.24);
+}
+
+.progress-empty-card,
+.progress-kpi-card,
+.progress-rhythm-card,
+.progress-chart-card,
+.progress-balance-card,
+.progress-best-days-card,
+.progress-best-card {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012)),
+    rgba(18, 19, 27, 0.9);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.012), 0 12px 30px rgba(0, 0, 0, 0.22);
+}
+
+.progress-empty-card {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 15px 16px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.progress-empty-card svg {
+  color: var(--accent);
+  filter: drop-shadow(0 0 8px rgba(124, 92, 255, 0.26));
+}
+
+.progress-empty-card strong {
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.1;
+}
+
+.progress-empty-card p {
+  max-width: 19rem;
+  margin: 0;
+  font-size: 0.83rem;
+  line-height: 1.25;
+}
+
+.progress-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.progress-kpi-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: start;
+  gap: 10px;
+  min-height: 111px;
+  padding: 14px;
+}
+
+.progress-kpi-card span {
+  display: block;
+  color: var(--text);
+  font-size: 0.94rem;
+  line-height: 1.05;
+  font-weight: 720;
+}
+
+.progress-kpi-card strong {
+  display: block;
+  margin-top: 7px;
+  color: var(--text);
+  font-size: clamp(2rem, 10vw, 2.55rem);
+  line-height: 0.94;
+  font-weight: 850;
+}
+
+.progress-kpi-card p {
+  margin: 9px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.2;
+}
+
+.progress-kpi-card svg {
+  justify-self: end;
+  color: var(--accent);
+  filter: drop-shadow(0 0 8px rgba(124, 92, 255, 0.3));
+}
+
+.progress-kpi-card.tone-mint svg,
+.progress-kpi-card.tone-mint p {
+  color: var(--mint);
+}
+
+.progress-kpi-card.tone-amber svg,
+.progress-kpi-card.tone-amber p {
+  color: var(--amber);
+}
+
+.progress-kpi-card.tone-rose svg {
+  color: var(--rose);
+  filter: drop-shadow(0 0 8px rgba(255, 92, 184, 0.28));
+}
+
+.progress-rhythm-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 128px;
+  align-items: center;
+  gap: 14px;
+  min-height: 132px;
+  padding: 16px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 92% 28%, rgba(124, 92, 255, 0.22), transparent 10rem),
+    linear-gradient(135deg, rgba(124, 92, 255, 0.09), rgba(97, 215, 255, 0.02)),
+    rgba(18, 19, 27, 0.9);
+}
+
+.progress-rhythm-card span {
+  color: var(--text);
+  font-size: 0.96rem;
+  font-weight: 720;
+  line-height: 1;
+}
+
+.progress-rhythm-card strong {
+  display: block;
+  margin-top: 5px;
+  color: #a992ff;
+  font-size: clamp(1.7rem, 8vw, 2.15rem);
+  line-height: 1;
+  font-weight: 850;
+}
+
+.progress-rhythm-card p {
+  max-width: 15rem;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.28;
+}
+
+.progress-rhythm-card .rhythm-chart {
+  width: 120px;
+  height: 48px;
+  justify-self: end;
+}
+
+.progress-chart-card {
+  padding: 15px 13px 11px;
+  overflow: hidden;
+}
+
+.progress-chart-card h2,
+.progress-balance-card h2,
+.progress-best-days-card h2,
+.progress-best-card h2 {
+  margin: 0 0 10px;
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.1;
+  font-weight: 740;
+}
+
+.progress-line-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.progress-chart-grid-line {
+  stroke: rgba(176, 158, 255, 0.13);
+  stroke-width: 1;
+}
+
+.progress-chart-y-label,
+.progress-chart-x-label,
+.progress-chart-value-label {
+  fill: var(--muted);
+  font-size: 10px;
+  font-weight: 650;
+  text-anchor: middle;
+}
+
+.progress-chart-y-label {
+  text-anchor: start;
+}
+
+.progress-chart-value-label {
+  fill: var(--text);
+  font-size: 11px;
+}
+
+.progress-chart-area {
+  fill: url(#progress-area-gradient);
+}
+
+.progress-chart-line,
+.progress-chart-line-glow {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.progress-chart-line-glow {
+  stroke: rgba(124, 92, 255, 0.2);
+  stroke-width: 10;
+}
+
+.progress-chart-line {
+  stroke: url(#progress-line-gradient);
+  stroke-width: 4;
+  filter: drop-shadow(0 0 8px rgba(124, 92, 255, 0.35));
+}
+
+.progress-chart-point {
+  fill: #efeaff;
+  stroke: var(--accent);
+  stroke-width: 3;
+  filter: drop-shadow(0 0 6px rgba(124, 92, 255, 0.32));
+}
+
+.progress-chart-point.empty {
+  fill: rgba(143, 137, 153, 0.4);
+  stroke: rgba(143, 137, 153, 0.72);
+  filter: none;
+}
+
+.progress-insight-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.progress-balance-card,
+.progress-best-days-card {
+  min-height: 166px;
+  padding: 14px;
+}
+
+.progress-balance-content {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.progress-donut {
+  position: relative;
+  display: grid;
+  width: 96px;
+  height: 96px;
+  place-items: center;
+  border-radius: 50%;
+  background:
+    conic-gradient(
+      var(--accent) 0 var(--progress-part),
+      var(--cyan) var(--progress-part) var(--checklist-part),
+      var(--amber) var(--checklist-part) 100%
+    );
+  box-shadow: 0 0 18px rgba(124, 92, 255, 0.18);
+}
+
+.progress-donut::after {
+  content: "";
+  position: absolute;
+  inset: 16px;
+  border-radius: inherit;
+  background: rgba(12, 13, 20, 0.96);
+}
+
+.progress-donut span {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  color: var(--text);
+}
+
+.progress-donut strong {
+  font-size: 1.32rem;
+  line-height: 1;
+}
+
+.progress-donut small {
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1;
+}
+
+.progress-balance-legend {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+}
+
+.progress-legend-row {
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.progress-legend-row span {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.progress-legend-row span.violet {
+  background: var(--accent);
+  box-shadow: 0 0 8px rgba(124, 92, 255, 0.36);
+}
+
+.progress-legend-row span.cyan {
+  background: var(--cyan);
+  box-shadow: 0 0 8px rgba(97, 215, 255, 0.3);
+}
+
+.progress-legend-row span.amber {
+  background: var(--amber);
+  box-shadow: 0 0 8px rgba(255, 184, 92, 0.3);
+}
+
+.progress-legend-row p,
+.progress-legend-row strong {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progress-legend-row strong {
+  color: var(--text);
+}
+
+.progress-day-bars {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  align-items: end;
+  gap: 6px;
+  min-height: 120px;
+}
+
+.progress-day-bar {
+  display: grid;
+  grid-template-rows: 18px 1fr 18px;
+  justify-items: center;
+  gap: 5px;
+  min-width: 0;
+  height: 120px;
+}
+
+.progress-day-bar span,
+.progress-day-bar small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progress-day-bar span {
+  color: #cfc7dd;
+  font-weight: 700;
+}
+
+.progress-day-bar i {
+  align-self: end;
+  width: 100%;
+  min-height: 8px;
+  height: max(8px, var(--bar-value));
+  border-radius: 9px 9px 3px 3px;
+  background:
+    linear-gradient(180deg, rgba(183, 160, 255, 0.95), rgba(124, 92, 255, 0.56)),
+    rgba(124, 92, 255, 0.4);
+  box-shadow: 0 0 14px rgba(124, 92, 255, 0.16);
+}
+
+.progress-day-bar.best i {
+  background: linear-gradient(180deg, var(--cyan), var(--accent));
+  box-shadow: 0 0 16px rgba(97, 215, 255, 0.24);
+}
+
+.progress-best-card {
+  padding: 14px;
+}
+
+.progress-rank-list {
+  display: grid;
+  gap: 11px;
+}
+
+.progress-rank-row {
+  display: grid;
+  grid-template-columns: 28px 30px minmax(78px, 1fr) minmax(78px, 1.35fr) 42px;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.progress-rank-index {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid rgba(176, 158, 255, 0.14);
+  border-radius: 50%;
+  color: #d8d0e8;
+  background: rgba(8, 9, 15, 0.42);
+  font-size: 0.82rem;
+  font-weight: 780;
+}
+
+.progress-rank-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  color: #dcd2ff;
+  border: 1px solid rgba(124, 92, 255, 0.24);
+  border-radius: 50%;
+  background: rgba(124, 92, 255, 0.16);
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.progress-rank-row strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.9rem;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progress-rank-track {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(94, 93, 112, 0.26);
+}
+
+.progress-rank-track span {
+  display: block;
+  width: var(--rank-progress);
+  max-width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--cyan));
+  box-shadow: 0 0 14px rgba(124, 92, 255, 0.26);
+}
+
+.progress-rank-row em {
+  justify-self: end;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.progress-no-actions {
+  margin: 0;
+  padding: 12px;
+  color: var(--muted);
+  border: 1px solid rgba(176, 158, 255, 0.12);
+  border-radius: 13px;
+  background: rgba(8, 9, 15, 0.35);
+  font-size: 0.86rem;
+  text-align: center;
+}
+
 .profile-screen {
   position: relative;
   z-index: 1;
@@ -3342,6 +3967,7 @@ button {
 @media (max-width: 390px) {
   .today-screen,
   .calendar-screen,
+  .progress-screen,
   .profile-screen {
     padding-right: 14px;
     padding-left: 14px;
@@ -3390,6 +4016,44 @@ button {
 
   .calendar-header h1 {
     font-size: clamp(2.1rem, 10.5vw, 2.7rem);
+  }
+
+  .progress-header h1 {
+    font-size: clamp(2.08rem, 10vw, 2.62rem);
+  }
+
+  .progress-kpi-grid,
+  .progress-insight-grid {
+    gap: 8px;
+  }
+
+  .progress-kpi-card {
+    min-height: 104px;
+    padding: 12px;
+  }
+
+  .progress-rhythm-card {
+    grid-template-columns: minmax(0, 1fr) 106px;
+    min-height: 122px;
+  }
+
+  .progress-balance-content {
+    grid-template-columns: 78px minmax(0, 1fr);
+    gap: 9px;
+  }
+
+  .progress-donut {
+    width: 78px;
+    height: 78px;
+  }
+
+  .progress-donut::after {
+    inset: 13px;
+  }
+
+  .progress-rank-row {
+    grid-template-columns: 26px 28px minmax(62px, 1fr) minmax(60px, 1fr) 38px;
+    gap: 7px;
   }
 
   .calendar-grid {

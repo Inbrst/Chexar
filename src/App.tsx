@@ -44,14 +44,17 @@ import type { CSSProperties, FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
   calculateDailyProgress,
+  clampPercent,
   getCurrentStreak,
   getDailyCompletionPercent,
   getGoalSchedulePreview,
   getGoalProgressPercent,
   getLastNDaysCompletionTrend,
+  getMonthRange,
   getMonthAverageCompletion,
   getRequiredToday,
   getTodayLoggedAmount,
+  getWeekRange,
   getWeekAverageCompletion,
   isGoalDueOnDate,
   isTaskCompletedOnDate,
@@ -284,6 +287,77 @@ const calendarCopy = {
     streak: "Streak",
     progress: "прогресс",
     emptyDay: "На этот день действий нет",
+  },
+} as const;
+
+const progressCopy = {
+  en: {
+    title: "Progress",
+    subtitle: "Dynamics for the selected period",
+    add: "Add action",
+    week: "Week",
+    month: "Month",
+    year: "Year",
+    period: "Period",
+    completion: "Completion",
+    comparedToPrevious: (delta: number) => `${delta >= 0 ? "+" : ""}${delta}% vs previous period`,
+    streak: "Streak",
+    streakCaption: "days in a row",
+    onTrack: "On track",
+    days: "days",
+    behind: "Behind",
+    day: "day",
+    periodRhythm: "Period rhythm",
+    stable: "Stable",
+    moving: "Moving",
+    uneven: "Uneven",
+    justStart: "Just starting",
+    rhythmDescription: (percent: number) => `You complete ${percent}% of the plan for this period.`,
+    dynamics: "Completion dynamics",
+    taskBalance: "Action balance",
+    progress: "Progress",
+    checklist: "Checklist",
+    misses: "Misses",
+    bestDays: "Best days",
+    bestActions: "What works best",
+    emptyTitle: "Progress is empty",
+    emptyText: "Complete actions to see period dynamics here.",
+    noActions: "No completed actions yet",
+    actionsLabel: "actions",
+  },
+  ru: {
+    title: "Прогресс",
+    subtitle: "Динамика за выбранный период",
+    add: "Добавить действие",
+    week: "Неделя",
+    month: "Месяц",
+    year: "Год",
+    period: "Период",
+    completion: "Выполнение",
+    comparedToPrevious: (delta: number) => `${delta >= 0 ? "+" : ""}${delta}% к прошлому периоду`,
+    streak: "Streak",
+    streakCaption: "дня подряд",
+    onTrack: "В графике",
+    days: "дня",
+    behind: "Отстают",
+    day: "день",
+    periodRhythm: "Ритм периода",
+    stable: "Стабильный",
+    moving: "В движении",
+    uneven: "Неровный",
+    justStart: "Начало",
+    rhythmDescription: (percent: number) => `Ты выполняешь ${percent}% плана за период.`,
+    dynamics: "Динамика выполнения",
+    taskBalance: "Баланс действий",
+    progress: "Прогресс",
+    checklist: "Чек-лист",
+    misses: "Пропуски",
+    bestDays: "Лучшие дни",
+    bestActions: "Что получается лучше всего",
+    emptyTitle: "Прогресс пока пустой",
+    emptyText: "Отмечай действия — здесь появится динамика периода.",
+    noActions: "Пока нет выполненных действий",
+    actionsLabel: "действий",
   },
 } as const;
 
@@ -534,6 +608,21 @@ type CalendarDayDetails = {
   missed: CalendarDayDetail[];
   progressEntries: CalendarDayDetail[];
   hasData: boolean;
+};
+
+type ProgressPeriod = "week" | "month" | "year" | "period";
+
+type ProgressChartPoint = {
+  label: string;
+  value: number;
+  hasData: boolean;
+};
+
+type ProgressActionRank = {
+  id: string;
+  title: string;
+  iconKey?: string;
+  percent: number;
 };
 
 function createId(prefix: string): string {
@@ -865,6 +954,261 @@ function getCalendarMonthStats(
     average: Math.round(total / summaries.length),
     bestDay: best.date,
   };
+}
+
+function getProgressRange(period: ProgressPeriod, date: Date): Date[] {
+  if (period === "week") {
+    return getWeekRange(date);
+  }
+
+  if (period === "month") {
+    return getMonthRange(date);
+  }
+
+  if (period === "year") {
+    const days: Date[] = [];
+    const cursor = new Date(date.getFullYear(), 0, 1);
+
+    while (cursor.getFullYear() === date.getFullYear()) {
+      days.push(new Date(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    return days;
+  }
+
+  return Array.from({ length: 30 }, (_, index) => parseDateKey(addDays(toDateKey(date), index - 29)));
+}
+
+function getPreviousProgressRange(period: ProgressPeriod, date: Date): Date[] {
+  if (period === "week") {
+    const previous = new Date(date);
+    previous.setDate(date.getDate() - 7);
+
+    return getProgressRange(period, previous);
+  }
+
+  if (period === "month") {
+    return getMonthRange(new Date(date.getFullYear(), date.getMonth() - 1, 1));
+  }
+
+  if (period === "year") {
+    return getProgressRange(period, new Date(date.getFullYear() - 1, date.getMonth(), date.getDate()));
+  }
+
+  return Array.from({ length: 30 }, (_, index) => parseDateKey(addDays(toDateKey(date), index - 59)));
+}
+
+function getProgressAverage(
+  range: Date[],
+  appState: AppState,
+  dayRecords: Array<{ date: string; percent: number }>,
+  today: string,
+  todayPercent: number,
+) {
+  const summaries = range
+    .filter((date) => toDateKey(date) <= today)
+    .map((date) => getCalendarDayDetails(date, appState, dayRecords, today, todayPercent))
+    .filter((summary) => summary.hasData);
+
+  if (summaries.length === 0) {
+    return {
+      average: 0,
+      completedDays: 0,
+      behindDays: 0,
+      daysWithData: 0,
+    };
+  }
+
+  const total = summaries.reduce((sum, summary) => sum + summary.percent, 0);
+
+  return {
+    average: clampPercent(total / summaries.length),
+    completedDays: summaries.filter((summary) => summary.percent >= 100).length,
+    behindDays: summaries.filter((summary) => summary.percent < 100).length,
+    daysWithData: summaries.length,
+  };
+}
+
+function bucketDates(dates: Date[], bucketCount: number): Date[][] {
+  const cleanCount = Math.max(Math.floor(bucketCount), 1);
+  const bucketSize = Math.max(Math.ceil(dates.length / cleanCount), 1);
+  const buckets: Date[][] = [];
+
+  for (let index = 0; index < dates.length; index += bucketSize) {
+    buckets.push(dates.slice(index, index + bucketSize));
+  }
+
+  return buckets;
+}
+
+function getProgressChartPoints(
+  period: ProgressPeriod,
+  range: Date[],
+  appState: AppState,
+  dayRecords: Array<{ date: string; percent: number }>,
+  today: string,
+  todayPercent: number,
+  language: AppSettings["language"],
+): ProgressChartPoint[] {
+  if (period === "week") {
+    const labels = getCalendarWeekdayLabels(language);
+
+    return range.map((date, index) => {
+      const details = getCalendarDayDetails(date, appState, dayRecords, today, todayPercent);
+      const future = toDateKey(date) > today;
+
+      return {
+        label: labels[index] ?? String(date.getDate()),
+        value: future || !details.hasData ? 0 : details.percent,
+        hasData: !future && details.hasData,
+      };
+    });
+  }
+
+  if (period === "year") {
+    return Array.from({ length: 12 }, (_, month) => {
+      const monthRange = getMonthRange(new Date(range[0]?.getFullYear() ?? new Date().getFullYear(), month, 1));
+      const summary = getProgressAverage(monthRange, appState, dayRecords, today, todayPercent);
+
+      return {
+        label: language === "en" ? enMonthsShort[month] : ruMonthsShort[month],
+        value: summary.average,
+        hasData: summary.daysWithData > 0,
+      };
+    });
+  }
+
+  return bucketDates(range, 7).map((bucket) => {
+    const summary = getProgressAverage(bucket, appState, dayRecords, today, todayPercent);
+    const first = bucket[0] ?? new Date();
+
+    return {
+      label: String(first.getDate()),
+      value: summary.average,
+      hasData: summary.daysWithData > 0,
+    };
+  });
+}
+
+function getWeekdayAverages(
+  range: Date[],
+  appState: AppState,
+  dayRecords: Array<{ date: string; percent: number }>,
+  today: string,
+  todayPercent: number,
+  language: AppSettings["language"],
+) {
+  const buckets = Array.from({ length: 7 }, (_, index) => ({
+    label: getCalendarWeekdayLabels(language)[index],
+    total: 0,
+    count: 0,
+  }));
+
+  range
+    .filter((date) => toDateKey(date) <= today)
+    .forEach((date) => {
+      const details = getCalendarDayDetails(date, appState, dayRecords, today, todayPercent);
+
+      if (!details.hasData) {
+        return;
+      }
+
+      const mondayIndex = (date.getDay() + 6) % 7;
+      buckets[mondayIndex].total += details.percent;
+      buckets[mondayIndex].count += 1;
+    });
+
+  return buckets.map((bucket) => ({
+    label: bucket.label,
+    value: bucket.count === 0 ? 0 : clampPercent(bucket.total / bucket.count),
+  }));
+}
+
+function getProgressBalance(range: Date[], appState: AppState, today: string, todayPercent: number, dayRecords: Array<{ date: string; percent: number }>) {
+  let progressDue = 0;
+  let checklistDue = 0;
+  let misses = 0;
+
+  range
+    .filter((date) => toDateKey(date) <= today)
+    .forEach((date) => {
+      const dateKey = toDateKey(date);
+      const dueGoals = appState.goals.filter((goal) => isGoalDueOnDate(goal, date, dateKey));
+      const dueTasks = appState.tasks.filter((task) => isTaskDueOnDate(task, date, dateKey));
+      const details = getCalendarDayDetails(date, appState, dayRecords, today, todayPercent);
+
+      progressDue += dueGoals.length;
+      checklistDue += dueTasks.length;
+      misses += details.missed.length;
+    });
+
+  const total = progressDue + checklistDue + misses;
+
+  return {
+    totalActions: progressDue + checklistDue,
+    progressShare: total === 0 ? 0 : clampPercent((progressDue / total) * 100),
+    checklistShare: total === 0 ? 0 : clampPercent((checklistDue / total) * 100),
+    missShare: total === 0 ? 0 : clampPercent((misses / total) * 100),
+  };
+}
+
+function getProgressActionRanks(range: Date[], appState: AppState, today: string): ProgressActionRank[] {
+  const activeRange = range.filter((date) => toDateKey(date) <= today);
+  const goalRanks = appState.goals.map((goal) => {
+    const dueDates = activeRange.filter((date) => isGoalDueOnDate(goal, date, toDateKey(date)));
+    const completed = dueDates.filter((date) => {
+      const dateKey = toDateKey(date);
+      const required = getCalendarRequiredForDate(goal, dateKey);
+      const logged = getCalendarLoggedAmount(goal, dateKey);
+
+      return required <= 0 || logged >= required || getCalendarGoalValueAtEndOfDate(goal, dateKey) >= goal.targetValue;
+    }).length;
+
+    return {
+      id: goal.id,
+      title: goal.title,
+      iconKey: goal.iconKey,
+      percent: dueDates.length === 0 ? 0 : clampPercent((completed / dueDates.length) * 100),
+      dueCount: dueDates.length,
+    };
+  });
+  const taskRanks = appState.tasks.map((task) => {
+    const dueDates = activeRange.filter((date) => isTaskDueOnDate(task, date, toDateKey(date)));
+    const completed = dueDates.filter((date) => isTaskCompletedOnDate(task, toDateKey(date))).length;
+
+    return {
+      id: task.id,
+      title: task.title,
+      iconKey: task.iconKey,
+      percent: dueDates.length === 0 ? 0 : clampPercent((completed / dueDates.length) * 100),
+      dueCount: dueDates.length,
+    };
+  });
+
+  return [...goalRanks, ...taskRanks]
+    .filter((rank) => rank.dueCount > 0)
+    .sort((left, right) => right.percent - left.percent)
+    .slice(0, 3)
+    .map(({ dueCount: _dueCount, ...rank }) => rank);
+}
+
+function getProgressRhythmTitle(percent: number, language: AppSettings["language"]): string {
+  const copy = progressCopy[language];
+
+  if (percent >= 75) {
+    return copy.stable;
+  }
+
+  if (percent >= 50) {
+    return copy.moving;
+  }
+
+  if (percent > 0) {
+    return copy.uneven;
+  }
+
+  return copy.justStart;
 }
 
 function getLocalizedDayStatus(percent: number, language: AppSettings["language"]): string {
@@ -1238,6 +1582,15 @@ export default function App() {
               streak={miniStats.streak}
               language={settings.language}
               onSelectDate={openSelectedDate}
+            />
+          ) : activeScreen === "progress" ? (
+            <ProgressScreen
+              appState={appState}
+              dayRecords={dayRecords}
+              today={today}
+              todayPercent={actualTodayDaily.percent}
+              language={settings.language}
+              onAdd={() => setAddSheetOpen(true)}
             />
           ) : (
             <main className="today-screen">
@@ -1949,6 +2302,311 @@ function MiniStatsPanel({
   );
 }
 
+function ProgressScreen({
+  appState,
+  dayRecords,
+  today,
+  todayPercent,
+  language,
+  onAdd,
+}: {
+  appState: AppState;
+  dayRecords: Array<{ date: string; percent: number }>;
+  today: string;
+  todayPercent: number;
+  language: AppSettings["language"];
+  onAdd: () => void;
+}) {
+  const copy = progressCopy[language];
+  const todayDate = useMemo(() => parseDateKey(today), [today]);
+  const [period, setPeriod] = useState<ProgressPeriod>("week");
+  const range = useMemo(() => getProgressRange(period, todayDate), [period, todayDate]);
+  const previousRange = useMemo(() => getPreviousProgressRange(period, todayDate), [period, todayDate]);
+  const summary = useMemo(
+    () => getProgressAverage(range, appState, dayRecords, today, todayPercent),
+    [appState, dayRecords, range, today, todayPercent],
+  );
+  const previousSummary = useMemo(
+    () => getProgressAverage(previousRange, appState, dayRecords, today, todayPercent),
+    [appState, dayRecords, previousRange, today, todayPercent],
+  );
+  const chartPoints = useMemo(
+    () => getProgressChartPoints(period, range, appState, dayRecords, today, todayPercent, language),
+    [appState, dayRecords, language, period, range, today, todayPercent],
+  );
+  const weekdayAverages = useMemo(
+    () => getWeekdayAverages(range, appState, dayRecords, today, todayPercent, language),
+    [appState, dayRecords, language, range, today, todayPercent],
+  );
+  const balance = useMemo(
+    () => getProgressBalance(range, appState, today, todayPercent, dayRecords),
+    [appState, dayRecords, range, today, todayPercent],
+  );
+  const actionRanks = useMemo(() => getProgressActionRanks(range, appState, today), [appState, range, today]);
+  const streak = useMemo(() => getCurrentStreak(todayDate, appState.goals, appState.tasks), [appState.goals, appState.tasks, todayDate]);
+  const delta = summary.average - previousSummary.average;
+  const trendValues = chartPoints.map((point) => point.value);
+  const hasAnyData = summary.daysWithData > 0;
+  const periodOptions: Array<{ value: ProgressPeriod; label: string }> = [
+    { value: "week", label: copy.week },
+    { value: "month", label: copy.month },
+    { value: "year", label: copy.year },
+    { value: "period", label: copy.period },
+  ];
+
+  return (
+    <main className="progress-screen">
+      <header className="progress-header">
+        <div>
+          <p className="brand">PerDay</p>
+          <h1>{copy.title}</h1>
+          <p>{copy.subtitle}</p>
+        </div>
+        <button type="button" className="icon-button primary-action" aria-label={copy.add} onClick={onAdd}>
+          <Plus size={31} strokeWidth={2.1} />
+        </button>
+      </header>
+
+      <div className="progress-period-tabs" role="group" aria-label={copy.period}>
+        {periodOptions.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={period === option.value ? "active" : ""}
+            aria-pressed={period === option.value}
+            onClick={() => setPeriod(option.value)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+
+      {!hasAnyData && (
+        <section className="progress-empty-card">
+          <BarChart3 size={24} aria-hidden="true" />
+          <strong>{copy.emptyTitle}</strong>
+          <p>{copy.emptyText}</p>
+        </section>
+      )}
+
+      <section className="progress-kpi-grid">
+        <ProgressKpiCard
+          title={copy.completion}
+          value={`${summary.average}%`}
+          caption={copy.comparedToPrevious(delta)}
+          icon={TrendingUp}
+          tone={delta >= 0 ? "mint" : "amber"}
+        />
+        <ProgressKpiCard
+          title={copy.streak}
+          value={formatNumber(streak)}
+          caption={`${getDayPlural(streak, language)} ${language === "en" ? "in a row" : "подряд"}`}
+          icon={Flame}
+          tone="rose"
+        />
+        <ProgressKpiCard
+          title={copy.onTrack}
+          value={formatNumber(summary.completedDays)}
+          caption={getDayPlural(summary.completedDays, language)}
+          icon={Check}
+          tone="mint"
+        />
+        <ProgressKpiCard
+          title={copy.behind}
+          value={formatNumber(summary.behindDays)}
+          caption={getDayPlural(summary.behindDays, language)}
+          icon={Clock3}
+          tone="amber"
+        />
+      </section>
+
+      <section className="progress-rhythm-card">
+        <div>
+          <span>{copy.periodRhythm}</span>
+          <strong>{getProgressRhythmTitle(summary.average, language)}</strong>
+          <p>{copy.rhythmDescription(summary.average)}</p>
+        </div>
+        <MiniRhythmChart values={trendValues} ariaLabel={copy.dynamics} />
+      </section>
+
+      <section className="progress-chart-card">
+        <h2>{copy.dynamics}</h2>
+        <ProgressLineChart points={chartPoints} />
+      </section>
+
+      <section className="progress-insight-grid">
+        <ProgressBalanceCard balance={balance} copy={copy} />
+        <ProgressBestDaysCard days={weekdayAverages} copy={copy} />
+      </section>
+
+      <section className="progress-best-card">
+        <h2>{copy.bestActions}</h2>
+        <div className="progress-rank-list">
+          {actionRanks.length > 0 ? actionRanks.map((action, index) => (
+            <div className="progress-rank-row" key={action.id}>
+              <span className="progress-rank-index">{index + 1}</span>
+              <ActionIconBadge className="progress-rank-icon" iconKey={action.iconKey} title={action.title} />
+              <strong>{action.title}</strong>
+              <div className="progress-rank-track" style={{ "--rank-progress": `${action.percent}%` } as CSSProperties}>
+                <span />
+              </div>
+              <em>{action.percent}%</em>
+            </div>
+          )) : (
+            <p className="progress-no-actions">{copy.noActions}</p>
+          )}
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function ProgressKpiCard({
+  title,
+  value,
+  caption,
+  icon: Icon,
+  tone,
+}: {
+  title: string;
+  value: string;
+  caption: string;
+  icon: LucideIcon;
+  tone: "violet" | "mint" | "amber" | "rose";
+}) {
+  return (
+    <article className={`progress-kpi-card tone-${tone}`}>
+      <div>
+        <span>{title}</span>
+        <strong>{value}</strong>
+        <p>{caption}</p>
+      </div>
+      <Icon size={25} aria-hidden="true" />
+    </article>
+  );
+}
+
+function ProgressLineChart({ points }: { points: ProgressChartPoint[] }) {
+  const width = 330;
+  const height = 156;
+  const left = 36;
+  const right = 12;
+  const top = 18;
+  const bottom = 30;
+  const safePoints = points.length > 0 ? points : [{ label: "-", value: 0, hasData: false }];
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+  const coordinates = safePoints.map((point, index) => {
+    const x = safePoints.length === 1 ? left + plotWidth / 2 : left + (index / (safePoints.length - 1)) * plotWidth;
+    const y = top + (1 - Math.min(Math.max(point.value, 0), 100) / 100) * plotHeight;
+
+    return { x, y, ...point };
+  });
+  const linePoints = coordinates.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
+  const areaPoints = `${left},${height - bottom} ${linePoints} ${width - right},${height - bottom}`;
+  const showPointLabels = safePoints.length <= 8;
+
+  return (
+    <svg className="progress-line-chart" viewBox={`0 0 ${width} ${height}`} role="img">
+      <defs>
+        <linearGradient id="progress-line-gradient" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="#7c5cff" />
+          <stop offset="100%" stopColor="#61d7ff" />
+        </linearGradient>
+        <linearGradient id="progress-area-gradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="rgba(124, 92, 255, 0.34)" />
+          <stop offset="100%" stopColor="rgba(124, 92, 255, 0)" />
+        </linearGradient>
+      </defs>
+      {[100, 75, 50, 25, 0].map((tick) => {
+        const y = top + (1 - tick / 100) * plotHeight;
+
+        return (
+          <g key={tick}>
+            <text className="progress-chart-y-label" x="0" y={y + 4}>{tick}%</text>
+            <line className="progress-chart-grid-line" x1={left} x2={width - right} y1={y} y2={y} />
+          </g>
+        );
+      })}
+      <polygon className="progress-chart-area" points={areaPoints} />
+      <polyline className="progress-chart-line-glow" points={linePoints} />
+      <polyline className="progress-chart-line" points={linePoints} />
+      {coordinates.map((point) => (
+        <g key={`${point.label}-${point.x}`}>
+          <circle className={`progress-chart-point ${point.hasData ? "" : "empty"}`} cx={point.x} cy={point.y} r="4.2" />
+          {showPointLabels && point.hasData && <text className="progress-chart-value-label" x={point.x} y={point.y - 10}>{point.value}%</text>}
+          <text className="progress-chart-x-label" x={point.x} y={height - 8}>{point.label}</text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+function ProgressBalanceCard({
+  balance,
+  copy,
+}: {
+  balance: ReturnType<typeof getProgressBalance>;
+  copy: (typeof progressCopy)[AppSettings["language"]];
+}) {
+  const checklistStart = balance.progressShare;
+  const missesStart = Math.min(balance.progressShare + balance.checklistShare, 100);
+
+  return (
+    <section className="progress-balance-card">
+      <h2>{copy.taskBalance}</h2>
+      <div className="progress-balance-content">
+        <div
+          className="progress-donut"
+          style={{
+            "--progress-part": `${checklistStart}%`,
+            "--checklist-part": `${missesStart}%`,
+          } as CSSProperties}
+        >
+          <span>
+            <strong>{formatNumber(balance.totalActions)}</strong>
+            <small>{copy.actionsLabel}</small>
+          </span>
+        </div>
+        <div className="progress-balance-legend">
+          <ProgressLegendItem className="violet" label={copy.progress} value={balance.progressShare} />
+          <ProgressLegendItem className="cyan" label={copy.checklist} value={balance.checklistShare} />
+          <ProgressLegendItem className="amber" label={copy.misses} value={balance.missShare} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ProgressLegendItem({ className, label, value }: { className: string; label: string; value: number }) {
+  return (
+    <div className="progress-legend-row">
+      <span className={className} aria-hidden="true" />
+      <p>{label}</p>
+      <strong>{value}%</strong>
+    </div>
+  );
+}
+
+function ProgressBestDaysCard({ days, copy }: { days: Array<{ label: string; value: number }>; copy: (typeof progressCopy)[AppSettings["language"]] }) {
+  const maxValue = Math.max(...days.map((day) => day.value), 0);
+
+  return (
+    <section className="progress-best-days-card">
+      <h2>{copy.bestDays}</h2>
+      <div className="progress-day-bars">
+        {days.map((day) => (
+          <div className={`progress-day-bar ${day.value === maxValue && maxValue > 0 ? "best" : ""}`} key={day.label}>
+            <span>{day.value > 0 ? `${day.value}%` : ""}</span>
+            <i style={{ "--bar-value": `${day.value}%` } as CSSProperties} />
+            <small>{day.label}</small>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function BottomNav({
   activeScreen,
   language,
@@ -1962,7 +2620,7 @@ function BottomNav({
   const navItems = [
     { label: copy.today, icon: Sun, screen: "today", disabled: false },
     { label: copy.calendar, icon: CalendarDays, screen: "calendar", disabled: false },
-    { label: copy.progress, icon: BarChart3, screen: "progress", disabled: true },
+    { label: copy.progress, icon: BarChart3, screen: "progress", disabled: false },
     { label: copy.profile, icon: UserRound, screen: "profile", disabled: false },
   ];
 
