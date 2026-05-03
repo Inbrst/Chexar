@@ -5,7 +5,7 @@ import {
   BookOpen,
   CalendarDays,
   Check,
-  ChevronDown,
+  ChevronLeft,
   ChevronRight,
   CirclePlus,
   Clock3,
@@ -232,6 +232,7 @@ const calendarCopy = {
     previousMonth: "Previous",
     nextMonth: "Next",
     today: "Today",
+    openDay: "Open day",
     closed: "Closed",
     partial: "Partial",
     skipped: "Skipped",
@@ -245,6 +246,8 @@ const calendarCopy = {
     noRemaining: "Nothing left",
     noMissed: "No misses",
     noProgressEntries: "No progress entries",
+    emptyMonthTitle: "Calendar is empty",
+    emptyMonthText: "Complete actions to see your daily rhythm here.",
     bestDay: "Best day",
     average: "Average",
     streak: "Streak",
@@ -260,6 +263,7 @@ const calendarCopy = {
     previousMonth: "Назад",
     nextMonth: "Вперед",
     today: "Сегодня",
+    openDay: "Открыть день",
     closed: "Закрыт",
     partial: "Частично",
     skipped: "Пропуск",
@@ -273,6 +277,8 @@ const calendarCopy = {
     noRemaining: "Ничего не осталось",
     noMissed: "Без пропусков",
     noProgressEntries: "Записей прогресса нет",
+    emptyMonthTitle: "Календарь пока пустой",
+    emptyMonthText: "Отмечай действия — здесь появится ритм по дням.",
     bestDay: "Лучший день",
     average: "Среднее",
     streak: "Streak",
@@ -725,7 +731,7 @@ function getCalendarDayDetails(
     } else if (isPast) {
       missed.push(item);
     } else {
-      missed.push(item);
+      remaining.push(item);
     }
   });
 
@@ -813,17 +819,13 @@ function getCalendarRequiredForDate(goal: ProgressGoal, dateKey: string): number
   return remainingActiveDays <= 0 ? remaining : Math.ceil(remaining / remainingActiveDays);
 }
 
-function getCalendarDayTone(percent: number, hasData: boolean): "closed" | "good" | "partial" | "missed" | "empty" {
+function getCalendarDayTone(percent: number, hasData: boolean): "closed" | "partial" | "missed" | "empty" {
   if (!hasData) {
     return "empty";
   }
 
   if (percent >= 100) {
     return "closed";
-  }
-
-  if (percent >= 70) {
-    return "good";
   }
 
   if (percent > 0) {
@@ -2009,7 +2011,6 @@ function CalendarScreen({
   const todayDate = parseDateKey(today);
   const [visibleMonth, setVisibleMonth] = useState(() => new Date(todayDate.getFullYear(), todayDate.getMonth(), 1));
   const [selectedDateKey, setSelectedDateKey] = useState(today);
-  const [monthControlsOpen, setMonthControlsOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState(false);
   const calendarDays = useMemo(() => getCalendarMonthGrid(visibleMonth), [visibleMonth]);
   const selectedDate = useMemo(() => parseDateKey(selectedDateKey), [selectedDateKey]);
@@ -2021,17 +2022,21 @@ function CalendarScreen({
     () => getCalendarMonthStats(visibleMonth, appState, dayRecords, today, todayPercent),
     [appState, dayRecords, today, todayPercent, visibleMonth],
   );
+  const monthHasData = useMemo(
+    () => calendarDays
+      .filter((date) => date.getMonth() === visibleMonth.getMonth())
+      .some((date) => getCalendarDayDetails(date, appState, dayRecords, today, todayPercent).hasData),
+    [appState, calendarDays, dayRecords, today, todayPercent, visibleMonth],
+  );
   const monthLabel = formatCalendarMonth(visibleMonth, language);
 
   function shiftMonth(offset: number) {
     setVisibleMonth((month) => new Date(month.getFullYear(), month.getMonth() + offset, 1));
-    setMonthControlsOpen(false);
   }
 
   function jumpToToday() {
     setVisibleMonth(new Date(todayDate.getFullYear(), todayDate.getMonth(), 1));
     setSelectedDateKey(today);
-    setMonthControlsOpen(false);
   }
 
   return (
@@ -2058,31 +2063,17 @@ function CalendarScreen({
         </div>
       </header>
 
-      <div className="calendar-month-control">
-        <button
-          type="button"
-          className="calendar-month-pill"
-          aria-expanded={monthControlsOpen}
-          aria-label={copy.monthPicker}
-          onClick={() => setMonthControlsOpen((open) => !open)}
-        >
+      <div className="calendar-month-nav" aria-label={copy.monthPicker}>
+        <button type="button" aria-label={copy.previousMonth} onClick={() => shiftMonth(-1)}>
+          <ChevronLeft size={19} aria-hidden="true" />
+        </button>
+        <button type="button" className="calendar-month-label" onClick={jumpToToday}>
           <CalendarDays size={18} aria-hidden="true" />
           <span>{monthLabel}</span>
-          <ChevronDown size={18} aria-hidden="true" />
         </button>
-        {monthControlsOpen && (
-          <div className="calendar-month-popover">
-            <button type="button" onClick={() => shiftMonth(-1)}>
-              {copy.previousMonth}
-            </button>
-            <button type="button" onClick={jumpToToday}>
-              {copy.today}
-            </button>
-            <button type="button" onClick={() => shiftMonth(1)}>
-              {copy.nextMonth}
-            </button>
-          </div>
-        )}
+        <button type="button" aria-label={copy.nextMonth} onClick={() => shiftMonth(1)}>
+          <ChevronRight size={19} aria-hidden="true" />
+        </button>
       </div>
 
       <section className="calendar-grid-card" aria-label={monthLabel}>
@@ -2130,6 +2121,14 @@ function CalendarScreen({
         </div>
       </section>
 
+      {!monthHasData && (
+        <section className="calendar-empty-month">
+          <CalendarDays size={24} aria-hidden="true" />
+          <strong>{copy.emptyMonthTitle}</strong>
+          <p>{copy.emptyMonthText}</p>
+        </section>
+      )}
+
       <section className="calendar-legend" aria-label="Legend">
         <CalendarLegendItem className="closed" label={copy.closed} />
         <CalendarLegendItem className="partial" label={copy.partial} />
@@ -2137,7 +2136,7 @@ function CalendarScreen({
         <CalendarLegendItem className="today" label={copy.selectedToday} />
       </section>
 
-      <section className="calendar-day-card">
+      <section className="calendar-day-card calendar-overview-card">
         <div className="calendar-day-card-header">
           <div>
             <h2>{formatCalendarSelectedDate(selectedDate, language)}</h2>
@@ -2145,43 +2144,23 @@ function CalendarScreen({
           </div>
           <CalendarProgressRing percent={selectedDetails.percent} />
         </div>
-        {selectedDetails.hasData ? (
-          <>
-            <div className="calendar-detail-grid">
-              <CalendarDetailColumn
-                title={copy.completed}
-                icon={Check}
-                tone="done"
-                items={selectedDetails.completed}
-                emptyText={copy.noCompleted}
-              />
-              <CalendarDetailColumn
-                title={copy.remaining}
-                icon={Clock3}
-                tone="partial"
-                items={selectedDetails.remaining}
-                emptyText={copy.noRemaining}
-              />
-              <CalendarDetailColumn
-                title={copy.missed}
-                icon={X}
-                tone="missed"
-                items={selectedDetails.missed}
-                emptyText={copy.noMissed}
-              />
-            </div>
-            <CalendarProgressEntrySection
-              title={copy.progressEntries}
-              items={selectedDetails.progressEntries}
-              emptyText={copy.noProgressEntries}
-            />
-          </>
-        ) : (
-          <div className="calendar-empty-state">
-            <CalendarDays size={24} aria-hidden="true" />
-            <p>{copy.emptyDay}</p>
+        <div className="calendar-overview-summary">
+          <div>
+            <span>{copy.completed}</span>
+            <strong>{selectedDetails.completed.length}</strong>
           </div>
-        )}
+          <div>
+            <span>{copy.remaining}</span>
+            <strong>{selectedDetails.remaining.length}</strong>
+          </div>
+          <div>
+            <span>{copy.missed}</span>
+            <strong>{selectedDetails.missed.length}</strong>
+          </div>
+        </div>
+        <button type="button" className="calendar-open-day-button" onClick={() => onSelectDate(selectedDateKey)}>
+          {copy.openDay}
+        </button>
       </section>
 
       <section className="calendar-summary-card">
