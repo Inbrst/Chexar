@@ -1,7 +1,6 @@
 import {
   ArrowLeft,
   BarChart3,
-  Bell,
   BookOpen,
   CalendarDays,
   Check,
@@ -9,10 +8,8 @@ import {
   ChevronRight,
   CirclePlus,
   Clock3,
-  Database,
   Droplet,
   Dumbbell,
-  ExternalLink,
   Filter,
   Flame,
   Footprints,
@@ -28,7 +25,6 @@ import {
   Phone,
   Pill,
   Plus,
-  Send,
   Shield,
   ShoppingCart,
   Sun,
@@ -61,7 +57,7 @@ import {
   isTaskDueOnDate,
   upsertDailyRecord,
 } from "./calculations";
-import { addDays, parseDateKey, todayKey, toDateKey } from "./dateUtils";
+import { addDays, daysInclusive, parseDateKey, todayKey, toDateKey } from "./dateUtils";
 import {
   createEmptyDailyRecords,
   createEmptyState,
@@ -76,7 +72,8 @@ import {
 import type { AppScreen, AppSettings, AppState, GoalRepeatMode, Priority, ProgressEntry, ProgressGoal, TaskItem, TaskRepeatMode } from "./types";
 import { mergeDuplicateActions, normalizeActionTitle } from "./actionMerge";
 import { hasRemotePersistence, loadRemoteData, saveRemoteSnapshot } from "./supabaseData";
-import { getTelegramUserId, initTelegramWebApp } from "./lib/telegram";
+import { getTelegramUser, getTelegramUserId, initTelegramWebApp } from "./lib/telegram";
+import type { TelegramUser } from "./lib/telegram";
 
 declare global {
   interface Window {
@@ -136,6 +133,11 @@ const profileCopy = {
     profile: "Profile",
     profileSubtitle: "Settings and appearance",
     profileAria: "Profile",
+    account: "Account",
+    telegramConnected: "Telegram connected",
+    browserModeTitle: "Test user",
+    browserModeSubtitle: "Open through Telegram Mini App to link your account",
+    browserModeStatus: "Browser mode",
     interface: "Interface",
     language: "Language",
     english: "English",
@@ -174,6 +176,11 @@ const profileCopy = {
     profile: "Профиль",
     profileSubtitle: "Настройки и внешний вид",
     profileAria: "Профиль",
+    account: "Аккаунт",
+    telegramConnected: "Telegram подключен",
+    browserModeTitle: "Тестовый пользователь",
+    browserModeSubtitle: "Открой через Telegram Mini App, чтобы привязать аккаунт",
+    browserModeStatus: "Браузерный режим",
     interface: "Интерфейс",
     language: "Язык",
     english: "English",
@@ -1056,6 +1063,28 @@ function getPreviousProgressRange(period: ProgressPeriod, date: Date): Date[] {
   return Array.from({ length: 30 }, (_, index) => parseDateKey(addDays(toDateKey(date), index - 59)));
 }
 
+function getProgressRangeFromKeys(startDate: string, endDate: string): Date[] {
+  if (endDate < startDate) {
+    return [];
+  }
+
+  const totalDays = Math.min(daysInclusive(startDate, endDate), 3660);
+
+  return Array.from({ length: totalDays }, (_, index) => parseDateKey(addDays(startDate, index)));
+}
+
+function getPreviousProgressRangeFromKeys(startDate: string, endDate: string): Date[] {
+  if (endDate < startDate) {
+    return [];
+  }
+
+  const totalDays = Math.min(daysInclusive(startDate, endDate), 3660);
+  const previousEnd = addDays(startDate, -1);
+  const previousStart = addDays(previousEnd, -(totalDays - 1));
+
+  return getProgressRangeFromKeys(previousStart, previousEnd);
+}
+
 function getProgressAverage(
   range: Date[],
   appState: AppState,
@@ -1378,6 +1407,7 @@ export default function App() {
       : selectedDate && activeDate < today
         ? activeUiCopy.pastDay
         : undefined;
+  const telegramUser = getTelegramUser();
   const isTelegramMiniApp = Boolean(getTelegramUserId());
 
   const daily = useMemo(
@@ -1388,13 +1418,6 @@ export default function App() {
     () => (activeDate === today ? daily : calculateDailyProgress(appState.goals, appState.tasks, today)),
     [activeDate, appState.goals, appState.tasks, daily, today],
   );
-  const miniStats = useMemo(() => {
-    return {
-      weekPercent: getWeekAverageCompletion(activeDateDate, appState.goals, appState.tasks),
-      monthPercent: getMonthAverageCompletion(activeDateDate, appState.goals, appState.tasks),
-      streak: getCurrentStreak(activeDateDate, appState.goals, appState.tasks),
-    };
-  }, [activeDateDate, appState.goals, appState.tasks]);
   const todayGoals = useMemo(
     () => appState.goals.filter((goal) => isGoalDueOnDate(goal, activeDateDate, activeDate)),
     [activeDate, activeDateDate, appState.goals],
@@ -1793,6 +1816,7 @@ export default function App() {
           {activeScreen === "profile" ? (
             <ProfileScreen
               settings={settings}
+              telegramUser={telegramUser}
               isTelegramMiniApp={isTelegramMiniApp}
               onSettingsChange={(nextSettings) => setSettings((current) => ({ ...current, ...nextSettings }))}
               onResetRequest={() => setResetConfirmOpen(true)}
@@ -1803,7 +1827,6 @@ export default function App() {
               dayRecords={dayRecords}
               today={today}
               todayPercent={actualTodayDaily.percent}
-              streak={miniStats.streak}
               language={settings.language}
               onSelectDate={openSelectedDate}
             />
@@ -1819,6 +1842,7 @@ export default function App() {
             <main className="today-screen">
               <Header
                 copy={activeUiCopy}
+                dateLabel={activeDateLabel}
                 dateNote={selectedDateNote}
                 selectedMode={isSelectedDateMode}
                 onBackToCalendar={returnToCalendar}
@@ -1828,17 +1852,7 @@ export default function App() {
                 daily={daily}
                 trend={rhythmTrend}
                 copy={activeUiCopy}
-                dateLabel={activeDateLabel}
-                language={settings.language}
               />
-              <MiniStatsPanel
-                weekPercent={miniStats.weekPercent}
-                monthPercent={miniStats.monthPercent}
-                streak={miniStats.streak}
-                copy={activeUiCopy}
-                language={settings.language}
-              />
-
               {isSelectedDateMode && !hasActiveDateItems ? (
                 <section className="section-block">
                   <EmptySectionCard
@@ -2101,6 +2115,7 @@ function OnboardingScreen({
               dark: copy.darkTheme,
               system: copy.systemTheme,
             }}
+            includeSystem
             onChange={(theme) => onSettingsChange({ theme })}
           />
         </div>
@@ -2159,6 +2174,21 @@ function ChexarCheckboxMark() {
   );
 }
 
+function BrandLogo({ size = "compact", ariaLabel = "Chexar" }: { size?: "compact" | "hero"; ariaLabel?: string }) {
+  return (
+    <div className={`brand brand-logo brand-logo-${size}`} aria-label={ariaLabel}>
+      <span className="brand-logo-text">Che</span>
+      <span className="brand-logo-box" aria-hidden="true">
+        <span className="task-x-mark brand-logo-x">
+          <span />
+          <span />
+        </span>
+      </span>
+      <span className="brand-logo-text">ar</span>
+    </div>
+  );
+}
+
 function SyncBanner({ status, copy }: { status: SyncStatus; copy: UiCopy }) {
   if (status === "ready") {
     return null;
@@ -2180,12 +2210,14 @@ function SyncBanner({ status, copy }: { status: SyncStatus; copy: UiCopy }) {
 
 function Header({
   copy,
+  dateLabel,
   dateNote,
   selectedMode = false,
   onBackToCalendar,
   onAdd,
 }: {
   copy: UiCopy;
+  dateLabel: string;
   dateNote?: string;
   selectedMode?: boolean;
   onBackToCalendar?: () => void;
@@ -2200,10 +2232,11 @@ function Header({
             {copy.backToCalendar}
           </button>
         ) : (
-          <p className="brand">Chexar</p>
+          <BrandLogo />
         )}
         {dateNote && <p className="selected-date-note">{dateNote}</p>}
       </div>
+      <div className="hero-date" aria-label={dateLabel}>{dateLabel}</div>
       <div className="header-actions">
         <button className="icon-button primary-action" type="button" aria-label={copy.add} onClick={onAdd}>
           <span className="header-plus-mark" aria-hidden="true">
@@ -2220,40 +2253,29 @@ function RhythmCard({
   daily,
   trend,
   copy,
-  dateLabel,
-  language,
 }: {
   daily: ReturnType<typeof calculateDailyProgress>;
   trend: number[];
   copy: UiCopy;
-  dateLabel: string;
-  language: AppSettings["language"];
 }) {
-  const cardStyle = { "--daily-percent": `${daily.percent}%` } as CSSProperties;
+  const progressRatio = Math.min(Math.max(daily.percent, 0), 100) / 100;
+  const startHue = Math.round(2 + progressRatio * 132);
+  const endHue = Math.min(startHue + 22, 146);
+  const cardStyle = {
+    "--daily-percent": `${daily.percent}%`,
+    "--rhythm-hue-start": `${startHue}`,
+    "--rhythm-hue-end": `${endHue}`,
+  } as CSSProperties;
 
   return (
     <section
       className="rhythm-card"
       style={cardStyle}
-      aria-label={copy.rhythmAria}
+      aria-label={`${copy.rhythmAria}: ${daily.percent}%`}
     >
       <div className="rhythm-fill" />
-      <div className="rhythm-main">
-        <div className="rhythm-label-row">
-          <span className="eyebrow">{copy.rhythmTitle}</span>
-          <span className="eyebrow rhythm-date">{dateLabel}</span>
-        </div>
-        <strong>{daily.percent}%</strong>
-        <p>{copy.actionsCount(daily.completedTodayItems, daily.totalTodayItems)}</p>
-      </div>
-      <div className="rhythm-summary">
-        <span className="chip">{getLocalizedDayStatus(daily.percent, language)}</span>
-        <MiniRhythmChart values={trend} ariaLabel={copy.rhythmTrendAria} />
-        <div className="summary-stack">
-          <span>{copy.left}</span>
-          <em>{daily.remainingItems}</em>
-        </div>
-      </div>
+      <strong className="rhythm-percent">{daily.percent}%</strong>
+      <MiniRhythmChart values={trend} ariaLabel={copy.rhythmTrendAria} />
     </section>
   );
 }
@@ -2280,8 +2302,8 @@ function MiniRhythmChart({ values, ariaLabel }: { values: number[]; ariaLabel: s
     <svg className="rhythm-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={ariaLabel}>
       <defs>
         <linearGradient id="rhythm-chart-stroke" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="#8f77ff" />
-          <stop offset="100%" stopColor="#7fddff" />
+          <stop offset="0%" stopColor="#18d4b0" />
+          <stop offset="100%" stopColor="#5cffb1" />
         </linearGradient>
         <filter id="rhythm-chart-glow" x="-20%" y="-60%" width="140%" height="220%">
           <feGaussianBlur stdDeviation="2.4" result="blur" />
@@ -2944,8 +2966,19 @@ function ProgressScreen({
   const copy = progressCopy[language];
   const todayDate = useMemo(() => parseDateKey(today), [today]);
   const [period, setPeriod] = useState<ProgressPeriod>("week");
-  const range = useMemo(() => getProgressRange(period, todayDate), [period, todayDate]);
-  const previousRange = useMemo(() => getPreviousProgressRange(period, todayDate), [period, todayDate]);
+  const [rangeSheetOpen, setRangeSheetOpen] = useState(false);
+  const [customRange, setCustomRange] = useState(() => ({
+    startDate: addDays(today, -29),
+    endDate: today,
+  }));
+  const range = useMemo(
+    () => (period === "period" ? getProgressRangeFromKeys(customRange.startDate, customRange.endDate) : getProgressRange(period, todayDate)),
+    [customRange.endDate, customRange.startDate, period, todayDate],
+  );
+  const previousRange = useMemo(
+    () => (period === "period" ? getPreviousProgressRangeFromKeys(customRange.startDate, customRange.endDate) : getPreviousProgressRange(period, todayDate)),
+    [customRange.endDate, customRange.startDate, period, todayDate],
+  );
   const summary = useMemo(
     () => getProgressAverage(range, appState, dayRecords, today, todayPercent),
     [appState, dayRecords, range, today, todayPercent],
@@ -2975,19 +3008,20 @@ function ProgressScreen({
     { value: "week", label: copy.week },
     { value: "month", label: copy.month },
     { value: "year", label: copy.year },
-    { value: "period", label: copy.period },
+    { value: "period", label: "..." },
   ];
+  const handlePeriodSelect = (value: ProgressPeriod) => {
+    if (value === "period") {
+      setPeriod("period");
+      setRangeSheetOpen(true);
+      return;
+    }
+
+    setPeriod(value);
+  };
 
   return (
     <main className="progress-screen">
-      <header className="progress-header">
-        <div>
-          <p className="brand">Chexar</p>
-          <h1>{copy.title}</h1>
-          <p>{copy.subtitle}</p>
-        </div>
-      </header>
-
       <div className="progress-period-tabs" role="group" aria-label={copy.period}>
         {periodOptions.map((option) => (
           <button
@@ -2995,7 +3029,7 @@ function ProgressScreen({
             type="button"
             className={period === option.value ? "active" : ""}
             aria-pressed={period === option.value}
-            onClick={() => setPeriod(option.value)}
+            onClick={() => handlePeriodSelect(option.value)}
           >
             {option.label}
           </button>
@@ -3078,7 +3112,89 @@ function ProgressScreen({
           )}
         </div>
       </section>
+
+      {rangeSheetOpen && (
+        <ProgressRangeSheet
+          language={language}
+          value={customRange}
+          onApply={(nextRange) => {
+            setCustomRange(nextRange);
+            setPeriod("period");
+            setRangeSheetOpen(false);
+          }}
+          onClose={() => setRangeSheetOpen(false)}
+        />
+      )}
     </main>
+  );
+}
+
+function ProgressRangeSheet({
+  language,
+  value,
+  onApply,
+  onClose,
+}: {
+  language: AppSettings["language"];
+  value: { startDate: string; endDate: string };
+  onApply: (value: { startDate: string; endDate: string }) => void;
+  onClose: () => void;
+}) {
+  const common = uiCopy[language];
+  const copy = language === "en"
+    ? {
+      title: "Custom range",
+      subtitle: "Filter progress from date to date",
+      from: "From",
+      to: "To",
+      days: "days in range",
+      invalid: "End date must be after start date",
+      apply: "Apply",
+    }
+    : {
+      title: "Промежуток",
+      subtitle: "Фильтр прогресса от даты до даты",
+      from: "От",
+      to: "До",
+      days: "дней в промежутке",
+      invalid: "Дата окончания должна быть позже даты начала",
+      apply: "Применить",
+    };
+  const [startDate, setStartDate] = useState(value.startDate);
+  const [endDate, setEndDate] = useState(value.endDate);
+  const invalidRange = endDate < startDate;
+  const rangeLength = invalidRange ? 0 : daysInclusive(startDate, endDate);
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (invalidRange) {
+      return;
+    }
+
+    onApply({ startDate, endDate });
+  };
+
+  return (
+    <BottomSheet title={copy.title} subtitle={copy.subtitle} closeLabel={common.close} onClose={onClose}>
+      <form className="sheet-form progress-range-form" onSubmit={handleSubmit}>
+        <div className="progress-range-fields">
+          <label>
+            {copy.from}
+            <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+          </label>
+          <label>
+            {copy.to}
+            <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+          </label>
+        </div>
+        <p className={`progress-range-note ${invalidRange ? "error" : ""}`}>
+          {invalidRange ? copy.invalid : `${rangeLength} ${copy.days}`}
+        </p>
+        <button type="submit" className="primary-sheet-button" disabled={invalidRange}>
+          {copy.apply}
+        </button>
+      </form>
+    </BottomSheet>
   );
 }
 
@@ -3102,18 +3218,18 @@ function ProgressKpiCard({
         <strong>{value}</strong>
         <p>{caption}</p>
       </div>
-      <Icon size={25} aria-hidden="true" />
+      <Icon size={18} aria-hidden="true" />
     </article>
   );
 }
 
 function ProgressLineChart({ points }: { points: ProgressChartPoint[] }) {
   const width = 330;
-  const height = 156;
-  const left = 36;
-  const right = 12;
-  const top = 18;
-  const bottom = 30;
+  const height = 108;
+  const left = 30;
+  const right = 10;
+  const top = 13;
+  const bottom = 20;
   const safePoints = points.length > 0 ? points : [{ label: "-", value: 0, hasData: false }];
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
@@ -3154,8 +3270,8 @@ function ProgressLineChart({ points }: { points: ProgressChartPoint[] }) {
       <polyline className="progress-chart-line" points={linePoints} />
       {coordinates.map((point) => (
         <g key={`${point.label}-${point.x}`}>
-          <circle className={`progress-chart-point ${point.hasData ? "" : "empty"}`} cx={point.x} cy={point.y} r="4.2" />
-          {showPointLabels && point.hasData && <text className="progress-chart-value-label" x={point.x} y={point.y - 10}>{point.value}%</text>}
+          <circle className={`progress-chart-point ${point.hasData ? "" : "empty"}`} cx={point.x} cy={point.y} r="3.2" />
+          {showPointLabels && point.hasData && <text className="progress-chart-value-label" x={point.x} y={point.y - 8}>{point.value}%</text>}
           <text className="progress-chart-x-label" x={point.x} y={height - 8}>{point.label}</text>
         </g>
       ))}
@@ -3257,11 +3373,12 @@ function BottomNav({
             type="button"
             className={active ? "active" : ""}
             disabled={item.disabled}
+            aria-label={item.label}
             aria-current={active ? "page" : undefined}
+            title={item.label}
             onClick={() => onSelect(item.screen as AppScreen)}
           >
-            <Icon size={28} />
-            <span>{item.label}</span>
+            <Icon size={23} />
           </button>
         );
       })}
@@ -3274,7 +3391,6 @@ function CalendarScreen({
   dayRecords,
   today,
   todayPercent,
-  streak,
   language,
   onSelectDate,
 }: {
@@ -3282,7 +3398,6 @@ function CalendarScreen({
   dayRecords: Array<{ date: string; percent: number }>;
   today: string;
   todayPercent: number;
-  streak: number;
   language: AppSettings["language"];
   onSelectDate: (dateKey: string) => void;
 }) {
@@ -3294,21 +3409,6 @@ function CalendarScreen({
   const [activeFilter, setActiveFilter] = useState<CalendarFilterMode>("all");
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
   const calendarDays = useMemo(() => getCalendarMonthGrid(visibleMonth), [visibleMonth]);
-  const selectedDate = useMemo(() => parseDateKey(selectedDateKey), [selectedDateKey]);
-  const selectedDetails = useMemo(
-    () => getCalendarDayDetails(selectedDate, appState, dayRecords, today, todayPercent),
-    [appState, dayRecords, selectedDate, today, todayPercent],
-  );
-  const monthStats = useMemo(
-    () => getCalendarMonthStats(visibleMonth, appState, dayRecords, today, todayPercent),
-    [appState, dayRecords, today, todayPercent, visibleMonth],
-  );
-  const monthHasData = useMemo(
-    () => calendarDays
-      .filter((date) => date.getMonth() === visibleMonth.getMonth())
-      .some((date) => getCalendarDayDetails(date, appState, dayRecords, today, todayPercent).hasData),
-    [appState, calendarDays, dayRecords, today, todayPercent, visibleMonth],
-  );
   const monthLabel = formatCalendarMonth(visibleMonth, language);
 
   function shiftMonth(offset: number) {
@@ -3353,11 +3453,6 @@ function CalendarScreen({
   return (
     <main className="calendar-screen">
       <header className="calendar-header">
-        <div>
-          <p className="brand">Chexar</p>
-          <h1>{copy.title}</h1>
-          <p>{copy.subtitle}</p>
-        </div>
         <div className="calendar-header-actions">
           <button
             type="button"
@@ -3433,61 +3528,11 @@ function CalendarScreen({
         </div>
       </section>
 
-      {!monthHasData && (
-        <section className="calendar-empty-month">
-          <CalendarDays size={24} aria-hidden="true" />
-          <strong>{copy.emptyMonthTitle}</strong>
-          <p>{copy.emptyMonthText}</p>
-        </section>
-      )}
-
       <section className="calendar-legend" aria-label="Legend">
         <CalendarLegendItem className="closed" label={copy.closed} />
         <CalendarLegendItem className="partial" label={copy.partial} />
         <CalendarLegendItem className="missed" label={copy.skipped} />
         <CalendarLegendItem className="today" label={copy.selectedToday} />
-      </section>
-
-      <section className="calendar-day-card calendar-overview-card">
-        <div className="calendar-day-card-header">
-          <div>
-            <h2>{formatCalendarSelectedDate(selectedDate, language)}</h2>
-            <p>{selectedDetails.hasData ? copy.dayClosed(selectedDetails.percent) : copy.emptyDay}</p>
-          </div>
-          <CalendarProgressRing percent={selectedDetails.percent} />
-        </div>
-        <div className="calendar-overview-summary">
-          <div>
-            <span>{copy.completed}</span>
-            <strong>{selectedDetails.completed.length}</strong>
-          </div>
-          <div>
-            <span>{copy.remaining}</span>
-            <strong>{selectedDetails.remaining.length}</strong>
-          </div>
-          <div>
-            <span>{copy.missed}</span>
-            <strong>{selectedDetails.missed.length}</strong>
-          </div>
-        </div>
-      </section>
-
-      <section className="calendar-summary-card">
-        <div className="calendar-summary-item">
-          <Star size={28} aria-hidden="true" />
-          <span>{copy.bestDay}</span>
-          <strong>{formatCalendarBestWeekday(monthStats.bestDay, language)}</strong>
-        </div>
-        <div className="calendar-summary-item">
-          <BarChart3 size={28} aria-hidden="true" />
-          <span>{copy.average}</span>
-          <strong>{monthStats.average}%</strong>
-        </div>
-        <div className="calendar-summary-item">
-          <Flame size={28} aria-hidden="true" />
-          <span>{copy.streak}</span>
-          <strong>{streak}</strong>
-        </div>
       </section>
       {filterMenuOpen && (
         <BottomSheet title={copy.filter} closeLabel={ui.close} onClose={() => setFilterMenuOpen(false)}>
@@ -3612,78 +3657,67 @@ function CalendarProgressEntrySection({
 
 function ProfileScreen({
   settings,
+  telegramUser,
   isTelegramMiniApp,
   onSettingsChange,
   onResetRequest,
 }: {
   settings: AppSettings;
+  telegramUser: TelegramUser | null;
   isTelegramMiniApp: boolean;
   onSettingsChange: (settings: Partial<AppSettings>) => void;
   onResetRequest: () => void;
 }) {
-  const [languageOpen, setLanguageOpen] = useState(false);
   const copy = profileCopy[settings.language];
+
+  useEffect(() => {
+    if (settings.theme === "system") {
+      onSettingsChange({ theme: "dark" });
+    }
+  }, [onSettingsChange, settings.theme]);
 
   return (
     <main className="profile-screen">
-      <header className="profile-header">
-        <div>
-          <p className="brand">Chexar</p>
-          <h1>{copy.profile}</h1>
-          <p>{copy.profileSubtitle}</p>
-        </div>
-        <div className="profile-avatar" aria-label={copy.profileAria}>
-          A
-        </div>
-      </header>
+      <ProfileHeader telegramUser={telegramUser} isTelegramMiniApp={isTelegramMiniApp} copy={copy} />
 
       <ProfileCard title={copy.interface}>
-        <ProfileRow
-          icon={Globe2}
-          label={copy.language}
-          value={settings.language === "ru" ? copy.russian : copy.english}
-          onClick={() => setLanguageOpen((open) => !open)}
-          accent="violet"
-        />
-        {languageOpen && (
+        <div className="profile-setting-block">
+          <div className="profile-setting-heading">
+            <span className="profile-row-icon accent-violet" aria-hidden="true">
+              <Globe2 size={20} />
+            </span>
+            <span className="profile-row-label">{copy.language}</span>
+          </div>
           <ProfileSegmented
             value={settings.language}
             options={[
-              { value: "en", label: copy.english },
-              { value: "ru", label: copy.russian },
+              { value: "en", label: "EN" },
+              { value: "ru", label: "RU" },
             ]}
-            onChange={(value) => {
-              onSettingsChange({ language: value as AppSettings["language"] });
-              setLanguageOpen(false);
-            }}
+            onChange={(value) => onSettingsChange({ language: value as AppSettings["language"] })}
+            compact
           />
-        )}
-        <div className="profile-row theme-setting-row">
-          <span className="profile-row-icon accent-cyan" aria-hidden="true">
-            <Monitor size={22} />
-          </span>
-          <span className="profile-row-label">{copy.theme}</span>
+        </div>
+        <div className="profile-setting-block">
+          <div className="profile-setting-heading">
+            <span className="profile-row-icon accent-cyan" aria-hidden="true">
+              <Moon size={20} />
+            </span>
+            <span className="profile-row-label">{copy.theme}</span>
+          </div>
           <ThemeIconSelector
             value={settings.theme}
             labels={{
               light: copy.lightTheme,
               dark: copy.darkTheme,
-              system: copy.systemTheme,
             }}
             onChange={(value) => onSettingsChange({ theme: value as AppSettings["theme"] })}
           />
         </div>
       </ProfileCard>
 
-      <ProfileCard title={copy.data}>
-        <ProfileRow icon={Database} label={copy.storage} value={copy.onDevice} accent="violet" />
-        <ProfileRow icon={ExternalLink} label={copy.export} value={copy.soon} muted accent="cyan" />
-        <ProfileRow icon={Bell} label={copy.reminders} value={copy.later} muted accent="violet" />
-      </ProfileCard>
-
       <ProfileCard title={copy.about}>
         <ProfileRow icon={Info} label={copy.version} value={APP_VERSION} accent="violet" />
-        <ProfileRow icon={Send} label={copy.telegram} value={isTelegramMiniApp ? copy.connected : copy.browserMode} accent="cyan" />
       </ProfileCard>
 
       <button type="button" className="danger-reset-button" onClick={onResetRequest}>
@@ -3712,12 +3746,74 @@ function ProfileScreen({
   );
 }
 
+function ProfileHeader({
+  telegramUser,
+  isTelegramMiniApp,
+  copy,
+}: {
+  telegramUser: TelegramUser | null;
+  isTelegramMiniApp: boolean;
+  copy: (typeof profileCopy)[AppSettings["language"]];
+}) {
+  const displayName = telegramUser ? [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(" ").trim() : "";
+  const title = displayName || copy.browserModeTitle;
+  const subtitle = telegramUser?.username ? `@${telegramUser.username}` : copy.browserModeSubtitle;
+  const status = isTelegramMiniApp ? copy.telegramConnected : copy.browserModeStatus;
+
+  return (
+    <header className="profile-header">
+      <div className="profile-header-copy">
+        <strong>{title}</strong>
+        <span>{subtitle}</span>
+      </div>
+      <ProfileHeaderAvatar telegramUser={telegramUser} label={copy.profileAria} />
+      <span className={`profile-account-status ${isTelegramMiniApp ? "connected" : "browser"}`}>{status}</span>
+    </header>
+  );
+}
+
 function ProfileCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="profile-card">
       <h2>{title}</h2>
       <div className="profile-card-rows">{children}</div>
     </section>
+  );
+}
+
+function ProfileAccountCard({
+  telegramUser,
+  isTelegramMiniApp,
+  copy,
+}: {
+  telegramUser: TelegramUser | null;
+  isTelegramMiniApp: boolean;
+  copy: (typeof profileCopy)[AppSettings["language"]];
+}) {
+  const displayName = telegramUser ? [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(" ").trim() : "";
+  const title = displayName || copy.browserModeTitle;
+  const subtitle = telegramUser?.username ? `@${telegramUser.username}` : copy.browserModeSubtitle;
+  const status = isTelegramMiniApp ? copy.telegramConnected : copy.browserModeStatus;
+
+  return (
+    <section className="profile-account-card" aria-label={copy.account}>
+      <div className="profile-account-copy">
+        <span>{copy.account}</span>
+        <strong>{title}</strong>
+        <small>{subtitle}</small>
+      </div>
+      <span className={`profile-account-status ${isTelegramMiniApp ? "connected" : "browser"}`}>{status}</span>
+    </section>
+  );
+}
+
+function ProfileHeaderAvatar({ telegramUser, label }: { telegramUser: TelegramUser | null; label: string }) {
+  const fallbackLetter = (telegramUser?.first_name?.trim() || "A").charAt(0).toUpperCase() || "A";
+
+  return (
+    <div className="profile-header-avatar" aria-label={label}>
+      {telegramUser?.photo_url ? <img src={telegramUser.photo_url} alt="" /> : <span>{fallbackLetter}</span>}
+    </div>
   );
 }
 
@@ -3788,20 +3884,25 @@ function ProfileSegmented({
 function ThemeIconSelector({
   value,
   labels,
+  includeSystem = false,
   onChange,
 }: {
   value: AppSettings["theme"];
-  labels: Record<AppSettings["theme"], string>;
+  labels: Record<"light" | "dark", string> & Partial<Record<"system", string>>;
+  includeSystem?: boolean;
   onChange: (value: AppSettings["theme"]) => void;
 }) {
   const options: Array<{ value: AppSettings["theme"]; icon: LucideIcon }> = [
     { value: "light", icon: Sun },
     { value: "dark", icon: Moon },
-    { value: "system", icon: Monitor },
   ];
 
+  if (includeSystem) {
+    options.push({ value: "system", icon: Monitor });
+  }
+
   return (
-    <div className="theme-icon-selector" role="group" aria-label={labels[value]}>
+    <div className={`theme-icon-selector ${includeSystem ? "with-system" : ""}`} role="group" aria-label={labels[value] ?? labels.dark}>
       {options.map((option) => {
         const Icon = option.icon;
         const active = value === option.value;

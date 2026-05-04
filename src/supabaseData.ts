@@ -11,6 +11,9 @@ type RemoteUser = {
   telegram_id: string;
   username: string | null;
   first_name: string | null;
+  last_name: string | null;
+  photo_url: string | null;
+  language_code: string | null;
 };
 
 type RemoteItem = {
@@ -244,7 +247,24 @@ async function findOrCreateUser(identity: Omit<RemoteUser, "id">): Promise<Remot
   }
 
   if (existing.data) {
-    return existing.data as RemoteUser;
+    const updated = await client
+      .from("users")
+      .update({
+        username: identity.username,
+        first_name: identity.first_name,
+        last_name: identity.last_name,
+        photo_url: identity.photo_url,
+        language_code: identity.language_code,
+      })
+      .eq("id", (existing.data as RemoteUser).id)
+      .select("*")
+      .single();
+
+    if (updated.error) {
+      throw updated.error;
+    }
+
+    return updated.data as RemoteUser;
   }
 
   const created = await client
@@ -268,6 +288,9 @@ function getUserIdentity(): Omit<RemoteUser, "id"> {
       telegram_id: String(telegramUser.id),
       username: telegramUser.username ?? null,
       first_name: telegramUser.first_name ?? null,
+      last_name: telegramUser.last_name ?? null,
+      photo_url: telegramUser.photo_url ?? null,
+      language_code: telegramUser.language_code ?? null,
     };
   }
 
@@ -279,6 +302,9 @@ function getUserIdentity(): Omit<RemoteUser, "id"> {
     telegram_id: `browser:${getBrowserUserId()}`,
     username: "browser",
     first_name: "Browser",
+    last_name: null,
+    photo_url: null,
+    language_code: null,
   };
 }
 

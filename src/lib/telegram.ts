@@ -2,6 +2,9 @@ export type TelegramUser = {
   id: number | string;
   username?: string;
   first_name?: string;
+  last_name?: string;
+  photo_url?: string;
+  language_code?: string;
 };
 
 export type TelegramWebApp = {

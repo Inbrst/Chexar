@@ -22,9 +22,9 @@
   --rose: #ff5cb8;
   --amber: #ffb85c;
   --shadow: 0 18px 58px rgba(0, 0, 0, 0.46);
-  --bottom-nav-height: 82px;
-  --bottom-nav-offset: max(10px, env(safe-area-inset-bottom));
-  --bottom-stack-padding: calc(var(--bottom-nav-height) + var(--bottom-nav-offset) + 70px);
+  --bottom-nav-height: 58px;
+  --bottom-nav-offset: max(8px, env(safe-area-inset-bottom));
+  --bottom-stack-padding: calc(var(--bottom-nav-height) + var(--bottom-nav-offset) + 52px);
   --bottom-safe-padding: var(--bottom-stack-padding);
 }
 
@@ -74,7 +74,29 @@ html[data-resolved-theme="light"] .calendar-back-button {
   color: #059669;
 }
 
+html[data-resolved-theme="light"] .brand-logo-text {
+  color: rgba(15, 23, 42, 0.74);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.74), 0 0 10px rgba(16, 185, 129, 0.12);
+}
+
+html[data-resolved-theme="light"] .brand-logo-box {
+  border-color: rgba(16, 185, 129, 0.48);
+  background:
+    radial-gradient(circle at 44% 35%, rgba(16, 185, 129, 0.14), transparent 58%),
+    linear-gradient(145deg, rgba(226, 232, 229, 0.95), rgba(255, 255, 255, 0.86));
+  box-shadow:
+    inset 0 2px 6px rgba(15, 23, 42, 0.16),
+    inset 0 -1px 2px rgba(16, 185, 129, 0.18),
+    0 0 12px rgba(16, 185, 129, 0.14);
+}
+
+html[data-resolved-theme="light"] .hero-date {
+  color: rgba(15, 23, 42, 0.86);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.76), 0 0 10px rgba(16, 185, 129, 0.1);
+}
+
 html[data-resolved-theme="light"] .profile-card,
+html[data-resolved-theme="light"] .profile-account-card,
 html[data-resolved-theme="light"] .hints-card,
 html[data-resolved-theme="light"] .danger-reset-button,
 html[data-resolved-theme="light"] .bottom-nav,
@@ -89,6 +111,7 @@ html[data-resolved-theme="light"] .confirm-card {
 
 html[data-resolved-theme="light"] .profile-card h2,
 html[data-resolved-theme="light"] .profile-header h1,
+html[data-resolved-theme="light"] .profile-account-copy strong,
 html[data-resolved-theme="light"] .profile-row-label,
 html[data-resolved-theme="light"] .hints-card strong,
 html[data-resolved-theme="light"] .bottom-sheet h2,
@@ -97,6 +120,7 @@ html[data-resolved-theme="light"] .confirm-card h2 {
 }
 
 html[data-resolved-theme="light"] .profile-header p:not(.brand),
+html[data-resolved-theme="light"] .profile-account-copy span,
 html[data-resolved-theme="light"] .hints-card small,
 html[data-resolved-theme="light"] .profile-row-value.muted,
 html[data-resolved-theme="light"] .confirm-description {
@@ -126,6 +150,8 @@ html[data-resolved-theme="light"] .profile-row-icon.accent-mint {
 }
 
 html[data-resolved-theme="light"] .profile-avatar,
+html[data-resolved-theme="light"] .profile-account-avatar,
+html[data-resolved-theme="light"] .profile-header-avatar,
 html[data-resolved-theme="light"] .profile-segmented button.active,
 html[data-resolved-theme="light"] .theme-icon-selector button.active,
 html[data-resolved-theme="light"] .hints-card.enabled .toggle-switch,
@@ -133,6 +159,14 @@ html[data-resolved-theme="light"] .bottom-nav button.active {
   background: linear-gradient(135deg, #10b981, #059669);
   color: #fff;
   box-shadow: 0 0 18px rgba(16, 185, 129, 0.22);
+}
+
+html[data-resolved-theme="light"] .profile-header-copy strong {
+  color: #111827;
+}
+
+html[data-resolved-theme="light"] .profile-header-copy span {
+  color: #66736d;
 }
 
 html[data-resolved-theme="light"] .profile-segmented,
@@ -294,20 +328,30 @@ html[data-resolved-theme="light"] .rhythm-card {
 
 html[data-resolved-theme="light"] .rhythm-fill {
   background:
-    linear-gradient(100deg, rgba(16, 185, 129, 0.36), rgba(20, 184, 166, 0.24) 62%, rgba(97, 215, 255, 0.12)),
+    linear-gradient(
+      100deg,
+      hsla(var(--rhythm-hue-start), 78%, 52%, 0.24),
+      hsla(var(--rhythm-hue-end), 76%, 48%, 0.2) 72%,
+      rgba(16, 185, 129, 0.08)
+    ),
     radial-gradient(circle at 20% 0%, rgba(255, 255, 255, 0.52), transparent 10rem);
-  box-shadow: 7px 0 15px rgba(16, 185, 129, 0.08);
+  box-shadow: 7px 0 15px hsla(var(--rhythm-hue-end), 70%, 44%, 0.08);
 }
 
 html[data-resolved-theme="light"] .rhythm-fill {
   background:
-    linear-gradient(100deg, rgba(16, 185, 129, 0.44), rgba(20, 184, 166, 0.18)),
+    linear-gradient(
+      100deg,
+      hsla(var(--rhythm-hue-start), 78%, 52%, 0.26),
+      hsla(var(--rhythm-hue-end), 76%, 48%, 0.2)
+    ),
     radial-gradient(circle at 20% 0%, rgba(255, 255, 255, 0.62), transparent 12rem);
-  box-shadow: 8px 0 22px rgba(16, 185, 129, 0.16);
+  box-shadow: 8px 0 22px hsla(var(--rhythm-hue-end), 70%, 44%, 0.12);
 }
 
 html[data-resolved-theme="light"] .rhythm-main strong,
 html[data-resolved-theme="light"] .rhythm-main p,
+html[data-resolved-theme="light"] .rhythm-percent,
 html[data-resolved-theme="light"] .eyebrow,
 html[data-resolved-theme="light"] .summary-stack strong,
 html[data-resolved-theme="light"] .mini-stat-item strong {
@@ -690,7 +734,29 @@ html[data-resolved-theme="light"] .progress-rank-icon {
     color: #059669;
   }
 
+  html[data-theme-preference="system"] .brand-logo-text {
+    color: rgba(15, 23, 42, 0.74);
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.74), 0 0 10px rgba(16, 185, 129, 0.12);
+  }
+
+  html[data-theme-preference="system"] .brand-logo-box {
+    border-color: rgba(16, 185, 129, 0.48);
+    background:
+      radial-gradient(circle at 44% 35%, rgba(16, 185, 129, 0.14), transparent 58%),
+      linear-gradient(145deg, rgba(226, 232, 229, 0.95), rgba(255, 255, 255, 0.86));
+    box-shadow:
+      inset 0 2px 6px rgba(15, 23, 42, 0.16),
+      inset 0 -1px 2px rgba(16, 185, 129, 0.18),
+      0 0 12px rgba(16, 185, 129, 0.14);
+  }
+
+  html[data-theme-preference="system"] .hero-date {
+    color: rgba(15, 23, 42, 0.86);
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.76), 0 0 10px rgba(16, 185, 129, 0.1);
+  }
+
   html[data-theme-preference="system"] .profile-card,
+  html[data-theme-preference="system"] .profile-account-card,
   html[data-theme-preference="system"] .hints-card,
   html[data-theme-preference="system"] .danger-reset-button,
   html[data-theme-preference="system"] .bottom-nav,
@@ -705,6 +771,7 @@ html[data-resolved-theme="light"] .progress-rank-icon {
 
   html[data-theme-preference="system"] .profile-card h2,
   html[data-theme-preference="system"] .profile-header h1,
+  html[data-theme-preference="system"] .profile-account-copy strong,
   html[data-theme-preference="system"] .profile-row-label,
   html[data-theme-preference="system"] .hints-card strong,
   html[data-theme-preference="system"] .bottom-sheet h2,
@@ -713,6 +780,7 @@ html[data-resolved-theme="light"] .progress-rank-icon {
   }
 
   html[data-theme-preference="system"] .profile-header p:not(.brand),
+  html[data-theme-preference="system"] .profile-account-copy span,
   html[data-theme-preference="system"] .hints-card small,
   html[data-theme-preference="system"] .profile-row-value.muted,
   html[data-theme-preference="system"] .confirm-description {
@@ -742,6 +810,8 @@ html[data-resolved-theme="light"] .progress-rank-icon {
   }
 
   html[data-theme-preference="system"] .profile-avatar,
+  html[data-theme-preference="system"] .profile-account-avatar,
+  html[data-theme-preference="system"] .profile-header-avatar,
   html[data-theme-preference="system"] .profile-segmented button.active,
   html[data-theme-preference="system"] .theme-icon-selector button.active,
   html[data-theme-preference="system"] .hints-card.enabled .toggle-switch,
@@ -749,6 +819,14 @@ html[data-resolved-theme="light"] .progress-rank-icon {
     background: linear-gradient(135deg, #10b981, #059669);
     color: #fff;
     box-shadow: 0 0 18px rgba(16, 185, 129, 0.22);
+  }
+
+  html[data-theme-preference="system"] .profile-header-copy strong {
+    color: #111827;
+  }
+
+  html[data-theme-preference="system"] .profile-header-copy span {
+    color: #66736d;
   }
 
   html[data-theme-preference="system"] .profile-segmented,
@@ -1150,9 +1228,10 @@ button {
 }
 
 .hero-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(76px, 1fr) auto minmax(42px, 1fr);
   align-items: center;
-  justify-content: space-between;
+  justify-content: stretch;
   gap: 12px;
   margin-bottom: 6px;
 }
@@ -1163,6 +1242,107 @@ button {
   font-size: 0.74rem;
   font-weight: 800;
   letter-spacing: 0;
+}
+
+.brand-logo {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  gap: 2px;
+  opacity: 0.48;
+  line-height: 1;
+  user-select: none;
+}
+
+.brand-logo-text {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.72rem;
+  font-weight: 860;
+  letter-spacing: -0.015em;
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.86),
+    0 -1px 0 rgba(255, 255, 255, 0.04),
+    0 0 10px rgba(124, 92, 255, 0.12);
+}
+
+.brand-logo-box {
+  position: relative;
+  display: grid;
+  width: 17px;
+  height: 16px;
+  margin: 0 1px;
+  place-items: center;
+  border: 1.5px solid rgba(150, 83, 255, 0.58);
+  border-radius: 6px;
+  background:
+    radial-gradient(circle at 42% 30%, rgba(153, 92, 255, 0.16), transparent 58%),
+    linear-gradient(145deg, rgba(30, 20, 56, 0.72), rgba(5, 5, 12, 0.92)),
+    rgba(6, 7, 13, 0.9);
+  box-shadow:
+    inset 0 2px 7px rgba(0, 0, 0, 0.82),
+    inset 0 -1px 3px rgba(167, 98, 255, 0.22),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.035),
+    0 0 12px rgba(124, 92, 255, 0.18);
+}
+
+.brand-logo-box::after {
+  position: absolute;
+  inset: 2px;
+  content: "";
+  border-radius: inherit;
+  box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.68);
+  pointer-events: none;
+}
+
+.brand-logo-x {
+  z-index: 1;
+  transform: scale(0.36);
+  transform-origin: center;
+}
+
+.brand-logo-hero {
+  gap: 3px;
+}
+
+.brand-logo-hero .brand-logo-text {
+  font-size: 0.9rem;
+}
+
+.brand-logo-hero .brand-logo-box {
+  width: 23px;
+  height: 21px;
+  border-radius: 8px;
+  box-shadow:
+    inset 0 3px 9px rgba(0, 0, 0, 0.82),
+    inset 0 -1px 4px rgba(167, 98, 255, 0.24),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 0 16px rgba(124, 92, 255, 0.2);
+}
+
+.brand-logo-hero .brand-logo-x {
+  transform: scale(0.5);
+}
+
+.hero-date {
+  justify-self: center;
+  min-width: 0;
+  max-width: 13rem;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.9);
+  font-family: "SF Pro Rounded", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  font-size: clamp(1.08rem, 5.2vw, 1.44rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 840;
+  letter-spacing: 0.015em;
+  line-height: 1;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 0 14px rgba(124, 92, 255, 0.18);
+}
+
+.header-actions {
+  justify-self: end;
 }
 
 .hero-header h1 {
@@ -1267,21 +1447,20 @@ button {
 
 .rhythm-card {
   position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1.78fr) minmax(98px, 0.78fr);
-  min-height: 116px;
-  margin-bottom: 5px;
+  display: block;
+  min-height: 82px;
+  margin-bottom: 3px;
   overflow: hidden;
-  border: 1px solid rgba(154, 128, 255, 0.22);
+  border: 1px solid hsla(var(--rhythm-hue-end), 76%, 56%, 0.18);
   border-radius: 19px;
   background:
-    radial-gradient(circle at 16% 0%, rgba(255, 255, 255, 0.055), transparent 8rem),
-    linear-gradient(90deg, rgba(18, 18, 28, 0.96), rgba(12, 13, 20, 0.97)),
+    radial-gradient(circle at 50% 14%, hsla(var(--rhythm-hue-end), 82%, 58%, 0.09), transparent 8.5rem),
+    linear-gradient(90deg, rgba(14, 14, 20, 0.96), rgba(9, 10, 15, 0.98)),
     rgba(10, 10, 15, 0.96);
   box-shadow:
-    0 0 14px rgba(124, 92, 255, 0.07),
-    0 18px 42px rgba(0, 0, 0, 0.26),
-    inset 0 0 0 1px rgba(97, 215, 255, 0.02);
+    0 0 12px hsla(var(--rhythm-hue-end), 78%, 54%, 0.07),
+    0 14px 32px rgba(0, 0, 0, 0.22),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.018);
   outline: none;
 }
 
@@ -1296,10 +1475,64 @@ button {
   width: var(--daily-percent);
   min-width: 0;
   max-width: 100%;
+  overflow: hidden;
   background:
-    linear-gradient(100deg, rgba(104, 78, 236, 0.58), rgba(135, 88, 255, 0.34) 62%, rgba(97, 215, 255, 0.16)),
-    radial-gradient(circle at 20% 0%, rgba(255, 255, 255, 0.12), transparent 10rem);
-  box-shadow: 7px 0 16px rgba(124, 92, 255, 0.1);
+    radial-gradient(ellipse at 18% 14%, rgba(255, 255, 255, 0.22), transparent 2.8rem),
+    radial-gradient(ellipse at 74% 66%, hsla(var(--rhythm-hue-end), 92%, 66%, 0.18), transparent 4.2rem),
+    linear-gradient(
+      112deg,
+      hsla(var(--rhythm-hue-start), 88%, 52%, 0.28),
+      hsla(var(--rhythm-hue-end), 86%, 52%, 0.28) 52%,
+      rgba(92, 255, 177, 0.18)
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), transparent 46%, rgba(0, 0, 0, 0.06));
+  box-shadow:
+    10px 0 24px hsla(var(--rhythm-hue-end), 82%, 54%, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -16px 26px rgba(255, 255, 255, 0.035);
+  transition: width 180ms ease, background 180ms ease;
+}
+
+.rhythm-fill::before,
+.rhythm-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.rhythm-fill::before {
+  background:
+    linear-gradient(105deg, transparent 8%, rgba(255, 255, 255, 0.2) 34%, transparent 58%),
+    radial-gradient(ellipse at 42% 0%, rgba(255, 255, 255, 0.16), transparent 2.8rem);
+  mix-blend-mode: screen;
+  opacity: 0.7;
+}
+
+.rhythm-fill::after {
+  background:
+    repeating-linear-gradient(
+      115deg,
+      rgba(255, 255, 255, 0.035) 0 1px,
+      transparent 1px 13px
+    );
+  opacity: 0.36;
+}
+
+.rhythm-percent {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 50%;
+  display: block;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: clamp(2rem, 10vw, 2.78rem);
+  line-height: 0.86;
+  font-weight: 880;
+  letter-spacing: 0;
+  text-shadow: 0 0 22px hsla(var(--rhythm-hue-end), 82%, 56%, 0.14);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
 }
 
 .rhythm-main,
@@ -1402,6 +1635,16 @@ button {
   overflow: visible;
 }
 
+.rhythm-card > .rhythm-chart {
+  position: absolute;
+  z-index: 1;
+  right: 12px;
+  bottom: 10px;
+  width: 70px;
+  height: 22px;
+  opacity: 0.86;
+}
+
 .rhythm-chart-line,
 .rhythm-chart-shadow {
   fill: none;
@@ -1410,7 +1653,7 @@ button {
 }
 
 .rhythm-chart-shadow {
-  stroke: rgba(97, 215, 255, 0.12);
+  stroke: rgba(92, 255, 177, 0.14);
   stroke-width: 5;
 }
 
@@ -1421,12 +1664,12 @@ button {
 }
 
 .rhythm-chart-dot-glow {
-  fill: rgba(97, 215, 255, 0.24);
+  fill: rgba(92, 255, 177, 0.22);
 }
 
 .rhythm-chart-dot {
   fill: #efeaff;
-  stroke: #61d7ff;
+  stroke: #5cffb1;
   stroke-width: 1.5;
 }
 
@@ -2307,15 +2550,17 @@ button {
   bottom: var(--bottom-nav-offset);
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  width: min(calc(100% - 28px), 414px);
-  min-height: 78px;
-  padding: 8px;
+  width: min(calc(100% - 82px), 312px);
+  min-height: 54px;
+  padding: 5px;
+  overflow: hidden;
   border: 1px solid rgba(198, 192, 224, 0.18);
-  border-radius: 22px;
+  border-radius: 999px;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.018)),
-    rgba(19, 20, 29, 0.9);
-  box-shadow: 0 18px 52px rgba(0, 0, 0, 0.52);
+    radial-gradient(circle at 50% 0%, rgba(124, 92, 255, 0.1), transparent 60%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.014)),
+    rgba(16, 17, 25, 0.9);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.46);
   transform: translateX(50%);
   backdrop-filter: blur(22px);
 }
@@ -2323,8 +2568,10 @@ button {
 .bottom-nav button {
   display: grid;
   place-items: center;
-  gap: 4px;
+  justify-self: center;
   min-width: 0;
+  width: 43px;
+  height: 43px;
   border: 0;
   border-radius: 16px;
   color: #a5a1ad;
@@ -2344,11 +2591,17 @@ button {
   filter: drop-shadow(0 0 8px rgba(124, 92, 255, 0.38));
 }
 
+.bottom-nav svg {
+  width: 22px;
+  height: 22px;
+}
+
 .bottom-nav button:disabled {
   opacity: 0.86;
 }
 
 .bottom-nav span {
+  display: none;
   max-width: 100%;
   overflow: hidden;
   font-size: 0.75rem;
@@ -2365,15 +2618,15 @@ button {
   min-height: 100vh;
   min-height: 100dvh;
   margin: 0 auto;
-  padding: 22px 18px var(--bottom-stack-padding);
+  padding: 16px 18px calc(var(--bottom-nav-height) + env(safe-area-inset-bottom) + 18px);
 }
 
 .calendar-header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 18px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-bottom: 8px;
 }
 
 .calendar-header h1 {
@@ -2396,7 +2649,7 @@ button {
   display: inline-flex;
   flex: 0 0 auto;
   gap: 6px;
-  padding-top: 4px;
+  padding-top: 0;
 }
 
 .calendar-icon-button {
@@ -3123,47 +3376,50 @@ button {
   position: relative;
   z-index: 1;
   display: grid;
-  gap: 12px;
+  grid-template-rows: auto auto auto auto auto auto minmax(0, 1fr);
+  gap: 6px;
   width: 100%;
   max-width: 430px;
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
   margin: 0 auto;
-  padding: 22px 18px var(--bottom-stack-padding);
+  overflow: hidden;
+  padding: 10px 14px calc(var(--bottom-nav-height) + var(--bottom-nav-offset) + 6px);
 }
 
 .progress-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 4px;
+  gap: 10px;
+  margin-bottom: 0;
 }
 
 .progress-header h1 {
   margin: 0;
   color: var(--text);
-  font-size: clamp(2.25rem, 11vw, 3rem);
+  font-size: clamp(1.48rem, 7.2vw, 1.92rem);
   line-height: 0.95;
   font-weight: 850;
   letter-spacing: 0;
 }
 
 .progress-header p:not(.brand) {
-  margin: 8px 0 0;
+  margin: 3px 0 0;
   color: var(--muted);
-  font-size: 0.92rem;
+  font-size: 0.68rem;
   line-height: 1.2;
 }
 
 .progress-period-tabs {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 4px;
-  min-height: 48px;
-  padding: 4px;
+  gap: 3px;
+  min-height: 34px;
+  padding: 3px;
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: 14px;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012)),
     rgba(18, 19, 27, 0.88);
@@ -3172,12 +3428,12 @@ button {
 
 .progress-period-tabs button {
   min-width: 0;
-  min-height: 38px;
+  min-height: 28px;
   border: 0;
-  border-radius: 12px;
+  border-radius: 10px;
   color: var(--muted);
   background: transparent;
-  font-size: 0.85rem;
+  font-size: 0.7rem;
   font-weight: 760;
 }
 
@@ -3197,7 +3453,7 @@ button {
 .progress-best-days-card,
 .progress-best-card {
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: 16px;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012)),
     rgba(18, 19, 27, 0.9);
@@ -3206,11 +3462,13 @@ button {
 
 .progress-empty-card {
   display: grid;
-  justify-items: center;
-  gap: 6px;
-  padding: 15px 16px;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  justify-items: start;
+  gap: 8px;
+  padding: 7px 9px;
   color: var(--muted);
-  text-align: center;
+  text-align: left;
 }
 
 .progress-empty-card svg {
@@ -3220,54 +3478,64 @@ button {
 
 .progress-empty-card strong {
   color: var(--text);
-  font-size: 1rem;
+  font-size: 0.78rem;
   line-height: 1.1;
 }
 
 .progress-empty-card p {
-  max-width: 19rem;
+  grid-column: 2;
+  max-width: none;
   margin: 0;
-  font-size: 0.83rem;
-  line-height: 1.25;
+  overflow: hidden;
+  font-size: 0.68rem;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .progress-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
 }
 
 .progress-kpi-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 34px;
+  grid-template-columns: minmax(0, 1fr) 16px;
   align-items: start;
-  gap: 10px;
-  min-height: 111px;
-  padding: 14px;
+  gap: 4px;
+  min-height: 55px;
+  padding: 7px;
 }
 
 .progress-kpi-card span {
   display: block;
   color: var(--text);
-  font-size: 0.94rem;
+  overflow: hidden;
+  font-size: 0.58rem;
   line-height: 1.05;
   font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .progress-kpi-card strong {
   display: block;
-  margin-top: 7px;
+  margin-top: 3px;
   color: var(--text);
-  font-size: clamp(2rem, 10vw, 2.55rem);
+  font-size: clamp(0.96rem, 5.2vw, 1.25rem);
   line-height: 0.94;
   font-weight: 850;
 }
 
 .progress-kpi-card p {
-  margin: 9px 0 0;
+  margin: 4px 0 0;
+  overflow: hidden;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: 0.55rem;
   line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .progress-kpi-card svg {
@@ -3293,11 +3561,11 @@ button {
 
 .progress-rhythm-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 128px;
+  grid-template-columns: minmax(0, 1fr) 82px;
   align-items: center;
-  gap: 14px;
-  min-height: 132px;
-  padding: 16px;
+  gap: 7px;
+  min-height: 76px;
+  padding: 9px;
   overflow: hidden;
   background:
     radial-gradient(circle at 92% 28%, rgba(124, 92, 255, 0.22), transparent 10rem),
@@ -3307,36 +3575,39 @@ button {
 
 .progress-rhythm-card span {
   color: var(--text);
-  font-size: 0.96rem;
+  font-size: 0.68rem;
   font-weight: 720;
   line-height: 1;
 }
 
 .progress-rhythm-card strong {
   display: block;
-  margin-top: 5px;
+  margin-top: 3px;
   color: #a992ff;
-  font-size: clamp(1.7rem, 8vw, 2.15rem);
+  font-size: clamp(1.02rem, 5.2vw, 1.34rem);
   line-height: 1;
   font-weight: 850;
 }
 
 .progress-rhythm-card p {
   max-width: 15rem;
-  margin: 8px 0 0;
+  margin: 4px 0 0;
+  overflow: hidden;
   color: var(--muted);
-  font-size: 0.88rem;
-  line-height: 1.28;
+  font-size: 0.62rem;
+  line-height: 1.18;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .progress-rhythm-card .rhythm-chart {
-  width: 120px;
-  height: 48px;
+  width: 80px;
+  height: 31px;
   justify-self: end;
 }
 
 .progress-chart-card {
-  padding: 15px 13px 11px;
+  padding: 8px 8px 5px;
   overflow: hidden;
 }
 
@@ -3344,9 +3615,9 @@ button {
 .progress-balance-card h2,
 .progress-best-days-card h2,
 .progress-best-card h2 {
-  margin: 0 0 10px;
+  margin: 0 0 5px;
   color: var(--text);
-  font-size: 1rem;
+  font-size: 0.74rem;
   line-height: 1.1;
   font-weight: 740;
 }
@@ -3354,7 +3625,7 @@ button {
 .progress-line-chart {
   display: block;
   width: 100%;
-  height: auto;
+  height: 92px;
   overflow: visible;
 }
 
@@ -3367,7 +3638,7 @@ button {
 .progress-chart-x-label,
 .progress-chart-value-label {
   fill: var(--muted);
-  font-size: 10px;
+  font-size: 8px;
   font-weight: 650;
   text-anchor: middle;
 }
@@ -3378,7 +3649,7 @@ button {
 
 .progress-chart-value-label {
   fill: var(--text);
-  font-size: 11px;
+  font-size: 9px;
 }
 
 .progress-chart-area {
@@ -3394,19 +3665,19 @@ button {
 
 .progress-chart-line-glow {
   stroke: rgba(124, 92, 255, 0.2);
-  stroke-width: 10;
+  stroke-width: 7;
 }
 
 .progress-chart-line {
   stroke: url(#progress-line-gradient);
-  stroke-width: 4;
+  stroke-width: 3;
   filter: drop-shadow(0 0 8px rgba(124, 92, 255, 0.35));
 }
 
 .progress-chart-point {
   fill: #efeaff;
   stroke: var(--accent);
-  stroke-width: 3;
+  stroke-width: 2.2;
   filter: drop-shadow(0 0 6px rgba(124, 92, 255, 0.32));
 }
 
@@ -3419,27 +3690,27 @@ button {
 .progress-insight-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 6px;
 }
 
 .progress-balance-card,
 .progress-best-days-card {
-  min-height: 166px;
-  padding: 14px;
+  min-height: 86px;
+  padding: 8px;
 }
 
 .progress-balance-content {
   display: grid;
-  grid-template-columns: 100px minmax(0, 1fr);
+  grid-template-columns: 54px minmax(0, 1fr);
   align-items: center;
-  gap: 12px;
+  gap: 6px;
 }
 
 .progress-donut {
   position: relative;
   display: grid;
-  width: 96px;
-  height: 96px;
+  width: 52px;
+  height: 52px;
   place-items: center;
   border-radius: 50%;
   background:
@@ -3454,7 +3725,7 @@ button {
 .progress-donut::after {
   content: "";
   position: absolute;
-  inset: 16px;
+  inset: 9px;
   border-radius: inherit;
   background: rgba(12, 13, 20, 0.96);
 }
@@ -3469,33 +3740,33 @@ button {
 }
 
 .progress-donut strong {
-  font-size: 1.32rem;
+  font-size: 0.78rem;
   line-height: 1;
 }
 
 .progress-donut small {
   color: var(--muted);
-  font-size: 0.68rem;
+  font-size: 0.48rem;
   line-height: 1;
 }
 
 .progress-balance-legend {
   display: grid;
-  gap: 9px;
+  gap: 4px;
   min-width: 0;
 }
 
 .progress-legend-row {
   display: grid;
-  grid-template-columns: 9px minmax(0, 1fr) auto;
+  grid-template-columns: 7px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
   min-width: 0;
 }
 
 .progress-legend-row span {
-  width: 9px;
-  height: 9px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
 }
 
@@ -3520,7 +3791,7 @@ button {
   margin: 0;
   overflow: hidden;
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.56rem;
   line-height: 1.1;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3534,17 +3805,17 @@ button {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   align-items: end;
-  gap: 6px;
-  min-height: 120px;
+  gap: 4px;
+  min-height: 60px;
 }
 
 .progress-day-bar {
   display: grid;
-  grid-template-rows: 18px 1fr 18px;
+  grid-template-rows: 11px 1fr 12px;
   justify-items: center;
-  gap: 5px;
+  gap: 3px;
   min-width: 0;
-  height: 120px;
+  height: 60px;
 }
 
 .progress-day-bar span,
@@ -3552,7 +3823,7 @@ button {
   min-width: 0;
   overflow: hidden;
   color: var(--muted);
-  font-size: 0.68rem;
+  font-size: 0.52rem;
   line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3566,8 +3837,8 @@ button {
 .progress-day-bar i {
   align-self: end;
   width: 100%;
-  min-height: 8px;
-  height: max(8px, var(--bar-value));
+  min-height: 5px;
+  height: max(5px, var(--bar-value));
   border-radius: 9px 9px 3px 3px;
   background:
     linear-gradient(180deg, rgba(183, 160, 255, 0.95), rgba(124, 92, 255, 0.56)),
@@ -3581,45 +3852,47 @@ button {
 }
 
 .progress-best-card {
-  padding: 14px;
+  min-height: 0;
+  padding: 8px;
+  overflow: hidden;
 }
 
 .progress-rank-list {
   display: grid;
-  gap: 11px;
+  gap: 5px;
 }
 
 .progress-rank-row {
   display: grid;
-  grid-template-columns: 28px 30px minmax(78px, 1fr) minmax(78px, 1.35fr) 42px;
+  grid-template-columns: 20px 23px minmax(56px, 1fr) minmax(56px, 1.3fr) 32px;
   align-items: center;
-  gap: 9px;
+  gap: 5px;
   min-width: 0;
 }
 
 .progress-rank-index {
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: 20px;
+  height: 20px;
   place-items: center;
   border: 1px solid rgba(176, 158, 255, 0.14);
   border-radius: 50%;
   color: #d8d0e8;
   background: rgba(8, 9, 15, 0.42);
-  font-size: 0.82rem;
+  font-size: 0.6rem;
   font-weight: 780;
 }
 
 .progress-rank-icon {
   display: grid;
-  width: 30px;
-  height: 30px;
+  width: 23px;
+  height: 23px;
   place-items: center;
   color: #dcd2ff;
   border: 1px solid rgba(124, 92, 255, 0.24);
   border-radius: 50%;
   background: rgba(124, 92, 255, 0.16);
-  font-size: 0.92rem;
+  font-size: 0.7rem;
   font-weight: 800;
 }
 
@@ -3627,14 +3900,14 @@ button {
   min-width: 0;
   overflow: hidden;
   color: var(--text);
-  font-size: 0.9rem;
+  font-size: 0.68rem;
   line-height: 1.1;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .progress-rank-track {
-  height: 7px;
+  height: 5px;
   overflow: hidden;
   border-radius: 999px;
   background: rgba(94, 93, 112, 0.26);
@@ -3653,20 +3926,37 @@ button {
 .progress-rank-row em {
   justify-self: end;
   color: var(--text);
-  font-size: 0.9rem;
+  font-size: 0.68rem;
   font-style: normal;
   font-weight: 800;
 }
 
 .progress-no-actions {
   margin: 0;
-  padding: 12px;
+  padding: 7px;
   color: var(--muted);
   border: 1px solid rgba(176, 158, 255, 0.12);
   border-radius: 13px;
   background: rgba(8, 9, 15, 0.35);
-  font-size: 0.86rem;
+  font-size: 0.66rem;
   text-align: center;
+}
+
+.progress-range-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.progress-range-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.2;
+}
+
+.progress-range-note.error {
+  color: #ff7a93;
 }
 
 .profile-screen {
@@ -3677,31 +3967,45 @@ button {
   min-height: 100vh;
   min-height: 100dvh;
   margin: 0 auto;
-  padding: 22px 18px var(--bottom-stack-padding);
+  padding: 12px 16px var(--bottom-stack-padding);
 }
 
 .profile-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 18px;
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  min-height: 92px;
+  margin-bottom: 8px;
 }
 
-.profile-header h1 {
-  margin: 0;
+.profile-header-copy {
+  position: absolute;
+  top: 2px;
+  left: 0;
+  display: grid;
+  max-width: calc(50% - 18px);
+  gap: 2px;
+  min-width: 0;
+}
+
+.profile-header-copy strong {
+  overflow: hidden;
   color: var(--text);
-  font-size: clamp(2rem, 9.6vw, 2.55rem);
-  line-height: 0.95;
-  font-weight: 840;
-  letter-spacing: 0;
+  font-size: 0.86rem;
+  font-weight: 800;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.profile-header p:not(.brand) {
-  margin: 7px 0 0;
+.profile-header-copy span {
+  overflow: hidden;
   color: #a9a4b4;
-  font-size: 0.9rem;
-  line-height: 1.2;
+  font-size: 0.66rem;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .profile-avatar {
@@ -3722,32 +4026,167 @@ button {
   font-weight: 820;
 }
 
+.profile-header-avatar {
+  display: grid;
+  flex: 0 0 auto;
+  width: 66px;
+  height: 66px;
+  place-items: center;
+  overflow: hidden;
+  color: #fff;
+  border: 1px solid rgba(197, 181, 255, 0.24);
+  border-radius: 23px;
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.92), rgba(79, 65, 210, 0.86));
+  box-shadow: 0 0 20px rgba(124, 92, 255, 0.22), 0 12px 26px rgba(0, 0, 0, 0.26);
+  font-size: 1.38rem;
+  font-weight: 820;
+}
+
+.profile-header-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .profile-card,
 .hints-card,
 .danger-reset-button {
   border: 1px solid var(--border);
-  border-radius: 19px;
+  border-radius: 17px;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.012)),
-    rgba(18, 19, 27, 0.9);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.012), 0 12px 30px rgba(0, 0, 0, 0.24);
+    linear-gradient(135deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.01)),
+    rgba(16, 17, 24, 0.88);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.01), 0 10px 24px rgba(0, 0, 0, 0.22);
 }
 
 .profile-card {
-  margin-top: 11px;
-  padding: 12px 12px 3px;
+  margin-top: 9px;
+  padding: 10px 10px 2px;
+}
+
+.profile-account-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 9px;
+  padding: 10px 11px;
+  border: 1px solid var(--border);
+  border-radius: 17px;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(124, 92, 255, 0.16), transparent 34%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
+    rgba(16, 17, 24, 0.9);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.01), 0 10px 24px rgba(0, 0, 0, 0.22);
+}
+
+.profile-account-avatar {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  overflow: hidden;
+  color: #fff;
+  border: 1px solid rgba(197, 181, 255, 0.24);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.9), rgba(79, 65, 210, 0.82));
+  box-shadow: 0 0 18px rgba(124, 92, 255, 0.24);
+  font-size: 1.25rem;
+  font-weight: 820;
+}
+
+.profile-account-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-account-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.profile-account-copy span {
+  color: #a8a1b5;
+  font-size: 0.68rem;
+  font-weight: 680;
+  letter-spacing: 0.01em;
+}
+
+.profile-account-copy strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.94rem;
+  line-height: 1.1;
+  font-weight: 790;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-account-copy small {
+  overflow: hidden;
+  color: #bdaeff;
+  font-size: 0.76rem;
+  line-height: 1.1;
+  font-weight: 620;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-account-status {
+  position: absolute;
+  right: 0;
+  bottom: 4px;
+  max-width: 104px;
+  padding: 5px 7px;
+  border: 1px solid rgba(124, 92, 255, 0.18);
+  border-radius: 999px;
+  color: #cfc4ff;
+  background: rgba(124, 92, 255, 0.1);
+  font-size: 0.66rem;
+  line-height: 1.05;
+  font-weight: 740;
+  text-align: center;
+}
+
+.profile-account-status.connected {
+  color: var(--mint);
+  border-color: rgba(92, 255, 177, 0.18);
+  background: rgba(92, 255, 177, 0.08);
 }
 
 .profile-card h2 {
-  margin: 0 0 8px;
+  margin: 0 0 7px;
   color: #fff;
-  font-size: 0.98rem;
+  font-size: 0.9rem;
   line-height: 1.1;
   font-weight: 790;
 }
 
 .profile-card-rows {
   display: grid;
+  gap: 7px;
+}
+
+.profile-setting-block {
+  display: grid;
+  grid-template-columns: minmax(86px, 0.72fr) minmax(112px, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 8px;
+  border-top: 1px solid rgba(176, 158, 255, 0.13);
+}
+
+.profile-setting-block:first-child {
+  border-top: 0;
+}
+
+.profile-setting-heading {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
 }
 
 .profile-row {
@@ -3756,7 +4195,7 @@ button {
   align-items: center;
   gap: 8px;
   width: 100%;
-  min-height: 51px;
+  min-height: 43px;
   padding: 0;
   border: 0;
   border-top: 1px solid rgba(176, 158, 255, 0.13);
@@ -3787,8 +4226,8 @@ button {
 
 .profile-row-icon {
   display: grid;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   place-items: center;
   color: #bdaeff;
   border: 1px solid rgba(124, 92, 255, 0.18);
@@ -3827,7 +4266,7 @@ button {
 .profile-row-label {
   min-width: 0;
   color: #f7f2ff;
-  font-size: 0.94rem;
+  font-size: 0.86rem;
   line-height: 1.15;
   font-weight: 610;
 }
@@ -3838,7 +4277,7 @@ button {
   max-width: 154px;
   overflow: hidden;
   color: #bdaeff;
-  font-size: 0.84rem;
+  font-size: 0.78rem;
   font-weight: 730;
   line-height: 1.15;
   text-overflow: ellipsis;
@@ -3858,27 +4297,27 @@ button {
 .profile-segmented {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 5px;
+  gap: 4px;
   margin: 0 0 9px 46px;
-  padding: 4px;
+  padding: 3px;
   border: 1px solid rgba(176, 158, 255, 0.18);
-  border-radius: 13px;
+  border-radius: 12px;
   background: rgba(7, 8, 13, 0.54);
 }
 
 .profile-segmented.compact {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   width: 100%;
   margin: 0;
 }
 
 .profile-segmented button {
-  min-height: 36px;
+  min-height: 33px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 9px;
   color: #bcb6c9;
   background: transparent;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 700;
 }
 
@@ -3890,21 +4329,25 @@ button {
 
 .theme-icon-selector {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 5px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
   width: 100%;
-  padding: 4px;
+  padding: 3px;
   border: 1px solid rgba(176, 158, 255, 0.18);
-  border-radius: 13px;
+  border-radius: 12px;
   background: rgba(7, 8, 13, 0.54);
+}
+
+.theme-icon-selector.with-system {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .theme-icon-selector button {
   display: grid;
-  min-height: 36px;
+  min-height: 33px;
   place-items: center;
   border: 0;
-  border-radius: 10px;
+  border-radius: 9px;
   color: #bcb6c9;
   background: transparent;
 }
@@ -3925,20 +4368,20 @@ button {
 
 .danger-reset-button {
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-columns: 32px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   width: 100%;
-  min-height: 56px;
-  margin-top: 12px;
-  padding: 0 12px;
+  min-height: 48px;
+  margin-top: 9px;
+  padding: 0 10px;
   border-color: rgba(255, 92, 120, 0.6);
   color: #ff6681;
   background:
     linear-gradient(135deg, rgba(255, 92, 120, 0.07), rgba(255, 255, 255, 0.01)),
     rgba(18, 19, 27, 0.88);
   text-align: left;
-  font-size: 0.94rem;
+  font-size: 0.86rem;
   font-weight: 760;
 }
 
@@ -3949,13 +4392,13 @@ button {
 
 .hints-card {
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) 52px;
+  grid-template-columns: 32px minmax(0, 1fr) 48px;
   align-items: center;
   gap: 8px;
   width: 100%;
-  min-height: 66px;
-  margin-top: 12px;
-  padding: 10px 12px;
+  min-height: 58px;
+  margin-top: 9px;
+  padding: 9px 10px;
   color: #fff;
   text-align: left;
 }
@@ -3968,14 +4411,14 @@ button {
 
 .hints-card strong {
   color: #fff;
-  font-size: 0.94rem;
+  font-size: 0.86rem;
   line-height: 1.12;
 }
 
 .hints-card small {
-  margin-top: 3px;
+  margin-top: 2px;
   color: #a9a4b4;
-  font-size: 0.76rem;
+  font-size: 0.7rem;
   line-height: 1.2;
 }
 
@@ -3983,8 +4426,8 @@ button {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  width: 52px;
-  height: 31px;
+  width: 48px;
+  height: 29px;
   padding: 3px;
   border: 1px solid rgba(176, 158, 255, 0.16);
   border-radius: 999px;
@@ -3997,8 +4440,8 @@ button {
 
 .toggle-switch span {
   display: grid;
-  width: 25px;
-  height: 25px;
+  width: 23px;
+  height: 23px;
   place-items: center;
   color: transparent;
   border-radius: 50%;
@@ -4014,7 +4457,7 @@ button {
 .hints-card.enabled .toggle-switch span {
   color: var(--accent);
   background: #fff;
-  transform: translateX(21px);
+  transform: translateX(19px);
 }
 
 .modal-overlay {
@@ -4617,6 +5060,54 @@ button {
   text-align: center;
 }
 
+@media (max-height: 760px) {
+  .progress-screen {
+    gap: 5px;
+    padding-top: 9px;
+    padding-bottom: calc(var(--bottom-nav-height) + var(--bottom-nav-offset) + 4px);
+  }
+
+  .progress-header p:not(.brand) {
+    display: none;
+  }
+
+  .progress-period-tabs {
+    min-height: 31px;
+  }
+
+  .progress-period-tabs button {
+    min-height: 25px;
+  }
+
+  .progress-kpi-card {
+    min-height: 48px;
+  }
+
+  .progress-rhythm-card {
+    min-height: 66px;
+    padding: 8px;
+  }
+
+  .progress-line-chart {
+    height: 76px;
+  }
+
+  .progress-balance-card,
+  .progress-best-days-card {
+    min-height: 76px;
+  }
+
+  .progress-day-bars,
+  .progress-day-bar {
+    height: 50px;
+    min-height: 50px;
+  }
+
+  .progress-best-card {
+    padding: 7px;
+  }
+}
+
 @media (max-width: 390px) {
   .today-screen,
   .calendar-screen,
@@ -4627,20 +5118,47 @@ button {
   }
 
   .profile-screen {
-    padding-top: 20px;
+    padding-top: 12px;
   }
 
   .profile-header {
-    margin-bottom: 16px;
+    margin-bottom: 8px;
   }
 
-  .profile-header h1 {
-    font-size: clamp(1.92rem, 9.2vw, 2.4rem);
+  .profile-header-avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: 22px;
   }
 
-  .profile-avatar {
-    width: 46px;
-    height: 46px;
+  .profile-header-copy {
+    max-width: calc(50% - 12px);
+  }
+
+  .profile-header-copy strong {
+    font-size: 0.8rem;
+  }
+
+  .profile-header-copy span {
+    font-size: 0.62rem;
+  }
+
+  .profile-account-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .profile-account-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 16px;
+  }
+
+  .profile-account-status {
+    grid-column: auto;
+    justify-self: auto;
+    max-width: none;
+    margin-top: 0;
+    padding: 5px 7px;
   }
 
   .header-actions {
@@ -4654,8 +5172,7 @@ button {
   }
 
   .rhythm-card {
-    grid-template-columns: minmax(0, 1fr) 102px;
-    min-height: 120px;
+    min-height: 78px;
   }
 
   .rhythm-summary {
@@ -4668,8 +5185,15 @@ button {
     height: 27px;
   }
 
-  .rhythm-main strong {
-    font-size: clamp(2.12rem, 10.4vw, 2.72rem);
+  .rhythm-card > .rhythm-chart {
+    width: 64px;
+    height: 20px;
+    right: 10px;
+    bottom: 9px;
+  }
+
+  .rhythm-percent {
+    font-size: clamp(1.92rem, 9.6vw, 2.54rem);
   }
 
   .mini-stats-panel {
@@ -4682,41 +5206,41 @@ button {
   }
 
   .progress-header h1 {
-    font-size: clamp(2.08rem, 10vw, 2.62rem);
+    font-size: clamp(1.44rem, 7vw, 1.86rem);
   }
 
   .progress-kpi-grid,
   .progress-insight-grid {
-    gap: 8px;
+    gap: 5px;
   }
 
   .progress-kpi-card {
-    min-height: 104px;
-    padding: 12px;
+    min-height: 52px;
+    padding: 6px;
   }
 
   .progress-rhythm-card {
-    grid-template-columns: minmax(0, 1fr) 106px;
-    min-height: 122px;
+    grid-template-columns: minmax(0, 1fr) 76px;
+    min-height: 72px;
   }
 
   .progress-balance-content {
-    grid-template-columns: 78px minmax(0, 1fr);
-    gap: 9px;
+    grid-template-columns: 50px minmax(0, 1fr);
+    gap: 5px;
   }
 
   .progress-donut {
-    width: 78px;
-    height: 78px;
+    width: 50px;
+    height: 50px;
   }
 
   .progress-donut::after {
-    inset: 13px;
+    inset: 9px;
   }
 
   .progress-rank-row {
-    grid-template-columns: 26px 28px minmax(62px, 1fr) minmax(60px, 1fr) 38px;
-    gap: 7px;
+    grid-template-columns: 20px 22px minmax(52px, 1fr) minmax(52px, 1fr) 30px;
+    gap: 5px;
   }
 
   .calendar-grid {
