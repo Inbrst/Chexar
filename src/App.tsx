@@ -73,15 +73,14 @@ import {
   saveDailyRecords,
   saveSettings,
 } from "./storage";
-import type { AppScreen, AppSettings, AppState, GoalRepeatMode, Priority, ProgressGoal, TaskItem, TaskRepeatMode } from "./types";
-import { mergeDuplicateActions, mergeGoalIntoState, mergeTaskIntoState } from "./actionMerge";
+import type { AppScreen, AppSettings, AppState, GoalRepeatMode, Priority, ProgressEntry, ProgressGoal, TaskItem, TaskRepeatMode } from "./types";
+import { mergeDuplicateActions, normalizeActionTitle } from "./actionMerge";
+import { hasRemotePersistence, loadRemoteData, saveRemoteSnapshot } from "./supabaseData";
+import { getTelegramUserId, initTelegramWebApp } from "./lib/telegram";
 
 declare global {
   interface Window {
     chexarResetDemo?: () => void;
-    Telegram?: {
-      WebApp?: unknown;
-    };
   }
 }
 
@@ -161,6 +160,7 @@ const profileCopy = {
     telegram: "Telegram Mini App",
     connected: "Connected",
     notFound: "Not found",
+    browserMode: "Browser mode",
     resetData: "Reset data",
     hintsOn: "Hints enabled",
     hintsOff: "Hints disabled",
@@ -198,6 +198,7 @@ const profileCopy = {
     telegram: "Telegram Mini App",
     connected: "Подключено",
     notFound: "Не найдено",
+    browserMode: "Browser mode",
     resetData: "Сбросить данные",
     hintsOn: "Подсказки включены",
     hintsOff: "Подсказки выключены",
@@ -423,7 +424,7 @@ const uiCopy = {
     markDoneTitle: "Mark as done?",
     undoDoneTitle: "Undo completion?",
     rhythmTrendAria: "7-day rhythm trend",
-    dayStatuses: ["Start small", "Needs a push", "Can catch up", "Good pace", "Day closed"],
+    dayStatuses: ["Start day", "In progress", "Can catch up", "Good pace", "Day closed"],
     addSheetTitle: "What to add?",
     addSheetSubtitle: "Create an action for a day or period",
     name: "Name",
@@ -467,6 +468,13 @@ const uiCopy = {
     validationCurrent: "Already done cannot be below 0.",
     validationDate: "End date must not be before start date.",
     validationDays: "Choose at least one weekday.",
+    validationDuplicate: "An action with this name already exists for this day. Change the name or open the existing action.",
+    syncLoading: "Loading Supabase data...",
+    syncSaving: "Saving...",
+    syncError: "Supabase is unavailable. Local mode is active.",
+    syncLocal: "Local mode: add Supabase env variables to sync testers.",
+    syncMissingEnv: "Supabase env is not configured on Vercel.",
+    syncQueryError: "Supabase is connected, but the query failed. Check tables or access.",
     repeatOnce: "Once",
     lowPriority: "Low",
     mediumPriority: "Medium",
@@ -526,7 +534,7 @@ const uiCopy = {
     markDoneTitle: "Отметить выполненной?",
     undoDoneTitle: "Отменить выполнение?",
     rhythmTrendAria: "Тренд ритма за 7 дней",
-    dayStatuses: ["Начни с малого", "Нужен рывок", "Можно догнать", "Хороший темп", "День закрыт"],
+    dayStatuses: ["Начни день", "В процессе", "Можно догнать", "Хороший темп", "День закрыт"],
     addSheetTitle: "Что добавим?",
     addSheetSubtitle: "Создай действие на день или период",
     name: "Название",
@@ -570,6 +578,13 @@ const uiCopy = {
     validationCurrent: "Уже сделано не может быть меньше 0.",
     validationDate: "Дата окончания должна быть не раньше даты начала.",
     validationDays: "Выберите хотя бы один день недели.",
+    validationDuplicate: "Такое название уже есть на этот день. Измени название или открой существующее действие.",
+    syncLoading: "Загружаем данные Supabase...",
+    syncSaving: "Сохраняем...",
+    syncError: "Supabase недоступен. Включен локальный режим.",
+    syncLocal: "Локальный режим: добавь Supabase env для синхронизации тестеров.",
+    syncMissingEnv: "Supabase env не настроен на Vercel.",
+    syncQueryError: "Supabase подключен, но запрос не прошел. Проверь таблицы или доступ.",
     repeatOnce: "Один раз",
     lowPriority: "Низкий",
     mediumPriority: "Средний",
@@ -578,6 +593,7 @@ const uiCopy = {
 } as const;
 
 type UiCopy = (typeof uiCopy)[AppSettings["language"]];
+type SyncStatus = "local" | "missing-env" | "loading" | "ready" | "saving" | "query-error";
 
 type ProgressSheetState = {
   goal: ProgressGoal;
@@ -644,7 +660,7 @@ type ProgressActionRank = {
 };
 
 function createId(prefix: string): string {
-  return `${prefix}-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
+  return globalThis.crypto?.randomUUID?.() ?? `${prefix}-${Math.random().toString(36).slice(2)}`;
 }
 
 function formatNumber(value: number): string {
@@ -1344,6 +1360,11 @@ export default function App() {
   const [activeScreen, setActiveScreen] = useState<AppScreen>("today");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
+  const [remoteUserId, setRemoteUserId] = useState<string | null>(null);
+  const [remoteReady, setRemoteReady] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(
+    hasRemotePersistence() ? "loading" : import.meta.env.PROD ? "missing-env" : "local",
+  );
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const activeProfileCopy = profileCopy[settings.language];
   const activeUiCopy = uiCopy[settings.language];
@@ -1357,7 +1378,7 @@ export default function App() {
       : selectedDate && activeDate < today
         ? activeUiCopy.pastDay
         : undefined;
-  const isTelegramMiniApp = typeof window !== "undefined" && Boolean(window.Telegram?.WebApp);
+  const isTelegramMiniApp = Boolean(getTelegramUserId());
 
   const daily = useMemo(
     () => calculateDailyProgress(appState.goals, appState.tasks, activeDate),
@@ -1393,13 +1414,70 @@ export default function App() {
     () => getLastNDaysCompletionTrend(7, dayRecords, daily.percent, activeDate),
     [activeDate, daily.percent, dayRecords],
   );
-    useEffect(() => {
-      setAppState((state) => mergeDuplicateActions(state));
-    }, []);
+  useEffect(() => {
+    setAppState((state) => mergeDuplicateActions(state));
+  }, []);
+
+  useEffect(() => {
+    initTelegramWebApp();
+  }, []);
+
+  useEffect(() => {
+    if (!hasRemotePersistence()) {
+      setSyncStatus(import.meta.env.PROD ? "missing-env" : "local");
+      return;
+    }
+
+    let cancelled = false;
+
+    setSyncStatus("loading");
+    loadRemoteData(settings)
+      .then((remote) => {
+        if (cancelled) {
+          return;
+        }
+
+        setRemoteUserId(remote.user.id);
+        setAppState(remote.appState);
+        setSettings(remote.settings);
+        setDayRecords(remote.dayRecords);
+        setRemoteReady(true);
+        setSyncStatus("ready");
+      })
+      .catch((error) => {
+        console.error("Failed to load Supabase data", error);
+        if (!cancelled) {
+          setRemoteReady(false);
+          setSyncStatus("query-error");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
     useEffect(() => {
       saveAppState(appState);
     }, [appState]);
+
+  useEffect(() => {
+    if (!remoteReady || !remoteUserId) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setSyncStatus("saving");
+      saveRemoteSnapshot(remoteUserId, appState, settings)
+        .then(() => setSyncStatus("ready"))
+        .catch((error) => {
+          console.error("Failed to save Supabase data", error);
+          setSyncStatus("query-error");
+        });
+    }, 350);
+
+    return () => window.clearTimeout(timeout);
+  }, [appState, remoteReady, remoteUserId, settings]);
 
   useEffect(() => {
     setDayRecords((records) => {
@@ -1613,24 +1691,38 @@ export default function App() {
   }) {
     const title = goal.title.trim();
     const unit = goal.unit.trim();
+    const initialEntry: ProgressEntry[] =
+      goal.currentValue > 0
+        ? [
+            {
+              id: createId("entry"),
+              date: goal.startDate,
+              amount: goal.currentValue,
+            },
+          ]
+        : [];
 
-    setAppState((state) =>
-      mergeGoalIntoState(state, {
-        id: createId("goal"),
-        title,
-        iconType: goal.iconKey === "book" ? "book" : goal.iconKey ? "custom" : "letter",
-        iconKey: goal.iconKey,
-        targetValue: goal.targetValue,
-        currentValue: goal.currentValue,
-        unit,
-        startDate: goal.startDate,
-        endDate: goal.endDate,
-        repeatMode: goal.repeatMode,
-        selectedDays: goal.repeatMode === "selectedDays" ? goal.selectedDays : undefined,
-        quickAddValues: goal.quickAddValues,
-        progressEntries: [],
-      }),
-    );
+    setAppState((state) => ({
+      ...state,
+      goals: [
+        ...state.goals,
+        {
+          id: createId("goal"),
+          title,
+          iconType: goal.iconKey === "book" ? "book" : goal.iconKey ? "custom" : "letter",
+          iconKey: goal.iconKey,
+          targetValue: goal.targetValue,
+          currentValue: goal.currentValue,
+          unit,
+          startDate: goal.startDate,
+          endDate: goal.endDate,
+          repeatMode: goal.repeatMode,
+          selectedDays: goal.repeatMode === "selectedDays" ? goal.selectedDays : undefined,
+          quickAddValues: goal.quickAddValues,
+          progressEntries: initialEntry,
+        },
+      ],
+    }));
   }
 
   function createTask(task: {
@@ -1642,22 +1734,26 @@ export default function App() {
     repeatMode: TaskRepeatMode;
     selectedDays?: number[];
   }) {
-    setAppState((state) =>
-      mergeTaskIntoState(state, {
-        id: createId("task"),
-        title: task.title.trim(),
-        iconType: task.iconKey ? "custom" : "letter",
-        iconKey: task.iconKey,
-        priority: task.priority,
-        startDate: task.startDate,
-        endDate: task.endDate,
-        repeatMode: task.repeatMode,
-        selectedDays: task.repeatMode === "selectedDays" ? task.selectedDays : undefined,
-        date: task.startDate,
-        completed: false,
-        completedDates: [],
-      }),
-    );
+    setAppState((state) => ({
+      ...state,
+      tasks: [
+        ...state.tasks,
+        {
+          id: createId("task"),
+          title: task.title.trim(),
+          iconType: task.iconKey ? "custom" : "letter",
+          iconKey: task.iconKey,
+          priority: task.priority,
+          startDate: task.startDate,
+          endDate: task.endDate,
+          repeatMode: task.repeatMode,
+          selectedDays: task.repeatMode === "selectedDays" ? task.selectedDays : undefined,
+          date: task.startDate,
+          completed: false,
+          completedDates: [],
+        },
+      ],
+    }));
   }
 
   function selectScreen(screen: AppScreen) {
@@ -1679,6 +1775,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <div className="background-glow" />
+      <SyncBanner status={syncStatus} copy={activeUiCopy} />
       {!settings.onboardingCompleted ? (
         <OnboardingScreen
           settings={settings}
@@ -1899,6 +1996,8 @@ export default function App() {
               today={activeDate}
               language={settings.language}
               copy={activeUiCopy}
+              existingGoals={appState.goals}
+              existingTasks={appState.tasks}
               onClose={() => setAddSheetOpen(false)}
               onCreateGoal={(goal) => {
                 createGoal(goal);
@@ -2060,6 +2159,25 @@ function ChexarCheckboxMark() {
   );
 }
 
+function SyncBanner({ status, copy }: { status: SyncStatus; copy: UiCopy }) {
+  if (status === "ready") {
+    return null;
+  }
+
+  const text =
+    status === "loading"
+      ? copy.syncLoading
+      : status === "saving"
+        ? copy.syncSaving
+        : status === "missing-env"
+          ? copy.syncMissingEnv
+          : status === "query-error"
+            ? copy.syncQueryError
+            : copy.syncLocal;
+
+  return <div className={`sync-banner ${status}`}>{text}</div>;
+}
+
 function Header({
   copy,
   dateNote,
@@ -2112,7 +2230,6 @@ function RhythmCard({
   language: AppSettings["language"];
 }) {
   const cardStyle = { "--daily-percent": `${daily.percent}%` } as CSSProperties;
-  const nextAction = daily.totalTodayItems === 0 ? copy.addFirstAction : daily.remainingItems === 0 ? copy.allClosed : daily.nextAction;
 
   return (
     <section
@@ -2135,7 +2252,6 @@ function RhythmCard({
         <div className="summary-stack">
           <span>{copy.left}</span>
           <em>{daily.remainingItems}</em>
-          <strong>{nextAction}</strong>
         </div>
       </div>
     </section>
@@ -3567,7 +3683,7 @@ function ProfileScreen({
 
       <ProfileCard title={copy.about}>
         <ProfileRow icon={Info} label={copy.version} value={APP_VERSION} accent="violet" />
-        <ProfileRow icon={Send} label={copy.telegram} value={isTelegramMiniApp ? copy.connected : copy.notFound} accent="cyan" />
+        <ProfileRow icon={Send} label={copy.telegram} value={isTelegramMiniApp ? copy.connected : copy.browserMode} accent="cyan" />
       </ProfileCard>
 
       <button type="button" className="danger-reset-button" onClick={onResetRequest}>
@@ -3950,6 +4066,8 @@ function AddSheet({
   today,
   language,
   copy,
+  existingGoals,
+  existingTasks,
   onClose,
   onCreateGoal,
   onCreateTask,
@@ -3957,6 +4075,8 @@ function AddSheet({
   today: string;
   language: AppSettings["language"];
   copy: UiCopy;
+  existingGoals: ProgressGoal[];
+  existingTasks: TaskItem[];
   onClose: () => void;
   onCreateGoal: (goal: {
     title: string;
@@ -4024,7 +4144,7 @@ function AddSheet({
     completedDates: [],
   };
   const taskAppearsToday = isTaskDueOnDate(taskPreviewItem, parseDateKey(today), today);
-  const errors =
+  const baseErrors =
     trackingMode === "amount"
       ? getGoalValidationErrors({
           title,
@@ -4043,6 +4163,21 @@ function AddSheet({
           repeatMode: taskRepeatMode,
           selectedDays,
         }, copy);
+  const duplicateError =
+    title.trim() && !baseErrors.includes(copy.validationDate) && !baseErrors.includes(copy.validationDays)
+      ? hasDuplicateActionForSchedule(
+          {
+            title,
+            startDate: dates.startDate,
+            endDate: dates.endDate,
+            repeatMode: trackingMode === "amount" ? repeatMode : taskRepeatMode,
+            selectedDays: trackingMode === "amount" ? activeSelectedDays : taskRepeatMode === "selectedDays" ? selectedDays : undefined,
+          },
+          existingGoals,
+          existingTasks,
+        )
+      : false;
+  const errors = duplicateError ? [...baseErrors, copy.validationDuplicate] : baseErrors;
   const hasUnsavedChanges =
     title.trim() !== "" ||
     targetValue !== "" ||
@@ -4493,6 +4628,126 @@ function getTaskValidationErrors(task: {
   }
 
   return errors;
+}
+
+function hasDuplicateActionForSchedule(
+  candidate: {
+    title: string;
+    startDate: string;
+    endDate: string;
+    repeatMode: GoalRepeatMode | TaskRepeatMode;
+    selectedDays?: number[];
+  },
+  goals: ProgressGoal[],
+  tasks: TaskItem[],
+): boolean {
+  const normalizedTitle = normalizeActionTitle(candidate.title);
+
+  if (!normalizedTitle || candidate.startDate > candidate.endDate) {
+    return false;
+  }
+
+  const goalMatches = goals.some((goal) => {
+    if (normalizeActionTitle(goal.title) !== normalizedTitle) {
+      return false;
+    }
+
+    return schedulesOverlapOnDueDate(candidate, {
+      startDate: goal.startDate,
+      endDate: goal.endDate,
+      repeatMode: goal.repeatMode,
+      selectedDays: goal.selectedDays,
+    });
+  });
+
+  if (goalMatches) {
+    return true;
+  }
+
+  return tasks.some((task) => {
+    if (normalizeActionTitle(task.title) !== normalizedTitle) {
+      return false;
+    }
+
+    return schedulesOverlapOnDueDate(candidate, {
+      startDate: task.startDate,
+      endDate: task.endDate,
+      repeatMode: task.repeatMode,
+      selectedDays: task.selectedDays,
+    });
+  });
+}
+
+function schedulesOverlapOnDueDate(
+  first: {
+    startDate: string;
+    endDate: string;
+    repeatMode: GoalRepeatMode | TaskRepeatMode;
+    selectedDays?: number[];
+  },
+  second: {
+    startDate: string;
+    endDate: string;
+    repeatMode: GoalRepeatMode | TaskRepeatMode;
+    selectedDays?: number[];
+  },
+): boolean {
+  const startDate = first.startDate > second.startDate ? first.startDate : second.startDate;
+  const endDate = first.endDate < second.endDate ? first.endDate : second.endDate;
+
+  if (startDate > endDate) {
+    return false;
+  }
+
+  let cursor = startDate;
+  let guard = 0;
+
+  while (cursor <= endDate && guard < 3700) {
+    const date = parseDateKey(cursor);
+
+    if (isScheduleDueOnDate(first, date, cursor) && isScheduleDueOnDate(second, date, cursor)) {
+      return true;
+    }
+
+    cursor = addDays(cursor, 1);
+    guard += 1;
+  }
+
+  return false;
+}
+
+function isScheduleDueOnDate(
+  schedule: {
+    startDate: string;
+    endDate: string;
+    repeatMode: GoalRepeatMode | TaskRepeatMode;
+    selectedDays?: number[];
+  },
+  date: Date,
+  dateKey: string,
+): boolean {
+  if (schedule.repeatMode === "once") {
+    return dateKey === schedule.startDate;
+  }
+
+  return isGoalDueOnDate(
+    {
+      id: "schedule-check",
+      title: "",
+      iconType: "letter",
+      targetValue: 1,
+      currentValue: 0,
+      unit: "",
+      startDate: schedule.startDate,
+      endDate: schedule.endDate,
+      repeatMode: schedule.repeatMode,
+      selectedDays: schedule.selectedDays,
+      quickAddValues: [],
+      progressEntries: [],
+    },
+    date,
+    dateKey,
+  );
 }
 
 function getRepeatLabel(repeatMode: TaskRepeatMode | GoalRepeatMode, language: AppSettings["language"] = "ru"): string {

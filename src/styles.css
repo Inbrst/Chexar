@@ -287,9 +287,16 @@ html[data-resolved-theme="light"] .empty-sheet-state {
 html[data-resolved-theme="light"] .rhythm-card {
   border-color: rgba(16, 185, 129, 0.24);
   background:
-    radial-gradient(circle at 78% 30%, rgba(20, 184, 166, 0.1), transparent 6rem),
-    linear-gradient(90deg, rgba(16, 185, 129, 0.16), rgba(255, 255, 255, 0.92)),
+    radial-gradient(circle at 16% 0%, rgba(255, 255, 255, 0.72), transparent 8rem),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.94), rgba(244, 247, 246, 0.96)),
     rgba(255, 255, 255, 0.94);
+}
+
+html[data-resolved-theme="light"] .rhythm-fill {
+  background:
+    linear-gradient(100deg, rgba(16, 185, 129, 0.36), rgba(20, 184, 166, 0.24) 62%, rgba(97, 215, 255, 0.12)),
+    radial-gradient(circle at 20% 0%, rgba(255, 255, 255, 0.52), transparent 10rem);
+  box-shadow: 7px 0 15px rgba(16, 185, 129, 0.08);
 }
 
 html[data-resolved-theme="light"] .rhythm-fill {
@@ -308,8 +315,8 @@ html[data-resolved-theme="light"] .mini-stat-item strong {
 }
 
 html[data-resolved-theme="light"] .rhythm-summary {
-  border-left-color: rgba(16, 185, 129, 0.14);
-  background: rgba(241, 245, 244, 0.48);
+  border-left-color: rgba(16, 185, 129, 0.08);
+  background: transparent;
 }
 
 html[data-resolved-theme="light"] .chip {
@@ -818,6 +825,32 @@ button {
   overflow-x: hidden;
 }
 
+.sync-banner {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 8px);
+  left: 50%;
+  z-index: 60;
+  max-width: min(360px, calc(100vw - 28px));
+  padding: 7px 11px;
+  border: 1px solid rgba(176, 158, 255, 0.18);
+  border-radius: 999px;
+  color: #e7defc;
+  background: rgba(13, 12, 20, 0.76);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(16px);
+  transform: translateX(-50%);
+  font-size: 0.72rem;
+  line-height: 1.15;
+  text-align: center;
+  pointer-events: none;
+}
+
+.sync-banner.missing-env,
+.sync-banner.query-error {
+  color: #ffdbe2;
+  border-color: rgba(255, 92, 120, 0.28);
+}
+
 .background-glow {
   position: fixed;
   inset: 0;
@@ -1242,12 +1275,11 @@ button {
   border: 1px solid rgba(154, 128, 255, 0.22);
   border-radius: 19px;
   background:
-    radial-gradient(circle at 14% 0%, rgba(255, 255, 255, 0.09), transparent 9rem),
-    radial-gradient(circle at 78% 36%, rgba(97, 215, 255, 0.08), transparent 6.8rem),
-    linear-gradient(90deg, rgba(124, 92, 255, 0.3), rgba(20, 20, 30, 0.93)),
-    rgba(16, 16, 24, 0.94);
+    radial-gradient(circle at 16% 0%, rgba(255, 255, 255, 0.055), transparent 8rem),
+    linear-gradient(90deg, rgba(18, 18, 28, 0.96), rgba(12, 13, 20, 0.97)),
+    rgba(10, 10, 15, 0.96);
   box-shadow:
-    0 0 18px rgba(124, 92, 255, 0.1),
+    0 0 14px rgba(124, 92, 255, 0.07),
     0 18px 42px rgba(0, 0, 0, 0.26),
     inset 0 0 0 1px rgba(97, 215, 255, 0.02);
   outline: none;
@@ -1262,12 +1294,12 @@ button {
   position: absolute;
   inset: 0 auto 0 0;
   width: var(--daily-percent);
-  min-width: 7px;
+  min-width: 0;
   max-width: 100%;
   background:
-    linear-gradient(100deg, rgba(124, 92, 255, 0.62), rgba(155, 92, 255, 0.3) 66%, rgba(97, 215, 255, 0.14)),
-    radial-gradient(circle at 20% 0%, rgba(255, 255, 255, 0.16), transparent 12rem);
-  box-shadow: 8px 0 20px rgba(124, 92, 255, 0.14);
+    linear-gradient(100deg, rgba(104, 78, 236, 0.58), rgba(135, 88, 255, 0.34) 62%, rgba(97, 215, 255, 0.16)),
+    radial-gradient(circle at 20% 0%, rgba(255, 255, 255, 0.12), transparent 10rem);
+  box-shadow: 7px 0 16px rgba(124, 92, 255, 0.1);
 }
 
 .rhythm-main,
@@ -1340,10 +1372,8 @@ button {
   gap: 4px;
   min-width: 0;
   padding: 8px 8px 8px 9px;
-  border-left: 1px solid rgba(176, 158, 255, 0.16);
-  background:
-    radial-gradient(circle at 70% 22%, rgba(97, 215, 255, 0.08), transparent 4.4rem),
-    rgba(8, 8, 13, 0.24);
+  border-left: 1px solid rgba(176, 158, 255, 0.055);
+  background: transparent;
 }
 
 .chip {
@@ -1354,8 +1384,8 @@ button {
   overflow: hidden;
   color: #dfd6ff;
   border-radius: 999px;
-  background: rgba(124, 92, 255, 0.26);
-  box-shadow: inset 0 0 12px rgba(155, 92, 255, 0.1);
+  background: rgba(124, 92, 255, 0.2);
+  box-shadow: inset 0 0 10px rgba(155, 92, 255, 0.08);
   font-size: 0.58rem;
   line-height: 1.12;
   text-align: center;
@@ -1380,14 +1410,14 @@ button {
 }
 
 .rhythm-chart-shadow {
-  stroke: rgba(97, 215, 255, 0.16);
-  stroke-width: 6;
+  stroke: rgba(97, 215, 255, 0.12);
+  stroke-width: 5;
 }
 
 .rhythm-chart-line {
   filter: url(#rhythm-chart-glow);
   stroke: url(#rhythm-chart-stroke);
-  stroke-width: 3.2;
+  stroke-width: 2.8;
 }
 
 .rhythm-chart-dot-glow {
@@ -1406,7 +1436,7 @@ button {
   gap: 1px 4px;
   min-width: 0;
   padding-top: 3px;
-  border-top: 1px solid rgba(176, 158, 255, 0.08);
+  border-top: 1px solid rgba(176, 158, 255, 0.055);
   color: var(--muted);
 }
 

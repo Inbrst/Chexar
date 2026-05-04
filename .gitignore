@@ -4,3 +4,5 @@ dist/
 vite-dev*.log
 vite.config.js
 vite.config.d.ts
+.env*
+!.env.example

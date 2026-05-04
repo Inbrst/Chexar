@@ -14,7 +14,7 @@ const defaultSettings: AppSettings = {
 };
 
 function id(prefix: string): string {
-  return `${prefix}-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
+  return globalThis.crypto?.randomUUID?.() ?? `${prefix}-${Math.random().toString(36).slice(2)}`;
 }
 
 export function createEmptyState(): AppState {
