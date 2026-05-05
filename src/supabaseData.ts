@@ -1,5 +1,5 @@
 import { supabase } from "./lib/supabase";
-import { getTelegramUser, isBrowserFallbackAllowed } from "./lib/telegram";
+import { getTelegramUser, isBrowserFallbackAllowed, isTelegramUserMissing } from "./lib/telegram";
 import { getDailyCompletionPercent } from "./calculations";
 import { parseDateKey, todayKey } from "./dateUtils";
 import type { AppSettings, AppState, DailyRecord, GoalRepeatMode, ProgressEntry, ProgressGoal, TaskItem, TaskRepeatMode } from "./types";
@@ -292,6 +292,10 @@ function getUserIdentity(): Omit<RemoteUser, "id"> {
       photo_url: telegramUser.photo_url ?? null,
       language_code: telegramUser.language_code ?? null,
     };
+  }
+
+  if (isTelegramUserMissing()) {
+    throw new Error("Telegram WebApp is open, but initDataUnsafe.user is missing.");
   }
 
   if (!isBrowserFallbackAllowed()) {

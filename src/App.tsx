@@ -72,8 +72,8 @@ import {
 import type { AppScreen, AppSettings, AppState, GoalRepeatMode, Priority, ProgressEntry, ProgressGoal, TaskItem, TaskRepeatMode } from "./types";
 import { mergeDuplicateActions, normalizeActionTitle } from "./actionMerge";
 import { hasRemotePersistence, loadRemoteData, saveRemoteSnapshot } from "./supabaseData";
-import { getTelegramUser, getTelegramUserId, initTelegramWebApp } from "./lib/telegram";
-import type { TelegramUser } from "./lib/telegram";
+import { getTelegramConnectionStatus, getTelegramUser, initTelegramWebApp } from "./lib/telegram";
+import type { TelegramConnectionStatus, TelegramUser } from "./lib/telegram";
 
 declare global {
   interface Window {
@@ -1275,7 +1275,7 @@ function getProgressActionRanks(range: Date[], appState: AppState, today: string
   return [...goalRanks, ...taskRanks]
     .filter((rank) => rank.dueCount > 0)
     .sort((left, right) => right.percent - left.percent)
-    .slice(0, 3)
+    .slice(0, 5)
     .map(({ dueCount: _dueCount, ...rank }) => rank);
 }
 
@@ -1391,6 +1391,8 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
   const [remoteUserId, setRemoteUserId] = useState<string | null>(null);
   const [remoteReady, setRemoteReady] = useState(false);
+  const [telegramUser, setTelegramUser] = useState<TelegramUser | null>(() => getTelegramUser());
+  const [telegramStatus, setTelegramStatus] = useState<TelegramConnectionStatus>(() => getTelegramConnectionStatus());
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(
     hasRemotePersistence() ? "loading" : import.meta.env.PROD ? "missing-env" : "local",
   );
@@ -1407,9 +1409,6 @@ export default function App() {
       : selectedDate && activeDate < today
         ? activeUiCopy.pastDay
         : undefined;
-  const telegramUser = getTelegramUser();
-  const isTelegramMiniApp = Boolean(getTelegramUserId());
-
   const daily = useMemo(
     () => calculateDailyProgress(appState.goals, appState.tasks, activeDate),
     [activeDate, appState.goals, appState.tasks],
@@ -1443,6 +1442,8 @@ export default function App() {
 
   useEffect(() => {
     initTelegramWebApp();
+    setTelegramUser(getTelegramUser());
+    setTelegramStatus(getTelegramConnectionStatus());
   }, []);
 
   useEffect(() => {
@@ -1817,7 +1818,7 @@ export default function App() {
             <ProfileScreen
               settings={settings}
               telegramUser={telegramUser}
-              isTelegramMiniApp={isTelegramMiniApp}
+              telegramStatus={telegramStatus}
               onSettingsChange={(nextSettings) => setSettings((current) => ({ ...current, ...nextSettings }))}
               onResetRequest={() => setResetConfirmOpen(true)}
             />
@@ -3021,7 +3022,7 @@ function ProgressScreen({
   };
 
   return (
-    <main className="progress-screen">
+    <main className={`progress-screen ${!hasAnyData ? "progress-screen-empty" : ""}`}>
       <div className="progress-period-tabs" role="group" aria-label={copy.period}>
         {periodOptions.map((option) => (
           <button
@@ -3658,13 +3659,13 @@ function CalendarProgressEntrySection({
 function ProfileScreen({
   settings,
   telegramUser,
-  isTelegramMiniApp,
+  telegramStatus,
   onSettingsChange,
   onResetRequest,
 }: {
   settings: AppSettings;
   telegramUser: TelegramUser | null;
-  isTelegramMiniApp: boolean;
+  telegramStatus: TelegramConnectionStatus;
   onSettingsChange: (settings: Partial<AppSettings>) => void;
   onResetRequest: () => void;
 }) {
@@ -3678,7 +3679,12 @@ function ProfileScreen({
 
   return (
     <main className="profile-screen">
-      <ProfileHeader telegramUser={telegramUser} isTelegramMiniApp={isTelegramMiniApp} copy={copy} />
+      <ProfileHeader
+        telegramUser={telegramUser}
+        telegramStatus={telegramStatus}
+        copy={copy}
+        language={settings.language}
+      />
 
       <ProfileCard title={copy.interface}>
         <div className="profile-setting-block">
@@ -3748,17 +3754,27 @@ function ProfileScreen({
 
 function ProfileHeader({
   telegramUser,
-  isTelegramMiniApp,
+  telegramStatus,
   copy,
+  language,
 }: {
   telegramUser: TelegramUser | null;
-  isTelegramMiniApp: boolean;
+  telegramStatus: TelegramConnectionStatus;
   copy: (typeof profileCopy)[AppSettings["language"]];
+  language: AppSettings["language"];
 }) {
   const displayName = telegramUser ? [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(" ").trim() : "";
   const title = displayName || copy.browserModeTitle;
   const subtitle = telegramUser?.username ? `@${telegramUser.username}` : copy.browserModeSubtitle;
-  const status = isTelegramMiniApp ? copy.telegramConnected : copy.browserModeStatus;
+  const isConnected = telegramStatus === "connected";
+  const status =
+    telegramStatus === "connected"
+      ? copy.telegramConnected
+      : telegramStatus === "missing-user"
+        ? language === "en"
+          ? "Telegram is open, but user was not passed"
+          : "Telegram открыт, но пользователь не передан"
+        : copy.browserModeStatus;
 
   return (
     <header className="profile-header">
@@ -3767,7 +3783,7 @@ function ProfileHeader({
         <span>{subtitle}</span>
       </div>
       <ProfileHeaderAvatar telegramUser={telegramUser} label={copy.profileAria} />
-      <span className={`profile-account-status ${isTelegramMiniApp ? "connected" : "browser"}`}>{status}</span>
+      <span className={`profile-account-status ${isConnected ? "connected" : "browser"}`}>{status}</span>
     </header>
   );
 }
@@ -3777,32 +3793,6 @@ function ProfileCard({ title, children }: { title: string; children: React.React
     <section className="profile-card">
       <h2>{title}</h2>
       <div className="profile-card-rows">{children}</div>
-    </section>
-  );
-}
-
-function ProfileAccountCard({
-  telegramUser,
-  isTelegramMiniApp,
-  copy,
-}: {
-  telegramUser: TelegramUser | null;
-  isTelegramMiniApp: boolean;
-  copy: (typeof profileCopy)[AppSettings["language"]];
-}) {
-  const displayName = telegramUser ? [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(" ").trim() : "";
-  const title = displayName || copy.browserModeTitle;
-  const subtitle = telegramUser?.username ? `@${telegramUser.username}` : copy.browserModeSubtitle;
-  const status = isTelegramMiniApp ? copy.telegramConnected : copy.browserModeStatus;
-
-  return (
-    <section className="profile-account-card" aria-label={copy.account}>
-      <div className="profile-account-copy">
-        <span>{copy.account}</span>
-        <strong>{title}</strong>
-        <small>{subtitle}</small>
-      </div>
-      <span className={`profile-account-status ${isTelegramMiniApp ? "connected" : "browser"}`}>{status}</span>
     </section>
   );
 }

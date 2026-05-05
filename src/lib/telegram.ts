@@ -8,6 +8,7 @@ export type TelegramUser = {
 };
 
 export type TelegramWebApp = {
+  initData?: string;
   initDataUnsafe?: {
     user?: TelegramUser;
   };
@@ -31,6 +32,10 @@ export function getTelegramWebApp(): TelegramWebApp | null {
   return window.Telegram?.WebApp ?? null;
 }
 
+export function hasTelegramWebAppSdk(): boolean {
+  return getTelegramWebApp() !== null;
+}
+
 export function getTelegramUser(): TelegramUser | null {
   const user = getTelegramWebApp()?.initDataUnsafe?.user;
 
@@ -43,15 +48,69 @@ export function getTelegramUserId(): string | null {
   return user ? String(user.id) : null;
 }
 
+export function isTelegramMiniApp(): boolean {
+  const webApp = getTelegramWebApp();
+
+  return Boolean(webApp && (webApp.initData || getTelegramUser()));
+}
+
+export function isTelegramUserMissing(): boolean {
+  const webApp = getTelegramWebApp();
+
+  return Boolean(webApp?.initData && !getTelegramUser());
+}
+
+export type TelegramConnectionStatus = "connected" | "missing-user" | "browser";
+
+export function getTelegramConnectionStatus(): TelegramConnectionStatus {
+  if (getTelegramUser()) {
+    return "connected";
+  }
+
+  if (isTelegramUserMissing()) {
+    return "missing-user";
+  }
+
+  return "browser";
+}
+
 export function initTelegramWebApp(): void {
   const webApp = getTelegramWebApp();
+
+  logTelegramDebugInfo();
 
   if (!webApp) {
     return;
   }
 
-  webApp.ready?.();
-  webApp.expand?.();
+  try {
+    webApp.ready?.();
+  } catch (error) {
+    console.warn("[telegram] WebApp.ready failed", error);
+  }
+
+  try {
+    webApp.expand?.();
+  } catch (error) {
+    console.warn("[telegram] WebApp.expand failed", error);
+  }
+}
+
+export function logTelegramDebugInfo(): void {
+  if (!import.meta.env.DEV || typeof window === "undefined") {
+    return;
+  }
+
+  const webApp = getTelegramWebApp();
+  const user = getTelegramUser();
+
+  console.info("[telegram] environment", {
+    hasTelegram: Boolean(window.Telegram),
+    hasWebApp: Boolean(webApp),
+    hasInitData: Boolean(webApp?.initData),
+    hasInitDataUnsafeUser: Boolean(webApp?.initDataUnsafe?.user),
+    userId: user ? String(user.id) : null,
+  });
 }
 
 export function isBrowserFallbackAllowed(): boolean {
