@@ -26,6 +26,9 @@
   --bottom-nav-offset: max(8px, env(safe-area-inset-bottom));
   --bottom-stack-padding: calc(var(--bottom-nav-height) + var(--bottom-nav-offset) + 52px);
   --bottom-safe-padding: var(--bottom-stack-padding);
+  --telegram-safe-area-top: 0px;
+  --app-safe-area-top: max(env(safe-area-inset-top), var(--telegram-safe-area-top));
+  --screen-top-padding: calc(var(--app-safe-area-top) + 56px);
 }
 
 html[data-resolved-theme="light"] {
@@ -1224,7 +1227,7 @@ button {
   min-height: 100vh;
   min-height: 100dvh;
   margin: 0 auto;
-  padding: 14px 18px var(--bottom-stack-padding);
+  padding: var(--screen-top-padding) 18px var(--bottom-stack-padding);
 }
 
 .hero-header {
@@ -1233,7 +1236,7 @@ button {
   align-items: center;
   justify-content: stretch;
   gap: 12px;
-  margin-bottom: 6px;
+  margin-bottom: 18px;
 }
 
 .brand {
@@ -1326,19 +1329,22 @@ button {
 .hero-date {
   justify-self: center;
   min-width: 0;
-  max-width: 13rem;
+  max-width: 15rem;
   overflow: hidden;
   color: rgba(255, 255, 255, 0.9);
   font-family: "SF Pro Rounded", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
-  font-size: clamp(1.08rem, 5.2vw, 1.44rem);
+  font-size: clamp(1.42rem, 7vw, 2rem);
   font-variant-numeric: tabular-nums;
-  font-weight: 840;
-  letter-spacing: 0.015em;
-  line-height: 1;
+  font-weight: 880;
+  letter-spacing: -0.01em;
+  line-height: 0.96;
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-shadow: 0 0 14px rgba(124, 92, 255, 0.18);
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 18px rgba(124, 92, 255, 0.22),
+    0 10px 26px rgba(0, 0, 0, 0.22);
 }
 
 .header-actions {
@@ -2288,6 +2294,10 @@ button {
     transform 0.18s ease;
 }
 
+.task-row.with-timer {
+  grid-template-columns: minmax(0, 1fr) auto 30px;
+}
+
 .task-row-main {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
@@ -2365,10 +2375,36 @@ button {
 }
 
 .task-title small {
-  display: block;
-  margin-top: 2px;
+  display: inline-block;
+  margin: 2px 6px 0 0;
   color: #bdb6ca;
   font-size: 0.58rem;
+}
+
+.task-timer-actions {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.task-timer-button {
+  min-height: 26px;
+  padding: 0 7px;
+  border: 1px solid rgba(176, 158, 255, 0.16);
+  border-radius: 10px;
+  color: #d9d2ef;
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 0.58rem;
+  font-weight: 780;
+}
+
+.task-timer-button.primary {
+  color: #f5f1ff;
+  border-color: rgba(124, 92, 255, 0.34);
+  background:
+    linear-gradient(145deg, rgba(124, 92, 255, 0.22), rgba(97, 215, 255, 0.06)),
+    rgba(10, 11, 18, 0.54);
+  box-shadow: 0 0 12px rgba(124, 92, 255, 0.12);
 }
 
 .task-row.completed .task-title {
@@ -2461,6 +2497,194 @@ button {
   bottom: -3px;
   width: 10px;
   transform: rotate(8deg);
+}
+
+.subitems-builder {
+  display: grid;
+  gap: 7px;
+}
+
+.timer-builder {
+  display: grid;
+  gap: 7px;
+}
+
+.due-time-builder {
+  display: grid;
+  gap: 7px;
+}
+
+.subitems-toggle,
+.subitem-add-row,
+.timer-toggle,
+.due-time-toggle {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid rgba(176, 158, 255, 0.16);
+  border-radius: 12px;
+  color: #ded8f3;
+  background: rgba(10, 11, 18, 0.48);
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+.subitems-builder.open .subitems-toggle {
+  border-color: rgba(124, 92, 255, 0.38);
+  color: #f2edff;
+  background:
+    linear-gradient(145deg, rgba(124, 92, 255, 0.18), rgba(97, 215, 255, 0.04)),
+    rgba(10, 11, 18, 0.64);
+}
+
+.timer-builder.open .timer-toggle {
+  border-color: rgba(124, 92, 255, 0.38);
+  color: #f2edff;
+  background:
+    linear-gradient(145deg, rgba(124, 92, 255, 0.18), rgba(97, 215, 255, 0.04)),
+    rgba(10, 11, 18, 0.64);
+}
+
+.due-time-builder.open .due-time-toggle {
+  border-color: rgba(124, 92, 255, 0.38);
+  color: #f2edff;
+  background:
+    linear-gradient(145deg, rgba(124, 92, 255, 0.18), rgba(97, 215, 255, 0.04)),
+    rgba(10, 11, 18, 0.64);
+}
+
+.timer-draft-row {
+  display: grid;
+  gap: 5px;
+}
+
+.due-time-row {
+  display: grid;
+  gap: 5px;
+}
+
+.due-time-row input {
+  min-height: 38px;
+}
+
+.timer-draft-row input {
+  min-height: 38px;
+}
+
+.timer-draft-row small {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.due-meta {
+  display: inline-block;
+  max-width: 100%;
+  margin-top: 2px;
+  color: #c9c1dc;
+  font-size: 0.62rem;
+  font-weight: 680;
+  line-height: 1.05;
+  white-space: nowrap;
+}
+
+.subitems-draft-list {
+  display: grid;
+  gap: 6px;
+}
+
+.subitem-draft-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px 32px;
+  gap: 6px;
+  align-items: center;
+}
+
+.subitem-draft-row input {
+  min-height: 38px;
+}
+
+.subitem-draft-row button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid rgba(176, 158, 255, 0.14);
+  border-radius: 10px;
+  color: #d7ceef;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.subitems-sheet-list {
+  display: grid;
+  gap: 7px;
+}
+
+.subitem-sheet-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 6px 8px;
+  border: 1px solid rgba(176, 158, 255, 0.14);
+  border-radius: 14px;
+  background: rgba(13, 14, 22, 0.58);
+}
+
+.subitem-sheet-row.completed {
+  opacity: 0.72;
+  border-color: rgba(155, 92, 255, 0.24);
+  background:
+    linear-gradient(90deg, rgba(124, 92, 255, 0.18), rgba(13, 14, 22, 0.72)),
+    rgba(13, 14, 22, 0.58);
+}
+
+.subitem-toggle {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  color: #f8f5ff;
+  background: transparent;
+  text-align: left;
+}
+
+.subitem-toggle strong {
+  overflow: hidden;
+  font-size: 0.86rem;
+  font-weight: 680;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subitem-counter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.subitem-counter span {
+  min-width: 34px;
+  color: #cfc7df;
+  font-size: 0.72rem;
+  font-weight: 780;
+  text-align: right;
+}
+
+.subitem-counter button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid rgba(124, 92, 255, 0.24);
+  border-radius: 10px;
+  color: #f3edff;
+  background: rgba(124, 92, 255, 0.14);
 }
 
 .task-x-mark span:nth-child(2)::before {
@@ -2730,7 +2954,7 @@ html[data-resolved-theme="light"] .bottom-nav button.active {
   min-height: 100vh;
   min-height: 100dvh;
   margin: 0 auto;
-  padding: 16px 18px calc(var(--bottom-nav-height) + env(safe-area-inset-bottom) + 18px);
+  padding: var(--screen-top-padding) 18px calc(var(--bottom-nav-height) + env(safe-area-inset-bottom) + 18px);
 }
 
 .calendar-header {
@@ -2940,9 +3164,31 @@ html[data-resolved-theme="light"] .bottom-nav button.active {
   position: relative;
   z-index: 1;
   color: #a7a1b2;
-  font-size: 0.83rem;
+  font-size: 0.78rem;
   font-weight: 760;
   line-height: 1;
+}
+
+.calendar-day small {
+  position: relative;
+  z-index: 1;
+  color: rgba(232, 227, 246, 0.78);
+  font-size: 0.64rem;
+  font-weight: 760;
+  line-height: 1;
+}
+
+.calendar-day-count {
+  letter-spacing: 0.01em;
+}
+
+.calendar-day-planned {
+  min-width: 18px;
+  padding: 2px 6px;
+  border: 1px solid rgba(176, 158, 255, 0.14);
+  border-radius: 999px;
+  color: rgba(221, 216, 235, 0.8);
+  background: rgba(255, 255, 255, 0.035);
 }
 
 .calendar-day i {
@@ -3504,7 +3750,7 @@ html[data-resolved-theme="light"] .bottom-nav button.active {
   min-height: 0;
   margin: 0 auto;
   overflow: hidden;
-  padding: 10px 14px calc(var(--bottom-nav-height) + var(--bottom-nav-offset) + 6px);
+  padding: var(--screen-top-padding) 14px calc(var(--bottom-nav-height) + var(--bottom-nav-offset) + 6px);
 }
 
 .progress-screen-empty {
@@ -4113,7 +4359,7 @@ html[data-resolved-theme="light"] .bottom-nav button.active {
   min-height: 100vh;
   min-height: 100dvh;
   margin: 0 auto;
-  padding: 12px 16px var(--bottom-stack-padding);
+  padding: var(--screen-top-padding) 16px var(--bottom-stack-padding);
 }
 
 .profile-header {
@@ -5216,7 +5462,7 @@ html[data-resolved-theme="light"] .bottom-nav button.active {
       minmax(76px, 0.92fr)
       minmax(0, 1fr);
     gap: 5px;
-    padding-top: 9px;
+    padding-top: var(--screen-top-padding);
     padding-bottom: calc(var(--bottom-nav-height) + var(--bottom-nav-offset) + 4px);
   }
 
@@ -5288,10 +5534,6 @@ html[data-resolved-theme="light"] .bottom-nav button.active {
   .profile-screen {
     padding-right: 14px;
     padding-left: 14px;
-  }
-
-  .profile-screen {
-    padding-top: 12px;
   }
 
   .profile-header {

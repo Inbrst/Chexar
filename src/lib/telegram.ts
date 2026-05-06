@@ -12,8 +12,21 @@ export type TelegramWebApp = {
   initDataUnsafe?: {
     user?: TelegramUser;
   };
+  safeAreaInset?: {
+    top?: number;
+    bottom?: number;
+    left?: number;
+    right?: number;
+  };
+  contentSafeAreaInset?: {
+    top?: number;
+    bottom?: number;
+    left?: number;
+    right?: number;
+  };
   ready?: () => void;
   expand?: () => void;
+  onEvent?: (eventType: string, eventHandler: () => void) => void;
 };
 
 declare global {
@@ -94,6 +107,30 @@ export function initTelegramWebApp(): void {
   } catch (error) {
     console.warn("[telegram] WebApp.expand failed", error);
   }
+
+  applyTelegramSafeArea(webApp);
+
+  try {
+    webApp.onEvent?.("safeAreaChanged", () => applyTelegramSafeArea(webApp));
+    webApp.onEvent?.("contentSafeAreaChanged", () => applyTelegramSafeArea(webApp));
+    webApp.onEvent?.("viewportChanged", () => applyTelegramSafeArea(webApp));
+  } catch (error) {
+    console.warn("[telegram] WebApp safe area listener failed", error);
+  }
+}
+
+function applyTelegramSafeArea(webApp = getTelegramWebApp()): void {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  const topInset = Math.max(
+    Number(webApp?.safeAreaInset?.top ?? 0),
+    Number(webApp?.contentSafeAreaInset?.top ?? 0),
+    0,
+  );
+
+  document.documentElement.style.setProperty("--telegram-safe-area-top", `${topInset}px`);
 }
 
 export function logTelegramDebugInfo(): void {

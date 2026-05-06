@@ -1,4 +1,4 @@
-import type { AppSettings, AppState, DailyRecord } from "./types";
+import type { ActionSubitem, ActionSubitemStateByDate, ActionTimerStateByDate, AppSettings, AppState, DailyRecord } from "./types";
 import { addDays, todayKey } from "./dateUtils";
 import { mergeDuplicateActions } from "./actionMerge";
 
@@ -163,7 +163,10 @@ function migrateAppState(state: AppState): AppState {
         iconKey: goal.iconKey ?? (goal.iconType === "book" ? "book" : undefined),
         repeatMode: goal.repeatMode ?? "everyDay",
         selectedDays: Array.isArray(goal.selectedDays) ? goal.selectedDays : undefined,
+        dueTime: normalizeDueTime(goal.dueTime),
         progressEntries: Array.isArray(goal.progressEntries) ? goal.progressEntries : [],
+        completedAtByDate: normalizeDateStringMap(goal.completedAtByDate),
+        lateDates: Array.isArray(goal.lateDates) ? Array.from(new Set(goal.lateDates)).sort() : undefined,
         quickAddValues: Array.isArray(goal.quickAddValues) ? goal.quickAddValues : [],
       };
     }),
@@ -175,6 +178,19 @@ function migrateAppState(state: AppState): AppState {
           : [];
       const startDate = task.startDate ?? today;
       const endDate = task.endDate ?? today;
+      const subitems = normalizeSubitems(task.subitems);
+      const subitemStateByDate = normalizeSubitemStateByDate(task.subitemStateByDate, subitems);
+      const timerMinutes = Number(task.timerMinutes);
+      const hasTimer = subitems.length === 0 && Number.isFinite(timerMinutes) && timerMinutes > 0;
+      const timerStateByDate = hasTimer ? normalizeTimerStateByDate(task.timerStateByDate) : {};
+      const mergedCompletedDates = Array.from(
+        new Set([
+          ...completedDates,
+          ...Object.entries(timerStateByDate)
+            .filter(([, state]) => state.completed === true || Number(state.secondsDone ?? 0) >= timerMinutes * 60)
+            .map(([date]) => date),
+        ]),
+      ).sort();
 
       return {
         ...task,
@@ -183,14 +199,155 @@ function migrateAppState(state: AppState): AppState {
         note: typeof task.note === "string" && task.note.trim() ? task.note.trim() : undefined,
         repeatMode: task.repeatMode ?? "once",
         selectedDays: Array.isArray(task.selectedDays) ? task.selectedDays : undefined,
+        dueTime: normalizeDueTime(task.dueTime),
         iconType: task.iconKey ? "custom" : (task.iconType ?? "letter"),
         iconKey: task.iconKey,
         date: task.date ?? startDate,
-        completedDates,
-        completed: completedDates.includes(today),
+        completedDates: mergedCompletedDates,
+        completedAtByDate: normalizeDateStringMap(task.completedAtByDate),
+        lateDates: Array.isArray(task.lateDates) ? Array.from(new Set(task.lateDates)).sort() : undefined,
+        subitems: subitems.length > 0 ? subitems : undefined,
+        subitemStateByDate: Object.keys(subitemStateByDate).length > 0 ? subitemStateByDate : undefined,
+        timerMinutes: hasTimer ? timerMinutes : undefined,
+        timerStateByDate: Object.keys(timerStateByDate).length > 0 ? timerStateByDate : undefined,
+        completed: mergedCompletedDates.includes(today),
       };
     }),
   });
+}
+
+function normalizeSubitems(subitems: unknown): ActionSubitem[] {
+  if (!Array.isArray(subitems)) {
+    return [];
+  }
+
+  return subitems
+    .map((subitem): ActionSubitem | null => {
+      if (!subitem || typeof subitem !== "object") {
+        return null;
+      }
+
+      const record = subitem as Record<string, unknown>;
+      const title = typeof record.title === "string" ? record.title.trim() : "";
+
+      if (!title) {
+        return null;
+      }
+
+      const targetCount = Number(record.targetCount);
+
+      const normalized: ActionSubitem = {
+        id: typeof record.id === "string" && record.id.trim() ? record.id : id("subitem"),
+        title,
+      };
+
+      if (Number.isFinite(targetCount) && targetCount > 1) {
+        normalized.targetCount = Math.floor(targetCount);
+      }
+
+      return normalized;
+    })
+    .filter((subitem): subitem is ActionSubitem => subitem !== null);
+}
+
+function normalizeSubitemStateByDate(value: unknown, subitems: ActionSubitem[]): ActionSubitemStateByDate {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+
+  const subitemIds = new Set(subitems.map((subitem) => subitem.id));
+  const result: ActionSubitemStateByDate = {};
+
+  Object.entries(value as Record<string, unknown>).forEach(([date, states]) => {
+    if (!states || typeof states !== "object") {
+      return;
+    }
+
+    const dayState: ActionSubitemStateByDate[string] = {};
+
+    Object.entries(states as Record<string, unknown>).forEach(([subitemId, state]) => {
+      if (!subitemIds.has(subitemId) || !state || typeof state !== "object") {
+        return;
+      }
+
+      const record = state as Record<string, unknown>;
+      const count = Number(record.count);
+      dayState[subitemId] = {
+        completed: record.completed === true,
+        count: Number.isFinite(count) && count > 0 ? count : undefined,
+      };
+    });
+
+    if (Object.keys(dayState).length > 0) {
+      result[date] = dayState;
+    }
+  });
+
+  return result;
+}
+
+function normalizeTimerStateByDate(value: unknown): ActionTimerStateByDate {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+
+  const result: ActionTimerStateByDate = {};
+
+  Object.entries(value as Record<string, unknown>).forEach(([date, state]) => {
+    if (!state || typeof state !== "object") {
+      return;
+    }
+
+    const record = state as Record<string, unknown>;
+    const secondsDone = Number(record.secondsDone);
+    const dayState = {
+      completed: record.completed === true,
+      secondsDone: Number.isFinite(secondsDone) && secondsDone > 0 ? Math.round(secondsDone) : undefined,
+    };
+
+    if (dayState.completed || dayState.secondsDone) {
+      result[date] = dayState;
+    }
+  });
+
+  return result;
+}
+
+function normalizeDueTime(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const match = value.match(/^(\d{1,2}):(\d{2})/);
+
+  if (!match) {
+    return undefined;
+  }
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+    return undefined;
+  }
+
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function normalizeDateStringMap(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const result: Record<string, string> = {};
+
+  Object.entries(value as Record<string, unknown>).forEach(([date, timestamp]) => {
+    if (typeof timestamp === "string" && timestamp.trim()) {
+      result[date] = timestamp;
+    }
+  });
+
+  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 export function saveAppState(state: AppState): void {

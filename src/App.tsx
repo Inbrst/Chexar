@@ -49,9 +49,13 @@ import {
   getMonthRange,
   getMonthAverageCompletion,
   getRequiredToday,
+  getTaskSubitemProgress,
+  getTaskTimerProgress,
   getTodayLoggedAmount,
   getWeekRange,
   getWeekAverageCompletion,
+  hasTaskSubitems,
+  hasTaskTimer,
   isGoalDueOnDate,
   isTaskCompletedOnDate,
   isTaskDueOnDate,
@@ -69,7 +73,7 @@ import {
   saveDailyRecords,
   saveSettings,
 } from "./storage";
-import type { AppScreen, AppSettings, AppState, GoalRepeatMode, Priority, ProgressEntry, ProgressGoal, TaskItem, TaskRepeatMode } from "./types";
+import type { ActionSubitem, ActionSubitemState, AppScreen, AppSettings, AppState, GoalRepeatMode, Priority, ProgressEntry, ProgressGoal, TaskItem, TaskRepeatMode } from "./types";
 import { mergeDuplicateActions, normalizeActionTitle } from "./actionMerge";
 import { hasRemotePersistence, loadRemoteData, saveRemoteSnapshot } from "./supabaseData";
 import { getTelegramConnectionStatus, getTelegramUser, initTelegramWebApp } from "./lib/telegram";
@@ -466,6 +470,22 @@ const uiCopy = {
     inDay: "Per day",
     inWeek: "Per week",
     format: "Format",
+    timer: "Timer",
+    addTimer: "Add timer",
+    timerMinutes: "Minutes",
+    timerRule: "Timer and checklist cannot be enabled together.",
+    timerStart: "Start",
+    timerPause: "Pause",
+    timerContinue: "Continue",
+    timerFinish: "Finish",
+    timerDone: "Timer done",
+    remainingTime: "Left",
+    dueBefore: "Do before",
+    addDueTime: "Do before time",
+    dueOnTime: "on time",
+    dueLate: "late",
+    dueOverdue: "overdue",
+    dueLeft: "left",
     advanced: "More",
     progressTemplates: "With progress",
     checklistTemplates: "Checklist",
@@ -576,6 +596,22 @@ const uiCopy = {
     inDay: "В день",
     inWeek: "В неделю",
     format: "Формат",
+    timer: "Таймер",
+    addTimer: "Добавить таймер",
+    timerMinutes: "Минуты",
+    timerRule: "Таймер и список нельзя включить одновременно.",
+    timerStart: "Старт",
+    timerPause: "Пауза",
+    timerContinue: "Продолжить",
+    timerFinish: "Завершить",
+    timerDone: "Таймер завершен",
+    remainingTime: "Осталось",
+    dueBefore: "Сделать до",
+    addDueTime: "Сделать до времени",
+    dueOnTime: "вовремя",
+    dueLate: "поздно",
+    dueOverdue: "просрочено",
+    dueLeft: "осталось",
     advanced: "Дополнительно",
     progressTemplates: "С прогрессом",
     checklistTemplates: "Чек-лист",
@@ -635,6 +671,17 @@ type EditState =
     }
   | null;
 
+type SubitemsSheetState = {
+  task: TaskItem;
+} | null;
+
+type RunningTimerState = {
+  dateKey: string;
+  startedAt: number;
+  baseSeconds: number;
+  lastSavedAt: number;
+};
+
 type CalendarDayDetail = {
   id: string;
   title: string;
@@ -643,6 +690,8 @@ type CalendarDayDetail = {
 
 type CalendarDayDetails = {
   percent: number;
+  completedActions: number;
+  totalActions: number;
   completed: CalendarDayDetail[];
   remaining: CalendarDayDetail[];
   missed: CalendarDayDetail[];
@@ -674,6 +723,95 @@ function formatNumber(value: number): string {
   return new Intl.NumberFormat("ru-RU", {
     maximumFractionDigits: Number.isInteger(value) ? 0 : 1,
   }).format(value);
+}
+
+function formatTimerDuration(totalSeconds: number): string {
+  const seconds = Math.max(Math.round(totalSeconds), 0);
+  const minutesPart = Math.floor(seconds / 60);
+  const secondsPart = seconds % 60;
+
+  return `${minutesPart}:${String(secondsPart).padStart(2, "0")}`;
+}
+
+function normalizeDueTimeInput(value: string): string | undefined {
+  const match = value.match(/^(\d{1,2}):(\d{2})/);
+
+  if (!match) {
+    return undefined;
+  }
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+    return undefined;
+  }
+
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function getDueDateTime(dateKey: string, dueTime: string): Date {
+  const date = parseDateKey(dateKey);
+  const [hours, minutes] = dueTime.split(":").map(Number);
+  date.setHours(hours || 0, minutes || 0, 0, 0);
+
+  return date;
+}
+
+function isLateForDueTime(dateKey: string, dueTime: string | undefined, completedAt: string): boolean {
+  if (!dueTime) {
+    return false;
+  }
+
+  return new Date(completedAt).getTime() > getDueDateTime(dateKey, dueTime).getTime();
+}
+
+function formatDueMeta(
+  dueTime: string | undefined,
+  dateKey: string,
+  completed: boolean,
+  completedAt: string | undefined,
+  isLate: boolean,
+  nowMs: number,
+  copy: UiCopy,
+): string | undefined {
+  if (!dueTime) {
+    return undefined;
+  }
+
+  if (completed) {
+    return `${copy.dueBefore} ${dueTime} · ${isLate ? copy.dueLate : copy.dueOnTime}`;
+  }
+
+  const dueMs = getDueDateTime(dateKey, dueTime).getTime();
+  const today = todayKey();
+
+  if (dateKey > today) {
+    return `${copy.dueBefore} ${dueTime}`;
+  }
+
+  if (completedAt) {
+    return `${copy.dueBefore} ${dueTime} · ${isLateForDueTime(dateKey, dueTime, completedAt) ? copy.dueLate : copy.dueOnTime}`;
+  }
+
+  if (nowMs > dueMs || dateKey < today) {
+    return `${copy.dueBefore} ${dueTime} · ${copy.dueOverdue}`;
+  }
+
+  const remainingMinutes = Math.max(Math.ceil((dueMs - nowMs) / 60000), 0);
+
+  return `${copy.dueBefore} ${dueTime} · ${copy.dueLeft} ${formatShortMinutes(remainingMinutes)}`;
+}
+
+function formatShortMinutes(minutes: number): string {
+  if (minutes >= 60) {
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+
+    return rest > 0 ? `${hours}ч ${rest}м` : `${hours}ч`;
+  }
+
+  return `${minutes} мин`;
 }
 
 function getActiveDate(selectedDate: string | null, todayDateKey: string): string {
@@ -715,6 +853,28 @@ function getDefaultQuickValues(unit: string): number[] {
   }
 
   return [1, 5];
+}
+
+function getSubitemCopy(language: AppSettings["language"]) {
+  return language === "en"
+    ? {
+        addList: "Add checklist",
+        addItem: "Add item",
+        titlePlaceholder: "Item",
+        countPlaceholder: "Count",
+        remove: "Remove",
+        progress: "done",
+        reset: "Reset",
+      }
+    : {
+        addList: "Добавить список",
+        addItem: "Добавить пункт",
+        titlePlaceholder: "Пункт",
+        countPlaceholder: "Кол-во",
+        remove: "Удалить",
+        progress: "выполнено",
+        reset: "Сбросить",
+      };
 }
 
 function parseQuickValues(value: string, unit: string): number[] {
@@ -865,15 +1025,18 @@ function getCalendarDayDetails(
     }
   });
 
-  const computedPercent = getDailyCompletionPercent(date, appState.goals, appState.tasks);
-  const percent = dateKey === today ? todayPercent : (record?.percent ?? computedPercent);
+  const completedActions = completed.length;
+  const totalActions = dueGoals.length + dueTasks.length;
+  const percent = totalActions === 0 ? 0 : clampPercent((completedActions / totalActions) * 100);
   const hasActivity =
     appState.goals.some((goal) => goal.progressEntries.some((entry) => entry.date === dateKey)) ||
     appState.tasks.some((task) => isTaskCompletedOnDate(task, dateKey));
-  const hasData = dueGoals.length + dueTasks.length > 0 || hasActivity || Boolean(record);
+  const hasData = totalActions > 0 || hasActivity || Boolean(record);
 
   return {
     percent,
+    completedActions,
+    totalActions,
     completed,
     remaining,
     missed,
@@ -1384,6 +1547,9 @@ export default function App() {
     const [confirmState, setConfirmState] = useState<ConfirmState>(null);
     const [deleteState, setDeleteState] = useState<DeleteState>(null);
     const [editState, setEditState] = useState<EditState>(null);
+    const [subitemsSheet, setSubitemsSheet] = useState<SubitemsSheetState>(null);
+    const [runningTimers, setRunningTimers] = useState<Record<string, RunningTimerState>>({});
+    const [timerNow, setTimerNow] = useState(() => Date.now());
     const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [viewAllSheet, setViewAllSheet] = useState<ViewAllState>(null);
   const [activeScreen, setActiveScreen] = useState<AppScreen>("today");
@@ -1538,6 +1704,125 @@ export default function App() {
   }, [settings]);
 
   useEffect(() => {
+    if (Object.keys(runningTimers).length === 0) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setTimerNow(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [runningTimers]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setTimerNow(Date.now()), 60000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    const runningEntries = Object.entries(runningTimers);
+
+    if (runningEntries.length === 0) {
+      return;
+    }
+
+    const now = timerNow;
+    const nextRunningTimers = { ...runningTimers };
+    let changedTimers = false;
+    const timerUpdates: Array<{ taskId: string; dateKey: string; secondsDone: number; completed: boolean }> = [];
+
+    runningEntries.forEach(([taskId, running]) => {
+      const task = appState.tasks.find((item) => item.id === taskId);
+
+      if (!task || !hasTaskTimer(task)) {
+        delete nextRunningTimers[taskId];
+        changedTimers = true;
+        return;
+      }
+
+      const totalSeconds = getTaskTimerProgress(task, running.dateKey).totalSeconds;
+      const secondsDone = Math.min(running.baseSeconds + Math.floor((now - running.startedAt) / 1000), totalSeconds);
+
+      if (secondsDone >= totalSeconds) {
+        timerUpdates.push({ taskId, dateKey: running.dateKey, secondsDone: totalSeconds, completed: true });
+        delete nextRunningTimers[taskId];
+        changedTimers = true;
+        return;
+      }
+
+      if (now - running.lastSavedAt >= 15000) {
+        timerUpdates.push({ taskId, dateKey: running.dateKey, secondsDone, completed: false });
+        nextRunningTimers[taskId] = {
+          ...running,
+          baseSeconds: secondsDone,
+          startedAt: now,
+          lastSavedAt: now,
+        };
+        changedTimers = true;
+      }
+    });
+
+    if (timerUpdates.length > 0) {
+      setAppState((state) => ({
+        ...state,
+        tasks: state.tasks.map((task) => {
+          const update = timerUpdates.find((item) => item.taskId === task.id);
+
+          if (!update || !hasTaskTimer(task)) {
+            return task;
+          }
+
+          const timer = getTaskTimerProgress(task, update.dateKey);
+          const nextSeconds = Math.max(Math.min(Math.round(update.secondsDone), timer.totalSeconds), 0);
+          const completed = update.completed || nextSeconds >= timer.totalSeconds;
+          const completedDates = new Set(task.completedDates ?? []);
+
+          if (completed) {
+            completedDates.add(update.dateKey);
+          } else {
+            completedDates.delete(update.dateKey);
+          }
+
+          const completedAtByDate = { ...(task.completedAtByDate ?? {}) };
+          const lateDates = new Set(task.lateDates ?? []);
+          const completedAt = completed ? (completedAtByDate[update.dateKey] ?? new Date().toISOString()) : undefined;
+
+          if (completedAt) {
+            completedAtByDate[update.dateKey] = completedAt;
+
+            if (isLateForDueTime(update.dateKey, task.dueTime, completedAt)) {
+              lateDates.add(update.dateKey);
+            } else {
+              lateDates.delete(update.dateKey);
+            }
+          }
+
+          return {
+            ...task,
+            timerStateByDate: {
+              ...(task.timerStateByDate ?? {}),
+              [update.dateKey]: {
+                secondsDone: nextSeconds > 0 ? nextSeconds : undefined,
+                completed,
+              },
+            },
+            completedDates: Array.from(completedDates).sort(),
+            completedAtByDate: Object.keys(completedAtByDate).length > 0 ? completedAtByDate : undefined,
+            lateDates: Array.from(lateDates).sort(),
+            completed: completedDates.has(today),
+          };
+        }),
+      }));
+    }
+
+    if (changedTimers) {
+      setRunningTimers(nextRunningTimers);
+    }
+  }, [appState.tasks, runningTimers, timerNow, today]);
+
+  useEffect(() => {
     if (import.meta.env.DEV) {
       window.chexarResetDemo = () => {
         resetChexarStorage();
@@ -1565,7 +1850,9 @@ export default function App() {
       setConfirmState(null);
       setDeleteState(null);
       setEditState(null);
+      setSubitemsSheet(null);
       setViewAllSheet(null);
+      setRunningTimers({});
     setSelectedDate(null);
     setActiveScreen("today");
   }
@@ -1598,6 +1885,7 @@ export default function App() {
         iconKey?: string;
         repeatMode: GoalRepeatMode;
         selectedDays?: number[];
+        dueTime?: string;
         targetValue: number;
         currentValue: number;
         unit: string;
@@ -1620,6 +1908,7 @@ export default function App() {
                   unit: update.unit.trim(),
                   repeatMode: update.repeatMode,
                   selectedDays: update.repeatMode === "selectedDays" ? update.selectedDays : undefined,
+                  dueTime: update.dueTime,
                   quickAddValues: update.quickAddValues,
                 }
               : goal,
@@ -1628,7 +1917,7 @@ export default function App() {
       );
     }
 
-    function updateTask(taskId: string, update: { title: string; note?: string; iconKey?: string; repeatMode: TaskRepeatMode; selectedDays?: number[] }) {
+    function updateTask(taskId: string, update: { title: string; note?: string; iconKey?: string; repeatMode: TaskRepeatMode; selectedDays?: number[]; dueTime?: string }) {
       setAppState((state) =>
         mergeDuplicateActions({
           ...state,
@@ -1642,6 +1931,7 @@ export default function App() {
                   iconKey: update.iconKey,
                   repeatMode: update.repeatMode,
                   selectedDays: update.repeatMode === "selectedDays" ? update.selectedDays : undefined,
+                  dueTime: update.dueTime,
                 }
               : task,
           ),
@@ -1649,34 +1939,175 @@ export default function App() {
       );
     }
 
-    function addProgress(goalId: string, amount: number, note?: string) {
+  function addProgress(goalId: string, amount: number, note?: string) {
     if (!Number.isFinite(amount) || amount <= 0) {
       return;
     }
 
     setAppState((state) => ({
       ...state,
-      goals: state.goals.map((goal) =>
-        goal.id === goalId
-          ? {
-              ...goal,
-              currentValue: goal.currentValue + amount,
-              progressEntries: [
-                ...goal.progressEntries,
-                {
-                  id: createId("entry"),
-                  date: activeDate,
-                  amount,
-                  note: note?.trim() || undefined,
-                },
-              ],
-            }
-          : goal,
-      ),
+      goals: state.goals.map((goal) => {
+        if (goal.id !== goalId) {
+          return goal;
+        }
+
+        const required = getRequiredToday(goal, activeDate);
+        const previousLogged = getTodayLoggedAmount(goal, activeDate);
+        const nextLogged = previousLogged + amount;
+        const completedNow = required > 0 && previousLogged < required && nextLogged >= required;
+        const completedAt = completedNow ? new Date().toISOString() : goal.completedAtByDate?.[activeDate];
+        const lateDates = new Set(goal.lateDates ?? []);
+
+        if (completedNow && completedAt && isLateForDueTime(activeDate, goal.dueTime, completedAt)) {
+          lateDates.add(activeDate);
+        }
+
+        return {
+          ...goal,
+          currentValue: goal.currentValue + amount,
+          progressEntries: [
+            ...goal.progressEntries,
+            {
+              id: createId("entry"),
+              date: activeDate,
+              amount,
+              note: note?.trim() || undefined,
+            },
+          ],
+          completedAtByDate: completedAt
+            ? {
+                ...(goal.completedAtByDate ?? {}),
+                [activeDate]: completedAt,
+              }
+            : goal.completedAtByDate,
+          lateDates: Array.from(lateDates).sort(),
+        };
+      }),
     }));
   }
 
+  function setTaskTimerProgress(taskId: string, dateKey: string, secondsDone: number, completed: boolean) {
+    setAppState((state) => ({
+      ...state,
+      tasks: state.tasks.map((task) => {
+        if (task.id !== taskId || !hasTaskTimer(task)) {
+          return task;
+        }
+
+        const timer = getTaskTimerProgress(task, dateKey);
+        const totalSeconds = timer.totalSeconds;
+        const nextSeconds = Math.max(Math.min(Math.round(secondsDone), totalSeconds), 0);
+        const nextCompleted = completed || (totalSeconds > 0 && nextSeconds >= totalSeconds);
+        const timerStateByDate = {
+          ...(task.timerStateByDate ?? {}),
+          [dateKey]: {
+            secondsDone: nextSeconds > 0 ? nextSeconds : undefined,
+            completed: nextCompleted,
+          },
+        };
+        const completedDates = new Set(task.completedDates ?? []);
+
+        if (nextCompleted) {
+          completedDates.add(dateKey);
+        } else {
+          completedDates.delete(dateKey);
+        }
+
+        const completedAtByDate = { ...(task.completedAtByDate ?? {}) };
+        const lateDates = new Set(task.lateDates ?? []);
+        const completedAt = nextCompleted ? (completedAtByDate[dateKey] ?? new Date().toISOString()) : undefined;
+
+        if (completedAt) {
+          completedAtByDate[dateKey] = completedAt;
+
+          if (isLateForDueTime(dateKey, task.dueTime, completedAt)) {
+            lateDates.add(dateKey);
+          } else {
+            lateDates.delete(dateKey);
+          }
+        } else {
+          delete completedAtByDate[dateKey];
+          lateDates.delete(dateKey);
+        }
+
+        return {
+          ...task,
+          timerStateByDate,
+          completedDates: Array.from(completedDates).sort(),
+          completedAtByDate: Object.keys(completedAtByDate).length > 0 ? completedAtByDate : undefined,
+          lateDates: Array.from(lateDates).sort(),
+          completed: completedDates.has(today),
+        };
+      }),
+    }));
+  }
+
+  function getDisplayedTimerSeconds(task: TaskItem, dateKey: string): number {
+    const progress = getTaskTimerProgress(task, dateKey);
+    const running = runningTimers[task.id];
+
+    if (!running || running.dateKey !== dateKey) {
+      return progress.secondsDone;
+    }
+
+    return Math.min(running.baseSeconds + Math.floor((timerNow - running.startedAt) / 1000), progress.totalSeconds);
+  }
+
+  function startTaskTimer(task: TaskItem, dateKey: string) {
+    if (!hasTaskTimer(task) || getTaskTimerProgress(task, dateKey).completed) {
+      return;
+    }
+
+    const now = Date.now();
+    setRunningTimers((timers) => ({
+      ...timers,
+      [task.id]: {
+        dateKey,
+        startedAt: now,
+        baseSeconds: getTaskTimerProgress(task, dateKey).secondsDone,
+        lastSavedAt: now,
+      },
+    }));
+  }
+
+  function pauseTaskTimer(task: TaskItem, dateKey: string) {
+    const running = runningTimers[task.id];
+
+    if (!running || running.dateKey !== dateKey) {
+      return;
+    }
+
+    const timer = getTaskTimerProgress(task, dateKey);
+    const secondsDone = Math.min(running.baseSeconds + Math.floor((Date.now() - running.startedAt) / 1000), timer.totalSeconds);
+    setTaskTimerProgress(task.id, dateKey, secondsDone, false);
+    setRunningTimers((timers) => {
+      const next = { ...timers };
+      delete next[task.id];
+      return next;
+    });
+  }
+
+  function finishTaskTimer(task: TaskItem, dateKey: string) {
+    const timer = getTaskTimerProgress(task, dateKey);
+    setTaskTimerProgress(task.id, dateKey, timer.totalSeconds, true);
+    setRunningTimers((timers) => {
+      const next = { ...timers };
+      delete next[task.id];
+      return next;
+    });
+  }
+
   function setTaskCompleted(taskId: string, completed: boolean) {
+    setRunningTimers((timers) => {
+      if (!timers[taskId]) {
+        return timers;
+      }
+
+      const next = { ...timers };
+      delete next[taskId];
+      return next;
+    });
+
     setAppState((state) => ({
       ...state,
       tasks: state.tasks.map((task) => {
@@ -1692,10 +2123,115 @@ export default function App() {
           completedDates.delete(activeDate);
         }
 
+        const completedAtByDate = { ...(task.completedAtByDate ?? {}) };
+        const lateDates = new Set(task.lateDates ?? []);
+        const completedAt = completed ? new Date().toISOString() : undefined;
+
+        if (completedAt) {
+          completedAtByDate[activeDate] = completedAt;
+
+          if (isLateForDueTime(activeDate, task.dueTime, completedAt)) {
+            lateDates.add(activeDate);
+          } else {
+            lateDates.delete(activeDate);
+          }
+        } else {
+          delete completedAtByDate[activeDate];
+          lateDates.delete(activeDate);
+        }
+
+        const timer = hasTaskTimer(task) ? getTaskTimerProgress(task, activeDate) : null;
+        const timerStateByDate =
+          timer && !completed
+            ? {
+                ...(task.timerStateByDate ?? {}),
+                [activeDate]: {
+                  secondsDone: 0,
+                  completed: false,
+                },
+              }
+            : timer && completed
+              ? {
+                  ...(task.timerStateByDate ?? {}),
+                  [activeDate]: {
+                    secondsDone: timer.totalSeconds,
+                    completed: true,
+                  },
+                }
+              : task.timerStateByDate;
+
         return {
           ...task,
           completed: completedDates.has(today),
           completedDates: Array.from(completedDates).sort(),
+          completedAtByDate: Object.keys(completedAtByDate).length > 0 ? completedAtByDate : undefined,
+          lateDates: Array.from(lateDates).sort(),
+          timerStateByDate,
+        };
+      }),
+    }));
+  }
+
+  function updateTaskSubitem(taskId: string, subitemId: string, nextState: ActionSubitemState) {
+    setAppState((state) => ({
+      ...state,
+      tasks: state.tasks.map((task) => {
+        if (task.id !== taskId) {
+          return task;
+        }
+
+        const subitems = task.subitems ?? [];
+        const dayState = {
+          ...(task.subitemStateByDate?.[activeDate] ?? {}),
+          [subitemId]: nextState,
+        };
+        const subitemStateByDate = {
+          ...(task.subitemStateByDate ?? {}),
+          [activeDate]: dayState,
+        };
+        const allComplete =
+          subitems.length > 0 &&
+          subitems.every((subitem) => {
+            const state = dayState[subitem.id];
+
+            if (subitem.targetCount && subitem.targetCount > 1) {
+              return Number(state?.count ?? 0) >= subitem.targetCount;
+            }
+
+            return state?.completed === true;
+          });
+        const completedDates = new Set(task.completedDates ?? []);
+
+        if (allComplete) {
+          completedDates.add(activeDate);
+        } else {
+          completedDates.delete(activeDate);
+        }
+
+        const completedAtByDate = { ...(task.completedAtByDate ?? {}) };
+        const lateDates = new Set(task.lateDates ?? []);
+        const completedAt = allComplete ? (completedAtByDate[activeDate] ?? new Date().toISOString()) : undefined;
+
+        if (completedAt) {
+          completedAtByDate[activeDate] = completedAt;
+
+          if (isLateForDueTime(activeDate, task.dueTime, completedAt)) {
+            lateDates.add(activeDate);
+          } else {
+            lateDates.delete(activeDate);
+          }
+        } else {
+          delete completedAtByDate[activeDate];
+          lateDates.delete(activeDate);
+        }
+
+        return {
+          ...task,
+          subitemStateByDate,
+          completedDates: Array.from(completedDates).sort(),
+          completedAtByDate: Object.keys(completedAtByDate).length > 0 ? completedAtByDate : undefined,
+          lateDates: Array.from(lateDates).sort(),
+          completed: completedDates.has(today),
         };
       }),
     }));
@@ -1711,6 +2247,7 @@ export default function App() {
     endDate: string;
     repeatMode: GoalRepeatMode;
     selectedDays?: number[];
+    dueTime?: string;
     quickAddValues: number[];
   }) {
     const title = goal.title.trim();
@@ -1742,6 +2279,7 @@ export default function App() {
           endDate: goal.endDate,
           repeatMode: goal.repeatMode,
           selectedDays: goal.repeatMode === "selectedDays" ? goal.selectedDays : undefined,
+          dueTime: goal.dueTime,
           quickAddValues: goal.quickAddValues,
           progressEntries: initialEntry,
         },
@@ -1757,6 +2295,9 @@ export default function App() {
     endDate: string;
     repeatMode: TaskRepeatMode;
     selectedDays?: number[];
+    subitems?: ActionSubitem[];
+    timerMinutes?: number;
+    dueTime?: string;
   }) {
     setAppState((state) => ({
       ...state,
@@ -1772,9 +2313,14 @@ export default function App() {
           endDate: task.endDate,
           repeatMode: task.repeatMode,
           selectedDays: task.repeatMode === "selectedDays" ? task.selectedDays : undefined,
+          dueTime: task.dueTime,
           date: task.startDate,
           completed: false,
           completedDates: [],
+          subitems: task.subitems && task.subitems.length > 0 ? task.subitems : undefined,
+          subitemStateByDate: undefined,
+          timerMinutes: task.subitems && task.subitems.length > 0 ? undefined : task.timerMinutes,
+          timerStateByDate: undefined,
         },
       ],
     }));
@@ -1870,22 +2416,47 @@ export default function App() {
                     <div className="task-list">
                       {visibleTodayTasks.length > 0 ? visibleTodayTasks.map((task) => {
                         const completedToday = isTaskCompletedOnDate(task, activeDate);
+                        const taskHasSubitems = hasTaskSubitems(task);
+                        const taskHasTimer = hasTaskTimer(task);
+                        const timerRunning = runningTimers[task.id]?.dateKey === activeDate;
 
                         return (
                           <TaskRow
                             key={task.id}
                             task={task}
                               completed={completedToday}
+                              dateKey={activeDate}
                               isToday={activeDate === today}
+                              timerSecondsDone={taskHasTimer ? getDisplayedTimerSeconds(task, activeDate) : undefined}
+                              timerRunning={timerRunning}
+                              nowMs={timerNow}
+                              copy={activeUiCopy}
                               deleteLabel={activeUiCopy.deleteConfirm}
                               editLabel={activeUiCopy.editAction}
                               toggleLabel={completedToday ? activeUiCopy.undoDoneTitle : activeUiCopy.markDoneTitle}
-                              onClick={() =>
-                              setConfirmState({
-                                task,
-                                nextCompleted: !completedToday,
-                              })
-                            }
+                              onClick={() => {
+                                if (taskHasSubitems) {
+                                  setSubitemsSheet({ task });
+                                  return;
+                                }
+
+                                if (taskHasTimer && !completedToday) {
+                                  if (timerRunning) {
+                                    pauseTaskTimer(task, activeDate);
+                                  } else {
+                                    startTaskTimer(task, activeDate);
+                                  }
+                                  return;
+                                }
+
+                                setConfirmState({
+                                  task,
+                                  nextCompleted: !completedToday,
+                                });
+                              }}
+                            onTimerStart={() => startTaskTimer(task, activeDate)}
+                            onTimerPause={() => pauseTaskTimer(task, activeDate)}
+                            onTimerFinish={() => finishTaskTimer(task, activeDate)}
                             onDelete={() => setDeleteState({ type: "task", task })}
                             onEdit={() => setEditState({ type: "task", task })}
                           />
@@ -1905,6 +2476,7 @@ export default function App() {
                             goal={goal}
                           today={activeDate}
                             copy={activeUiCopy}
+                            nowMs={timerNow}
                             onOpenManual={() => setProgressSheet({ goal })}
                             onDelete={() => setDeleteState({ type: "goal", goal })}
                             onEdit={() => setEditState({ type: "goal", goal })}
@@ -1946,6 +2518,24 @@ export default function App() {
             />
           )}
 
+          {subitemsSheet && (() => {
+            const task = appState.tasks.find((item) => item.id === subitemsSheet.task.id);
+
+            if (!task) {
+              return null;
+            }
+
+            return (
+              <SubitemsSheet
+                task={task}
+                dateKey={activeDate}
+                language={settings.language}
+                onClose={() => setSubitemsSheet(null)}
+                onChange={updateTaskSubitem}
+              />
+            );
+          })()}
+
           {confirmState && (
             <ConfirmDialog
               title={confirmState.nextCompleted ? activeUiCopy.markDoneTitle : activeUiCopy.undoDoneTitle}
@@ -1986,6 +2576,7 @@ export default function App() {
                       iconKey: update.iconKey,
                       repeatMode: update.repeatMode as GoalRepeatMode,
                       selectedDays: update.selectedDays,
+                      dueTime: update.dueTime,
                       targetValue: update.targetValue ?? editState.goal.targetValue,
                       currentValue: update.currentValue ?? editState.goal.currentValue,
                       unit: update.unit ?? editState.goal.unit,
@@ -1998,6 +2589,7 @@ export default function App() {
                       iconKey: update.iconKey,
                       repeatMode: update.repeatMode,
                       selectedDays: update.selectedDays,
+                      dueTime: update.dueTime,
                     });
                   }
 
@@ -2032,6 +2624,7 @@ export default function App() {
               goals={viewAllGoals}
               tasks={visibleTodayTasks}
               copy={activeUiCopy}
+              nowMs={timerNow}
               onClose={() => setViewAllSheet(null)}
               onOpenManual={(goal) => {
                 setViewAllSheet(null);
@@ -2365,6 +2958,7 @@ function GoalCard({
   goal,
   today,
   copy,
+  nowMs,
   onOpenManual,
   onDelete,
   onEdit,
@@ -2372,6 +2966,7 @@ function GoalCard({
   goal: ProgressGoal;
   today: string;
   copy: UiCopy;
+  nowMs: number;
   onOpenManual: () => void;
   onDelete?: () => void;
   onEdit?: () => void;
@@ -2381,6 +2976,7 @@ function GoalCard({
   const loggedToday = getTodayLoggedAmount(goal, today);
   const isGoalCompleted = goal.currentValue >= goal.targetValue;
   const isTodayDone = isGoalCompleted || loggedToday >= requiredToday;
+  const dueMeta = formatDueMeta(goal.dueTime, today, isTodayDone, goal.completedAtByDate?.[today], goal.lateDates?.includes(today) ?? false, nowMs, copy);
   const progressStyle = { "--goal-progress": `${progressPercent}%` } as CSSProperties;
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
@@ -2405,6 +3001,7 @@ function GoalCard({
               <div className="goal-title-progress">
                 <div className="goal-main-line">
                   <h3 title={goal.title}>{goal.title}</h3>
+                  {dueMeta && <small className="due-meta">{dueMeta}</small>}
                   <span className="today-need">
                     {isGoalCompleted ? (
                       copy.done
@@ -2436,34 +3033,94 @@ function GoalCard({
 function TaskRow({
   task,
   completed,
+  dateKey,
   isToday,
+  copy,
+  timerSecondsDone,
+  timerRunning = false,
+  nowMs,
   deleteLabel,
   editLabel,
   toggleLabel,
   onClick,
+  onTimerStart,
+  onTimerPause,
+  onTimerFinish,
   onDelete,
   onEdit,
 }: {
   task: TaskItem;
   completed: boolean;
+  dateKey: string;
   isToday: boolean;
+  copy: UiCopy;
+  timerSecondsDone?: number;
+  timerRunning?: boolean;
+  nowMs: number;
   deleteLabel: string;
   editLabel?: string;
   toggleLabel: string;
   onClick: () => void;
+  onTimerStart?: () => void;
+  onTimerPause?: () => void;
+  onTimerFinish?: () => void;
   onDelete?: () => void;
   onEdit?: () => void;
 }) {
+  const subitemProgress = hasTaskSubitems(task) ? getTaskSubitemProgress(task, dateKey) : null;
+  const timerProgress = hasTaskTimer(task) ? getTaskTimerProgress(task, dateKey) : null;
+  const secondsDone = timerProgress ? Math.min(timerSecondsDone ?? timerProgress.secondsDone, timerProgress.totalSeconds) : 0;
+  const remainingSeconds = timerProgress ? Math.max(timerProgress.totalSeconds - secondsDone, 0) : 0;
+  const timerStarted = timerProgress ? secondsDone > 0 : false;
+  const dueMeta = formatDueMeta(task.dueTime, dateKey, completed, task.completedAtByDate?.[dateKey], task.lateDates?.includes(dateKey) ?? false, nowMs, copy);
+
   return (
     <SwipeDeleteShell deleteLabel={deleteLabel} editLabel={editLabel} onDelete={onDelete} onEdit={onEdit}>
-      <div className={`task-row ${completed ? "completed" : ""} priority-${task.priority ?? "medium"}`}>
+      <div className={`task-row ${timerProgress ? "with-timer" : ""} ${completed ? "completed" : ""} priority-${task.priority ?? "medium"}`}>
         <button type="button" className="task-row-main" onClick={onClick}>
           <ActionIconBadge className="task-icon" iconKey={task.iconKey} title={task.title} />
           <span className="task-title">
             {task.title}
+            {subitemProgress && <small>{subitemProgress.completed}/{subitemProgress.total}</small>}
+            {timerProgress && (
+              <small>
+                {completed ? copy.timerDone : `${copy.remainingTime}: ${formatTimerDuration(remainingSeconds)}`}
+              </small>
+            )}
+            {dueMeta && <small className="due-meta">{dueMeta}</small>}
             {!isToday && <small>{task.date}</small>}
           </span>
         </button>
+        {timerProgress && !completed && onTimerStart && (
+          <div className="task-timer-actions">
+            <button
+              type="button"
+              className="task-timer-button primary"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (timerRunning) {
+                  onTimerPause?.();
+                } else {
+                  onTimerStart?.();
+                }
+              }}
+            >
+              {timerRunning ? copy.timerPause : timerStarted ? copy.timerContinue : copy.timerStart}
+            </button>
+            <button
+              type="button"
+              className="task-timer-button"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                onTimerFinish?.();
+              }}
+            >
+              {copy.timerFinish}
+            </button>
+          </div>
+        )}
         <button
           type="button"
           className="task-check-button"
@@ -2486,6 +3143,93 @@ function TaskRow({
         </button>
       </div>
     </SwipeDeleteShell>
+  );
+}
+
+function SubitemsSheet({
+  task,
+  dateKey,
+  language,
+  onClose,
+  onChange,
+}: {
+  task: TaskItem;
+  dateKey: string;
+  language: AppSettings["language"];
+  onClose: () => void;
+  onChange: (taskId: string, subitemId: string, state: ActionSubitemState) => void;
+}) {
+  const copy = getSubitemCopy(language);
+  const subitems = task.subitems ?? [];
+  const progress = getTaskSubitemProgress(task, dateKey);
+  const dayState = task.subitemStateByDate?.[dateKey] ?? {};
+
+  function isComplete(subitem: ActionSubitem): boolean {
+    const state = dayState[subitem.id];
+
+    if (subitem.targetCount && subitem.targetCount > 1) {
+      return Number(state?.count ?? 0) >= subitem.targetCount;
+    }
+
+    return state?.completed === true;
+  }
+
+  return (
+    <BottomSheet
+      title={task.title}
+      subtitle={language === "en" ? `${progress.completed} of ${progress.total} ${copy.progress}` : `${progress.completed} из ${progress.total} ${copy.progress}`}
+      closeLabel={language === "en" ? "Close" : "Закрыть"}
+      onClose={onClose}
+    >
+      <div className="subitems-sheet-list">
+        {subitems.map((subitem) => {
+          const state = dayState[subitem.id] ?? {};
+          const target = subitem.targetCount && subitem.targetCount > 1 ? subitem.targetCount : undefined;
+          const count = Math.min(Number(state.count ?? 0), target ?? 1);
+          const completed = isComplete(subitem);
+
+          return (
+            <div key={subitem.id} className={`subitem-sheet-row ${completed ? "completed" : ""}`}>
+              <button
+                type="button"
+                className="subitem-toggle"
+                onClick={() =>
+                  onChange(task.id, subitem.id, target ? { count: completed ? 0 : target, completed: !completed } : { completed: !completed })
+                }
+              >
+                <span className="task-check" aria-hidden="true">
+                  {completed && (
+                    <span className="task-x-mark">
+                      <span />
+                      <span />
+                    </span>
+                  )}
+                </span>
+                <strong>{subitem.title}</strong>
+              </button>
+              {target && (
+                <div className="subitem-counter">
+                  <span>
+                    {count}/{target}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onChange(task.id, subitem.id, {
+                        count: Math.min(count + 1, target),
+                        completed: count + 1 >= target,
+                      })
+                    }
+                  >
+                    <Plus size={15} aria-hidden="true" />
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </BottomSheet>
   );
 }
 
@@ -2669,6 +3413,7 @@ function EditActionSheet({
     iconKey?: string;
     repeatMode: TaskRepeatMode;
     selectedDays?: number[];
+    dueTime?: string;
     targetValue?: number;
     currentValue?: number;
     unit?: string;
@@ -2683,6 +3428,8 @@ function EditActionSheet({
   const [iconKey, setIconKey] = useState<string | undefined>(action.iconKey);
   const [repeatMode, setRepeatMode] = useState<TaskRepeatMode>(initialRepeatMode);
   const [selectedDays, setSelectedDays] = useState<number[]>(action.selectedDays ?? defaultGoalSelectedDays);
+  const [dueTimeEnabled, setDueTimeEnabled] = useState(Boolean(action.dueTime));
+  const [dueTime, setDueTime] = useState(action.dueTime ?? "11:00");
   const [targetValue, setTargetValue] = useState(isGoal ? String(state.goal.targetValue) : "");
   const [currentValue, setCurrentValue] = useState(isGoal ? String(state.goal.currentValue) : "");
   const [unit, setUnit] = useState(isGoal ? state.goal.unit : "");
@@ -2721,6 +3468,7 @@ function EditActionSheet({
       iconKey,
       repeatMode,
       selectedDays: repeatMode === "selectedDays" ? selectedDays : undefined,
+      dueTime: dueTimeEnabled ? normalizeDueTimeInput(dueTime) : undefined,
     };
 
     onSave(
@@ -2805,6 +3553,19 @@ function EditActionSheet({
 
         {repeatMode === "selectedDays" && <WeekdayChips selectedDays={selectedDays} language={language} onToggle={toggleWeekdaySelection} />}
 
+        <div className={`due-time-builder ${dueTimeEnabled ? "open" : ""}`}>
+          <button type="button" className="due-time-toggle" onClick={() => setDueTimeEnabled((enabled) => !enabled)}>
+            <span>{copy.addDueTime}</span>
+            <Clock3 size={16} aria-hidden="true" />
+          </button>
+          {dueTimeEnabled && (
+            <label className="due-time-row">
+              <span>{copy.dueBefore}</span>
+              <input type="time" value={dueTime} onChange={(event) => setDueTime(event.target.value)} />
+            </label>
+          )}
+        </div>
+
         {isGoal && (
           <>
             <div className="date-grid compact-two-column">
@@ -2862,6 +3623,7 @@ function ViewAllSheet({
   goals,
   tasks,
   copy,
+  nowMs,
   onClose,
   onOpenManual,
   onToggleTask,
@@ -2871,6 +3633,7 @@ function ViewAllSheet({
   goals: ProgressGoal[];
   tasks: TaskItem[];
   copy: UiCopy;
+  nowMs: number;
   onClose: () => void;
   onOpenManual: (goal: ProgressGoal) => void;
   onToggleTask: (task: TaskItem) => void;
@@ -2887,6 +3650,7 @@ function ViewAllSheet({
               goal={goal}
               today={today}
               copy={copy}
+              nowMs={nowMs}
               onOpenManual={() => onOpenManual(goal)}
             />
           ))}
@@ -2899,7 +3663,10 @@ function ViewAllSheet({
                 key={task.id}
                 task={task}
                 completed={completedToday}
+                dateKey={today}
                 isToday
+                copy={copy}
+                nowMs={nowMs}
                 deleteLabel={copy.deleteConfirm}
                 toggleLabel={completedToday ? copy.undoDoneTitle : copy.markDoneTitle}
                 onClick={() => onToggleTask(task)}
@@ -3494,9 +4261,12 @@ function CalendarScreen({
             const selected = selectedDateKey === dateKey;
             const isToday = today === dateKey;
             const isFuture = dateKey > today;
-            const displayDetails = isFuture ? { ...dayDetails, percent: 0, hasData: false } : dayDetails;
-            const tone = getCalendarDayTone(displayDetails.percent, displayDetails.hasData);
-            const matchesFilter = getCalendarFilterMatch(activeFilter, displayDetails, tone);
+            const filterDetails = isFuture ? { ...dayDetails, percent: 0, hasData: false } : dayDetails;
+            const tone = isFuture ? "empty" : getCalendarDayTone(dayDetails.percent, dayDetails.hasData);
+            const matchesFilter = getCalendarFilterMatch(activeFilter, filterDetails, tone);
+            const hasActions = dayDetails.totalActions > 0;
+            const showCompletion = !isFuture && hasActions;
+            const showPlanned = isFuture && hasActions;
 
             return (
               <button
@@ -3521,8 +4291,13 @@ function CalendarScreen({
                 }}
                 >
                   <strong>{date.getDate()}</strong>
-                  {!isFuture && <span>{displayDetails.hasData ? `${displayDetails.percent}%` : "-"}</span>}
-                  {!isFuture && <i aria-hidden="true" />}
+                  {showCompletion && <span className="calendar-day-percent">{dayDetails.percent}%</span>}
+                  {showCompletion && (
+                    <small className="calendar-day-count">
+                      {dayDetails.completedActions}/{dayDetails.totalActions}
+                    </small>
+                  )}
+                  {showPlanned && <small className="calendar-day-planned">{dayDetails.totalActions}</small>}
                 </button>
               );
             })}
@@ -4178,6 +4953,7 @@ function AddSheet({
     endDate: string;
     repeatMode: GoalRepeatMode;
     selectedDays?: number[];
+    dueTime?: string;
     quickAddValues: number[];
     iconKey?: string;
   }) => void;
@@ -4189,6 +4965,9 @@ function AddSheet({
     endDate: string;
     repeatMode: TaskRepeatMode;
     selectedDays?: number[];
+    dueTime?: string;
+    subitems?: ActionSubitem[];
+    timerMinutes?: number;
   }) => void;
 }) {
   const [title, setTitle] = useState("");
@@ -4203,14 +4982,23 @@ function AddSheet({
   const [repeatMode, setRepeatMode] = useState<GoalRepeatMode>("everyDay");
   const [selectedDays, setSelectedDays] = useState<number[]>(defaultGoalSelectedDays);
   const [quickValues, setQuickValues] = useState("");
+  const [subitemsEnabled, setSubitemsEnabled] = useState(false);
+  const [subitemDrafts, setSubitemDrafts] = useState<ActionSubitem[]>([]);
+  const [timerEnabled, setTimerEnabled] = useState(false);
+  const [timerMinutes, setTimerMinutes] = useState("");
+  const [dueTimeEnabled, setDueTimeEnabled] = useState(false);
+  const [dueTime, setDueTime] = useState("11:00");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
 
   const selectedIcon = iconKey ? getActionIcon(iconKey) : undefined;
+  const subitemCopy = getSubitemCopy(language);
   const dates = getPeriodDates(today, period, startDate, endDate);
   const numericTarget = Number(targetValue);
   const numericCurrent = Number(currentValue) || 0;
+  const numericTimerMinutes = Number(timerMinutes);
+  const normalizedDueTime = dueTimeEnabled ? normalizeDueTimeInput(dueTime) : undefined;
   const taskRepeatMode: TaskRepeatMode = trackingMode === "done" && period === "today" ? "once" : repeatMode;
   const activeSelectedDays = repeatMode === "selectedDays" ? selectedDays : undefined;
   const goalPreview = getGoalSchedulePreview({
@@ -4254,6 +5042,10 @@ function AddSheet({
           repeatMode: taskRepeatMode,
           selectedDays,
         }, copy);
+  const timerErrors =
+    trackingMode === "done" && timerEnabled && (!Number.isFinite(numericTimerMinutes) || numericTimerMinutes <= 0)
+      ? [copy.validationPositive]
+      : [];
   const duplicateError =
     title.trim() && !baseErrors.includes(copy.validationDate) && !baseErrors.includes(copy.validationDays)
       ? hasDuplicateActionForSchedule(
@@ -4268,7 +5060,7 @@ function AddSheet({
           existingTasks,
         )
       : false;
-  const errors = duplicateError ? [...baseErrors, copy.validationDuplicate] : baseErrors;
+  const errors = duplicateError ? [...baseErrors, ...timerErrors, copy.validationDuplicate] : [...baseErrors, ...timerErrors];
   const hasUnsavedChanges =
     title.trim() !== "" ||
     targetValue !== "" ||
@@ -4278,6 +5070,11 @@ function AddSheet({
     period !== "month" ||
     repeatMode !== "everyDay" ||
     quickValues.trim() !== "" ||
+    subitemsEnabled ||
+    subitemDrafts.some((subitem) => subitem.title.trim()) ||
+    timerEnabled ||
+    timerMinutes.trim() !== "" ||
+    dueTimeEnabled ||
     iconKey !== undefined;
 
   function applyTemplate(template: ActionTemplate) {
@@ -4291,6 +5088,12 @@ function AddSheet({
     setUnit(getTemplateUnit(template, language) ?? "");
     setCurrentValue("0");
     setQuickValues(template.quickValues?.join(", ") ?? "");
+    setSubitemsEnabled(false);
+    setSubitemDrafts([]);
+    setTimerEnabled(false);
+    setTimerMinutes("");
+    setDueTimeEnabled(false);
+    setDueTime("11:00");
     setAdvancedOpen(false);
     setTemplatePickerOpen(false);
     setIconPickerOpen(false);
@@ -4313,6 +5116,21 @@ function AddSheet({
     }
 
     setPeriod("month");
+    setSubitemsEnabled(false);
+    setTimerEnabled(false);
+  }
+
+  function addSubitemDraft() {
+    setSubitemsEnabled(true);
+    setSubitemDrafts((items) => [...items, { id: createId("subitem"), title: "" }]);
+  }
+
+  function updateSubitemDraft(id: string, update: Partial<ActionSubitem>) {
+    setSubitemDrafts((items) => items.map((item) => (item.id === id ? { ...item, ...update } : item)));
+  }
+
+  function removeSubitemDraft(id: string) {
+    setSubitemDrafts((items) => items.filter((item) => item.id !== id));
   }
 
   function toggleWeekdaySelection(day: number) {
@@ -4337,6 +5155,7 @@ function AddSheet({
         endDate: dates.endDate,
         repeatMode,
         selectedDays: activeSelectedDays,
+        dueTime: normalizedDueTime,
         quickAddValues: parseQuickValues(quickValues, unit),
       });
       return;
@@ -4350,6 +5169,17 @@ function AddSheet({
       endDate: dates.endDate,
       repeatMode: taskRepeatMode,
       selectedDays: taskRepeatMode === "selectedDays" ? selectedDays : undefined,
+      dueTime: normalizedDueTime,
+      subitems: subitemsEnabled
+        ? subitemDrafts
+            .map((subitem) => ({
+              ...subitem,
+              title: subitem.title.trim(),
+              targetCount: subitem.targetCount && subitem.targetCount > 1 ? Math.floor(subitem.targetCount) : undefined,
+            }))
+            .filter((subitem) => subitem.title)
+        : undefined,
+      timerMinutes: timerEnabled && !subitemsEnabled ? numericTimerMinutes : undefined,
     });
   }
 
@@ -4419,6 +5249,104 @@ function AddSheet({
           </div>
         </div>
 
+        {trackingMode === "done" && (
+          <div className={`subitems-builder ${subitemsEnabled ? "open" : ""}`}>
+            <button
+              type="button"
+              className="subitems-toggle"
+              onClick={() => {
+                const nextEnabled = !subitemsEnabled;
+                setSubitemsEnabled(nextEnabled);
+
+                if (nextEnabled && subitemDrafts.length === 0) {
+                  setSubitemDrafts([{ id: createId("subitem"), title: "" }]);
+                }
+
+                if (nextEnabled) {
+                  setTimerEnabled(false);
+                  setTimerMinutes("");
+                }
+              }}
+            >
+              <span>{subitemCopy.addList}</span>
+              <Plus size={16} aria-hidden="true" />
+            </button>
+            {subitemsEnabled && (
+              <div className="subitems-draft-list">
+                {subitemDrafts.map((subitem) => (
+                  <div key={subitem.id} className="subitem-draft-row">
+                    <input
+                      value={subitem.title}
+                      onChange={(event) => updateSubitemDraft(subitem.id, { title: event.target.value })}
+                      placeholder={subitemCopy.titlePlaceholder}
+                    />
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={subitem.targetCount ?? ""}
+                      onChange={(event) => {
+                        const value = Number(event.target.value);
+                        updateSubitemDraft(subitem.id, { targetCount: Number.isFinite(value) && value > 1 ? Math.floor(value) : undefined });
+                      }}
+                      placeholder={subitemCopy.countPlaceholder}
+                      aria-label={subitemCopy.countPlaceholder}
+                    />
+                    <button type="button" aria-label={subitemCopy.remove} onClick={() => removeSubitemDraft(subitem.id)}>
+                      <X size={15} aria-hidden="true" />
+                    </button>
+                  </div>
+                ))}
+                <button type="button" className="subitem-add-row" onClick={addSubitemDraft}>
+                  <Plus size={15} aria-hidden="true" />
+                  {subitemCopy.addItem}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {trackingMode === "done" && (
+          <div className={`timer-builder ${timerEnabled ? "open" : ""}`}>
+            <button
+              type="button"
+              className="timer-toggle"
+              onClick={() => {
+                const nextEnabled = !timerEnabled;
+                setTimerEnabled(nextEnabled);
+
+                if (nextEnabled) {
+                  setSubitemsEnabled(false);
+                  setSubitemDrafts([]);
+
+                  if (!timerMinutes.trim()) {
+                    setTimerMinutes("10");
+                  }
+                }
+              }}
+            >
+              <span>{copy.addTimer}</span>
+              <Clock3 size={16} aria-hidden="true" />
+            </button>
+            {timerEnabled && (
+              <div className="timer-draft-row">
+                <label>
+                  <span>{copy.timerMinutes}</span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={timerMinutes}
+                    onChange={(event) => setTimerMinutes(event.target.value)}
+                    placeholder="10"
+                  />
+                </label>
+                <small>{copy.timerRule}</small>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="field-group">
           <span>{copy.repeat}</span>
           <div className="segmented-control compact-segment segment-three">
@@ -4465,6 +5393,19 @@ function AddSheet({
           </div>
         )}
 
+        <div className={`due-time-builder ${dueTimeEnabled ? "open" : ""}`}>
+          <button type="button" className="due-time-toggle" onClick={() => setDueTimeEnabled((enabled) => !enabled)}>
+            <span>{copy.addDueTime}</span>
+            <Clock3 size={16} aria-hidden="true" />
+          </button>
+          {dueTimeEnabled && (
+            <label className="due-time-row">
+              <span>{copy.dueBefore}</span>
+              <input type="time" value={dueTime} onChange={(event) => setDueTime(event.target.value)} />
+            </label>
+          )}
+        </div>
+
         {trackingMode === "amount" && (
           <>
             <div className="date-grid compact-two-column">
@@ -4499,12 +5440,14 @@ function AddSheet({
               <PreviewRow icon={<Flame size={16} />} label={copy.inDay} value={`${formatNumber(goalPreview.neededPerDay)} ${unit || copy.unit}`} />
               <PreviewRow icon={<CalendarDays size={16} />} label={copy.inWeek} value={`${formatNumber(goalPreview.neededPerWeek)} ${unit || copy.unit}`} />
               <PreviewRow icon={<BarChart3 size={16} />} label={copy.period} value={getPeriodSummary(period, dates.startDate, dates.endDate, language)} />
+              {normalizedDueTime && <PreviewRow icon={<Clock3 size={16} />} label={copy.dueBefore} value={normalizedDueTime} />}
             </>
           ) : (
             <>
               <PreviewRow icon={<CalendarDays size={16} />} label={copy.period} value={getPeriodSummary(period, dates.startDate, dates.endDate, language)} />
               <PreviewRow icon={<TrendingUp size={16} />} label={copy.repeat} value={getActionRepeatLabel(period, repeatMode, language)} />
-              <PreviewRow icon={<Check size={16} />} label={copy.format} value={copy.doneNotDone} />
+              <PreviewRow icon={timerEnabled ? <Clock3 size={16} /> : <Check size={16} />} label={copy.format} value={timerEnabled ? `${formatNumber(numericTimerMinutes || 0)} ${copy.timerMinutes.toLowerCase()}` : copy.doneNotDone} />
+              {normalizedDueTime && <PreviewRow icon={<Clock3 size={16} />} label={copy.dueBefore} value={normalizedDueTime} />}
             </>
           )}
         </div>

@@ -1,5 +1,5 @@
 import { todayKey } from "./dateUtils";
-import type { AppState, GoalRepeatMode, ProgressEntry, ProgressGoal, TaskItem, TaskRepeatMode } from "./types";
+import type { ActionSubitem, ActionSubitemStateByDate, ActionTimerStateByDate, AppState, GoalRepeatMode, ProgressEntry, ProgressGoal, TaskItem, TaskRepeatMode } from "./types";
 
 export function normalizeActionTitle(title: string): string {
   return title.trim().replace(/\s+/g, " ").toLocaleLowerCase();
@@ -79,14 +79,21 @@ function mergeProgressGoals(existing: ProgressGoal, incoming: ProgressGoal): Pro
     endDate: maxDate(existing.endDate, incoming.endDate),
     repeatMode: schedule.repeatMode,
     selectedDays: schedule.selectedDays,
+    dueTime: existing.dueTime ?? incoming.dueTime,
     quickAddValues: quickAddValues.length > 0 ? quickAddValues : existing.quickAddValues,
     progressEntries,
+    completedAtByDate: mergeDateStringMap(existing.completedAtByDate, incoming.completedAtByDate),
+    lateDates: Array.from(new Set([...(existing.lateDates ?? []), ...(incoming.lateDates ?? [])])).sort(),
   };
 }
 
 function mergeTasks(existing: TaskItem, incoming: TaskItem): TaskItem {
   const completedDates = Array.from(new Set([...(existing.completedDates ?? []), ...(incoming.completedDates ?? [])])).sort();
   const schedule = mergeTaskSchedule(existing, incoming);
+  const subitems = mergeSubitems(existing.subitems, incoming.subitems);
+  const subitemStateByDate = mergeSubitemStateByDate(existing.subitemStateByDate, incoming.subitemStateByDate);
+  const timerMinutes = subitems.length === 0 ? Math.max(existing.timerMinutes ?? 0, incoming.timerMinutes ?? 0) : 0;
+  const timerStateByDate = timerMinutes > 0 ? mergeTimerStateByDate(existing.timerStateByDate, incoming.timerStateByDate) : {};
 
   return {
     ...existing,
@@ -100,10 +107,79 @@ function mergeTasks(existing: TaskItem, incoming: TaskItem): TaskItem {
     endDate: maxDate(existing.endDate, incoming.endDate),
     repeatMode: schedule.repeatMode,
     selectedDays: schedule.selectedDays,
+    dueTime: existing.dueTime ?? incoming.dueTime,
     date: minDate(existing.date ?? existing.startDate, incoming.date ?? incoming.startDate),
     completed: completedDates.includes(todayKey()),
     completedDates,
+    completedAtByDate: mergeDateStringMap(existing.completedAtByDate, incoming.completedAtByDate),
+    lateDates: Array.from(new Set([...(existing.lateDates ?? []), ...(incoming.lateDates ?? [])])).sort(),
+    subitems: subitems.length > 0 ? subitems : undefined,
+    subitemStateByDate: Object.keys(subitemStateByDate).length > 0 ? subitemStateByDate : undefined,
+    timerMinutes: timerMinutes > 0 ? timerMinutes : undefined,
+    timerStateByDate: Object.keys(timerStateByDate).length > 0 ? timerStateByDate : undefined,
   };
+}
+
+function mergeDateStringMap(first?: Record<string, string>, second?: Record<string, string>): Record<string, string> | undefined {
+  const result = {
+    ...(first ?? {}),
+    ...(second ?? {}),
+  };
+
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function mergeSubitems(first?: ActionSubitem[], second?: ActionSubitem[]): ActionSubitem[] {
+  const byTitle = new Map<string, ActionSubitem>();
+
+  [...(first ?? []), ...(second ?? [])].forEach((subitem) => {
+    const key = normalizeActionTitle(subitem.title);
+
+    if (!key) {
+      return;
+    }
+
+    const existing = byTitle.get(key);
+    byTitle.set(key, {
+      id: existing?.id ?? subitem.id,
+      title: existing?.title ?? subitem.title,
+      targetCount: Math.max(existing?.targetCount ?? 1, subitem.targetCount ?? 1) > 1 ? Math.max(existing?.targetCount ?? 1, subitem.targetCount ?? 1) : undefined,
+    });
+  });
+
+  return Array.from(byTitle.values());
+}
+
+function mergeSubitemStateByDate(first?: ActionSubitemStateByDate, second?: ActionSubitemStateByDate): ActionSubitemStateByDate {
+  const result: ActionSubitemStateByDate = {};
+
+  [first, second].forEach((source) => {
+    Object.entries(source ?? {}).forEach(([date, states]) => {
+      result[date] = {
+        ...(result[date] ?? {}),
+        ...states,
+      };
+    });
+  });
+
+  return result;
+}
+
+function mergeTimerStateByDate(first?: ActionTimerStateByDate, second?: ActionTimerStateByDate): ActionTimerStateByDate {
+  const result: ActionTimerStateByDate = {};
+
+  [first, second].forEach((source) => {
+    Object.entries(source ?? {}).forEach(([date, state]) => {
+      const existing = result[date];
+      const secondsDone = Math.max(existing?.secondsDone ?? 0, state.secondsDone ?? 0);
+      result[date] = {
+        completed: existing?.completed === true || state.completed === true,
+        secondsDone: secondsDone > 0 ? secondsDone : undefined,
+      };
+    });
+  });
+
+  return result;
 }
 
 function mergeProgressEntries(first: ProgressEntry[], second: ProgressEntry[]): ProgressEntry[] {

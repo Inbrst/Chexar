@@ -13,6 +13,26 @@ export type ProgressEntry = {
   note?: string;
 };
 
+export type ActionSubitem = {
+  id: string;
+  title: string;
+  targetCount?: number;
+};
+
+export type ActionSubitemState = {
+  completed?: boolean;
+  count?: number;
+};
+
+export type ActionSubitemStateByDate = Record<string, Record<string, ActionSubitemState>>;
+
+export type ActionTimerState = {
+  secondsDone?: number;
+  completed?: boolean;
+};
+
+export type ActionTimerStateByDate = Record<string, ActionTimerState>;
+
 export type ProgressGoal = {
   id: string;
   title: string;
@@ -27,8 +47,11 @@ export type ProgressGoal = {
   endDate: string;
   repeatMode: GoalRepeatMode;
   selectedDays?: number[];
+  dueTime?: string;
   quickAddValues: number[];
   progressEntries: ProgressEntry[];
+  completedAtByDate?: Record<string, string>;
+  lateDates?: string[];
 };
 
 export type TaskItem = {
@@ -43,9 +66,16 @@ export type TaskItem = {
   endDate: string;
   repeatMode: TaskRepeatMode;
   selectedDays?: number[];
+  dueTime?: string;
   date: string;
   completed: boolean;
   completedDates?: string[];
+  completedAtByDate?: Record<string, string>;
+  lateDates?: string[];
+  subitems?: ActionSubitem[];
+  subitemStateByDate?: ActionSubitemStateByDate;
+  timerMinutes?: number;
+  timerStateByDate?: ActionTimerStateByDate;
 };
 
 export type AppState = {

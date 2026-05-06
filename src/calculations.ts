@@ -1,4 +1,4 @@
-import type { DailyRecord, GoalRepeatMode, ProgressGoal, TaskItem, TaskRepeatMode } from "./types";
+import type { ActionSubitem, DailyRecord, GoalRepeatMode, ProgressGoal, TaskItem, TaskRepeatMode } from "./types";
 import { addDays, daysInclusive, parseDateKey, toDateKey, todayKey } from "./dateUtils";
 
 type DailyCompletionDetails = {
@@ -15,6 +15,13 @@ type GoalPreviewInput = {
   startDate: string;
   endDate: string;
   repeatMode: GoalRepeatMode;
+  selectedDays?: number[];
+};
+
+type SchedulableItem = {
+  startDate: string;
+  endDate?: string | null;
+  repeatMode: GoalRepeatMode | TaskRepeatMode;
   selectedDays?: number[];
 };
 
@@ -71,32 +78,82 @@ export function getGoalProgressPercent(goal: ProgressGoal): number {
   return clampPercent((goal.currentValue / goal.targetValue) * 100);
 }
 
-export function isGoalDueOnDate(goal: ProgressGoal, date: Date, dateKey = getDateKey(date)): boolean {
-  if (dateKey < goal.startDate || dateKey > goal.endDate) {
+// Date-only schedule examples:
+// daily 2026-05-01..2026-05-31 on 2026-05-04 -> true
+// weekdays 2026-05-01..2026-05-31 on Saturday -> false
+// once 2026-05-04 on 2026-05-05 -> false
+export function isItemActiveOnDate(item: SchedulableItem, selectedDate: string): boolean {
+  if (!item.startDate) {
     return false;
   }
 
-  return repeatMatchesDate(goal.repeatMode, goal.selectedDays, date);
+  if (item.repeatMode === "once") {
+    return selectedDate === item.startDate;
+  }
+
+  const endDate = getEffectiveEndDate(item);
+
+  if (selectedDate < item.startDate || selectedDate > endDate) {
+    return false;
+  }
+
+  return repeatMatchesDate(item.repeatMode, item.selectedDays, parseDateKey(selectedDate));
+}
+
+export function isGoalDueOnDate(goal: ProgressGoal, date: Date, dateKey = getDateKey(date)): boolean {
+  return isItemActiveOnDate(goal, dateKey);
 }
 
 export function isTaskDueOnDate(task: TaskItem, date: Date, dateKey = getDateKey(date)): boolean {
-  if (dateKey < task.startDate || dateKey > task.endDate) {
-    return false;
-  }
-
-  if (task.repeatMode === "once") {
-    return dateKey === task.startDate;
-  }
-
-  return repeatMatchesDate(task.repeatMode, task.selectedDays, date);
+  return isItemActiveOnDate(task, dateKey);
 }
 
 export function isTaskCompletedOnDate(task: TaskItem, dateKey: string): boolean {
+  if (hasTaskSubitems(task)) {
+    const progress = getTaskSubitemProgress(task, dateKey);
+
+    return progress.total > 0 && progress.completed >= progress.total;
+  }
+
+  if (hasTaskTimer(task)) {
+    return getTaskTimerProgress(task, dateKey).completed;
+  }
+
   if (task.completedDates?.includes(dateKey)) {
     return true;
   }
 
   return !task.completedDates && task.completed && task.date === dateKey;
+}
+
+export function hasTaskSubitems(task: TaskItem): boolean {
+  return Array.isArray(task.subitems) && task.subitems.length > 0;
+}
+
+export function hasTaskTimer(task: TaskItem): boolean {
+  return !hasTaskSubitems(task) && Number(task.timerMinutes ?? 0) > 0;
+}
+
+export function getTaskSubitemProgress(task: TaskItem, dateKey: string): { completed: number; total: number } {
+  const subitems = normalizeTaskSubitems(task.subitems);
+  const state = task.subitemStateByDate?.[dateKey] ?? {};
+
+  return {
+    total: subitems.length,
+    completed: subitems.filter((subitem) => isSubitemComplete(subitem, state[subitem.id])).length,
+  };
+}
+
+export function getTaskTimerProgress(task: TaskItem, dateKey: string): { secondsDone: number; totalSeconds: number; completed: boolean } {
+  const totalSeconds = Math.max(Math.round(Number(task.timerMinutes ?? 0) * 60), 0);
+  const state = task.timerStateByDate?.[dateKey];
+  const secondsDone = Math.max(Math.round(Number(state?.secondsDone ?? 0)), 0);
+
+  return {
+    secondsDone: totalSeconds > 0 ? Math.min(secondsDone, totalSeconds) : secondsDone,
+    totalSeconds,
+    completed: state?.completed === true || (totalSeconds > 0 && secondsDone >= totalSeconds),
+  };
 }
 
 export function getRequiredToday(goal: ProgressGoal, today: string): number {
@@ -347,6 +404,18 @@ function getEntriesTotal(goal: ProgressGoal, predicate: (dateKey: string) => boo
     .reduce((total, entry) => total + entry.amount, 0);
 }
 
+function getEffectiveEndDate(item: SchedulableItem): string {
+  if (item.endDate) {
+    return item.endDate;
+  }
+
+  if (item.repeatMode === "once") {
+    return item.startDate;
+  }
+
+  return addDays(item.startDate, 29);
+}
+
 function countActiveDays(
   startDate: string,
   endDate: string,
@@ -407,8 +476,20 @@ function repeatMatchesDate(
 function hasActivityOnDate(dateKey: string, goals: ProgressGoal[], tasks: TaskItem[]): boolean {
   return (
     goals.some((goal) => goal.progressEntries.some((entry) => entry.date === dateKey)) ||
-    tasks.some((task) => isTaskCompletedOnDate(task, dateKey))
+    tasks.some((task) => isTaskCompletedOnDate(task, dateKey) || Boolean(task.subitemStateByDate?.[dateKey]) || Boolean(task.timerStateByDate?.[dateKey]))
   );
+}
+
+function normalizeTaskSubitems(subitems: TaskItem["subitems"]): ActionSubitem[] {
+  return (subitems ?? []).filter((subitem) => subitem.title.trim());
+}
+
+function isSubitemComplete(subitem: ActionSubitem, state: { completed?: boolean; count?: number } | undefined): boolean {
+  if (subitem.targetCount && subitem.targetCount > 1) {
+    return Number(state?.count ?? 0) >= subitem.targetCount;
+  }
+
+  return state?.completed === true;
 }
 
 export function upsertDailyRecord(records: DailyRecord[], date: string, percent: number): DailyRecord[] {
