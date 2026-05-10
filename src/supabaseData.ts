@@ -99,7 +99,6 @@ export async function loadRemoteData(currentSettings: AppSettings): Promise<Remo
           .select("*")
           .eq("user_id", user.id)
           .eq("archived", false)
-          .order("sort_order", { ascending: true, nullsFirst: false })
           .order("created_at", { ascending: true }),
         client
           .from("daily_entries")
@@ -121,7 +120,11 @@ export async function loadRemoteData(currentSettings: AppSettings): Promise<Remo
 
   throwIfPostgrestError("load items", itemsError);
   throwIfPostgrestError("load daily_entries", entriesError);
-  throwIfPostgrestError("load task_occurrences", occurrencesError);
+  if (occurrencesError && !isMissingRelationError(occurrencesError)) {
+    throwIfPostgrestError("load task_occurrences", occurrencesError);
+  } else if (occurrencesError) {
+    warnOptionalSchema("task_occurrences table is missing; carry-over/date-skip entries will stay local until the migration is applied.");
+  }
   throwIfPostgrestError("load settings", settingsResult.error);
 
   const settings = normalizeSettings(settingsResult.data as RemoteSettings | null, currentSettings);
@@ -130,7 +133,11 @@ export async function loadRemoteData(currentSettings: AppSettings): Promise<Remo
     await runSupabaseStep("settings bootstrap", () => saveRemoteSettings(user.id, settings));
   }
 
-  const appState = rowsToAppState((itemRows ?? []) as RemoteItem[], (entryRows ?? []) as RemoteDailyEntry[], (occurrenceRows ?? []) as RemoteTaskOccurrence[]);
+  const appState = rowsToAppState(
+    sortRemoteItems((itemRows ?? []) as RemoteItem[]),
+    (entryRows ?? []) as RemoteDailyEntry[],
+    occurrencesError ? [] : (occurrenceRows ?? []) as RemoteTaskOccurrence[],
+  );
 
   return {
     user,
@@ -157,11 +164,7 @@ export async function saveRemoteSnapshot(userId: string, appState: AppState, set
     .filter((id) => !nextItemIds.has(id));
 
   if (itemRows.length > 0) {
-    const { error } = await client.from("items").upsert(itemRows, { onConflict: "id" });
-
-    if (error) {
-      throw error;
-    }
+    await upsertItemRowsWithFallback(client, itemRows);
   }
 
   if (itemIdsToArchive.length > 0) {
@@ -191,16 +194,25 @@ export async function saveRemoteSnapshot(userId: string, appState: AppState, set
   }
 
   const deleteOccurrences = await client.from("task_occurrences").delete().eq("user_id", userId);
+  const occurrenceTableAvailable = !deleteOccurrences.error || !isMissingRelationError(deleteOccurrences.error);
 
   if (deleteOccurrences.error) {
-    throw deleteOccurrences.error;
+    if (isMissingRelationError(deleteOccurrences.error)) {
+      warnOptionalSchema("task_occurrences table is missing; carry-over/date-skip entries will stay local until the migration is applied.");
+    } else {
+      throw deleteOccurrences.error;
+    }
   }
 
-  if (occurrenceRows.length > 0) {
+  if (occurrenceTableAvailable && occurrenceRows.length > 0) {
     const { error } = await client.from("task_occurrences").insert(occurrenceRows);
 
     if (error) {
-      throw error;
+      if (isMissingRelationError(error)) {
+        warnOptionalSchema("task_occurrences table is missing; carry-over/date-skip entries will stay local until the migration is applied.");
+      } else {
+        throw error;
+      }
     }
   }
 
@@ -273,6 +285,85 @@ function requireSupabase() {
   }
 
   return supabase;
+}
+
+const OPTIONAL_ITEM_COLUMNS = new Set([
+  "note",
+  "emoji",
+  "quick_add_values",
+  "subitems",
+  "sort_order",
+  "due_time",
+]);
+const optionalSchemaWarnings = new Set<string>();
+
+function sortRemoteItems(items: RemoteItem[]): RemoteItem[] {
+  return [...items].sort((left, right) => {
+    const leftOrder = typeof left.sort_order === "number" ? left.sort_order : Number.POSITIVE_INFINITY;
+    const rightOrder = typeof right.sort_order === "number" ? right.sort_order : Number.POSITIVE_INFINITY;
+
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+
+    return left.start_date.localeCompare(right.start_date) || left.title.localeCompare(right.title);
+  });
+}
+
+async function upsertItemRowsWithFallback(
+  client: ReturnType<typeof requireSupabase>,
+  itemRows: Array<Record<string, unknown>>,
+): Promise<void> {
+  let rows = itemRows.map((row) => ({ ...row }));
+  const omittedColumns = new Set<string>();
+
+  for (let attempt = 0; attempt <= OPTIONAL_ITEM_COLUMNS.size; attempt += 1) {
+    const { error } = await client.from("items").upsert(rows, { onConflict: "id" });
+
+    if (!error) {
+      return;
+    }
+
+    const missingColumn = getMissingColumnName(error);
+
+    if (!missingColumn || !OPTIONAL_ITEM_COLUMNS.has(missingColumn) || omittedColumns.has(missingColumn)) {
+      throw error;
+    }
+
+    omittedColumns.add(missingColumn);
+    rows = rows.map((row) => omitRemoteColumn(row, missingColumn));
+    warnOptionalSchema(`items.${missingColumn} is missing; this field will stay local until the migration is applied.`);
+  }
+}
+
+function omitRemoteColumn(row: Record<string, unknown>, column: string): Record<string, unknown> {
+  const next = { ...row };
+  delete next[column];
+  return next;
+}
+
+function getMissingColumnName(error: unknown): string | null {
+  const details = getSupabaseErrorDetails(error);
+  const message = details.message;
+  const schemaCacheMatch = message.match(/Could not find the '([^']+)' column/i);
+  const sqlMatch = message.match(/column (?:items\.)?([a-z_]+) does not exist/i);
+  const column = schemaCacheMatch?.[1] ?? sqlMatch?.[1] ?? null;
+
+  return column?.trim() || null;
+}
+
+function isMissingRelationError(error: unknown): boolean {
+  const details = getSupabaseErrorDetails(error);
+  const code = String(details.code ?? "");
+
+  return code === "PGRST205" || /Could not find the table/i.test(details.message);
+}
+
+function warnOptionalSchema(message: string): void {
+  if (import.meta.env.DEV && !optionalSchemaWarnings.has(message)) {
+    optionalSchemaWarnings.add(message);
+    console.warn(`[supabase] optional schema missing: ${message}`);
+  }
 }
 
 async function findOrCreateUser(identity: Omit<RemoteUser, "id">): Promise<RemoteUser> {

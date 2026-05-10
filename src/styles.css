@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   color-scheme: dark;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
@@ -261,6 +261,274 @@ html[data-resolved-theme="dark"] .app-shell {
   color: #020204;
   background: rgba(255, 255, 255, 0.92);
   box-shadow: 0 0 18px rgba(255, 255, 255, 0.12);
+}
+
+/* Progress cleanup: prevent clipped labels and keep analytics rows readable. */
+.sync-banner {
+  max-width: min(268px, calc(100vw - 96px));
+  padding: 5px 9px;
+  font-size: 0.62rem;
+  line-height: 1.12;
+  opacity: 0.9;
+}
+
+.progress-screen .progress-empty-card,
+.progress-screen .progress-kpi-card,
+.progress-screen .progress-rhythm-card,
+.progress-screen .progress-chart-card,
+.progress-screen .progress-balance-card,
+.progress-screen .progress-best-days-card,
+.progress-screen .progress-best-card {
+  border-color: var(--border) !important;
+  background: var(--card) !important;
+  background-image: none !important;
+}
+
+.progress-screen .progress-kpi-card {
+  position: relative;
+  grid-template-columns: minmax(0, 1fr) !important;
+  padding-right: 22px;
+}
+
+.progress-screen .progress-kpi-card > div {
+  min-width: 0;
+}
+
+.progress-screen .progress-kpi-card svg {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+}
+
+.progress-screen .progress-kpi-card p {
+  display: none;
+}
+
+.progress-screen .progress-rank-row {
+  grid-template-columns: 18px 21px minmax(92px, 1.35fr) minmax(72px, 1fr) 38px !important;
+  gap: 5px;
+}
+
+.progress-screen .progress-rank-row > * {
+  min-width: 0;
+}
+
+.progress-screen .progress-rank-row strong {
+  font-size: 0.62rem;
+}
+
+.progress-screen .progress-rank-track {
+  min-width: 70px;
+}
+
+.progress-screen .progress-rank-row em {
+  min-width: 34px;
+  font-size: 0.62rem;
+}
+
+@media (max-width: 390px) {
+  .progress-screen .progress-rank-row {
+    grid-template-columns: 17px 20px minmax(82px, 1.32fr) minmax(58px, 0.92fr) 34px !important;
+    gap: 4px;
+  }
+}
+
+/* Swap swipe fill colors: left action gets red, right edit gets emerald/violet. */
+.swipe-delete-backdrop {
+  color: #ffe8ee !important;
+  background:
+    radial-gradient(circle at 92% 50%, rgba(255, 92, 120, 0.42), transparent 4.6rem),
+    linear-gradient(90deg, rgba(255, 92, 120, 0), rgba(255, 58, 96, 0.24) 54%, rgba(255, 45, 82, 0.78)) !important;
+  box-shadow:
+    0 0 0 1px rgba(255, 92, 120, calc(var(--swipe-progress) * 0.18)),
+    0 0 24px rgba(255, 45, 82, calc(var(--swipe-progress) * 0.34)) !important;
+}
+
+.swipe-edit-backdrop {
+  color: #ecfff5 !important;
+  background:
+    radial-gradient(circle at 8% 50%, rgba(92, 255, 177, 0.34), transparent 4.8rem),
+    radial-gradient(circle at 18% 50%, rgba(155, 92, 255, 0.28), transparent 5.4rem),
+    linear-gradient(90deg, rgba(92, 255, 177, 0.68), rgba(124, 92, 255, 0.28) 48%, rgba(124, 92, 255, 0)) !important;
+  box-shadow:
+    0 0 0 1px rgba(92, 255, 177, calc(var(--swipe-progress) * 0.16)),
+    0 0 18px rgba(92, 255, 177, calc(var(--swipe-progress) * 0.25)),
+    0 0 24px rgba(124, 92, 255, calc(var(--swipe-progress) * 0.22)) !important;
+}
+
+.swipe-delete-backdrop::before {
+  background: radial-gradient(circle, rgba(255, 92, 120, 0.34), transparent 58%) !important;
+}
+
+.swipe-edit-backdrop::before {
+  background:
+    radial-gradient(circle, rgba(92, 255, 177, 0.34), transparent 56%),
+    radial-gradient(circle at 66% 48%, rgba(155, 92, 255, 0.24), transparent 54%) !important;
+}
+
+.swipe-delete-backdrop span {
+  color: #ffe8ee !important;
+  text-shadow: 0 0 12px rgba(255, 45, 82, 0.58) !important;
+}
+
+.swipe-edit-backdrop span {
+  color: #ecfff5 !important;
+  text-shadow: 0 0 12px rgba(92, 255, 177, 0.44), 0 0 16px rgba(124, 92, 255, 0.3) !important;
+}
+
+/* Final checkbox override: transparent gradient square with handwritten X. */
+.today-screen .task-row.completed {
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+.today-screen .task-row.completed .task-row-main {
+  opacity: 0.46 !important;
+}
+
+.today-screen .task-check-button,
+.today-screen .task-row.completed .task-check-button {
+  background: transparent !important;
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+.today-screen .task-check,
+.today-screen .task-row.completed .task-check {
+  width: 28px !important;
+  height: 28px !important;
+  overflow: visible !important;
+  border: 2px solid transparent !important;
+  border-radius: 10px !important;
+  background:
+    linear-gradient(transparent, transparent) padding-box,
+    linear-gradient(135deg, #7c5cff 0%, #9b5cff 44%, #5cffb1 100%) border-box !important;
+  box-shadow: none !important;
+}
+
+.today-screen .task-x-mark {
+  width: 28px !important;
+  height: 28px !important;
+  filter: none !important;
+  transform: translate(0, 0) rotate(-4deg) !important;
+}
+
+.today-screen .task-x-mark span {
+  position: absolute !important;
+  top: 12px !important;
+  left: 3px !important;
+  width: 22px !important;
+  height: 3.6px !important;
+  border-radius: 999px !important;
+  background: #fff !important;
+  clip-path: polygon(0 48%, 10% 22%, 18% 36%, 30% 12%, 42% 34%, 54% 16%, 66% 36%, 78% 14%, 100% 34%, 94% 68%, 82% 58%, 68% 88%, 54% 70%, 40% 92%, 26% 72%, 12% 86%, 0 64%) !important;
+  transform-origin: center !important;
+}
+
+.today-screen .task-x-mark span:first-child {
+  transform: rotate(45deg) !important;
+}
+
+.today-screen .task-x-mark span:nth-child(2) {
+  left: 3px !important;
+  width: 23px !important;
+  height: 3.4px !important;
+  opacity: 1 !important;
+  transform: rotate(-47deg) !important;
+}
+
+.today-screen .task-x-mark span::before,
+.today-screen .task-x-mark span::after {
+  display: none !important;
+}
+
+html[data-resolved-theme="light"] .today-screen .task-x-mark span {
+  background: #111318 !important;
+}
+
+/* Simpler handwritten checkbox: gradient outline, transparent center. */
+.today-screen .task-check,
+.today-screen .task-row.completed .task-check {
+  width: 28px !important;
+  height: 28px !important;
+  border: 1.8px solid transparent !important;
+  border-radius: 10px !important;
+  background:
+    linear-gradient(transparent, transparent) padding-box,
+    linear-gradient(135deg, rgba(124, 92, 255, 0.96), rgba(92, 255, 177, 0.92)) border-box !important;
+  box-shadow: none !important;
+}
+
+.today-screen .task-x-mark {
+  width: 30px !important;
+  height: 28px !important;
+  filter: none !important;
+  transform: translate(0, 0) rotate(-3deg) !important;
+}
+
+.today-screen .task-x-mark span {
+  position: absolute !important;
+  top: 12px !important;
+  border-radius: 999px !important;
+  background: var(--text) !important;
+  clip-path: polygon(0 44%, 8% 28%, 18% 38%, 30% 18%, 42% 35%, 54% 20%, 66% 36%, 78% 18%, 100% 34%, 94% 70%, 80% 61%, 66% 88%, 52% 70%, 38% 91%, 24% 72%, 10% 86%, 0 64%) !important;
+  transform-origin: center !important;
+}
+
+.today-screen .task-x-mark span:first-child {
+  left: 2px !important;
+  width: 27px !important;
+  height: 5px !important;
+  transform: rotate(45deg) !important;
+}
+
+.today-screen .task-x-mark span:nth-child(2) {
+  left: 1px !important;
+  width: 28px !important;
+  height: 4.5px !important;
+  opacity: 1 !important;
+  transform: rotate(-47deg) !important;
+}
+
+/* Keep completed rows muted without turning the checkbox gray. */
+.today-screen .task-row.completed {
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+.today-screen .task-row.completed .task-row-main {
+  opacity: 0.46;
+}
+
+.today-screen .task-row.completed .task-check-button,
+.today-screen .task-row.completed .task-check {
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+.today-screen .task-check,
+.today-screen .task-row.completed .task-check {
+  border: 2px solid transparent !important;
+  background:
+    linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, 0)) padding-box,
+    linear-gradient(135deg, #7c5cff 0%, #9b5cff 45%, #5cffb1 100%) border-box !important;
+}
+
+.today-screen .task-x-mark span,
+.today-screen .task-x-mark span::before,
+.today-screen .task-x-mark span::after {
+  background: #fff !important;
+}
+
+html[data-resolved-theme="light"] .today-screen .task-x-mark span,
+html[data-resolved-theme="light"] .today-screen .task-x-mark span::before,
+html[data-resolved-theme="light"] .today-screen .task-x-mark span::after {
+  background: #111318 !important;
+}
+
+.today-screen .task-x-mark span::before,
+.today-screen .task-x-mark span::after {
+  display: none !important;
 }
 
 /* Smart delete sheet and final checkbox shape overrides. */
@@ -7247,6 +7515,159 @@ html[data-resolved-theme="light"] .bottom-nav button.active {
 }
 
 /* Final Chexar action polish overrides. */
+.today-screen .task-row.completed {
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+.today-screen .task-row.completed .task-row-main {
+  position: relative;
+  opacity: 0.46 !important;
+}
+
+.today-screen .task-row.completed .task-title {
+  position: relative;
+  display: inline-grid;
+  width: fit-content;
+}
+
+.today-screen .task-row.completed .task-title::after {
+  display: none !important;
+  content: none !important;
+}
+
+.today-screen .task-check-button,
+.today-screen .task-row.completed .task-check-button {
+  background: transparent !important;
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+.today-screen .task-check,
+.today-screen .task-row.completed .task-check {
+  width: 22px !important;
+  height: 22px !important;
+  overflow: visible !important;
+  border: 2px solid transparent !important;
+  border-radius: 10px !important;
+  background:
+    linear-gradient(transparent, transparent) padding-box,
+    linear-gradient(135deg, #7c5cff 0%, #9b5cff 44%, #5cffb1 100%) border-box !important;
+  box-shadow: none !important;
+}
+
+.today-screen .task-x-mark {
+  width: 30px !important;
+  height: 30px !important;
+  filter: none !important;
+  transform: translate(-4px, -4px) !important;
+}
+
+.today-screen .task-x-mark span,
+.today-screen .task-x-mark span:first-child,
+.today-screen .task-x-mark span:nth-child(2) {
+  position: absolute !important;
+  top: 13px !important;
+  left: 3px !important;
+  width: 24px !important;
+  height: 3px !important;
+  border-radius: 999px !important;
+  background: #fff !important;
+  clip-path: none !important;
+  opacity: 1 !important;
+  scale: 0 1;
+  transform-origin: left center !important;
+}
+
+.today-screen .task-x-mark span:first-child {
+  animation: checkbox-x-write-a 0.18s ease-out 0.03s forwards !important;
+  transform: rotate(45deg) !important;
+}
+
+.today-screen .task-x-mark span:nth-child(2) {
+  animation: checkbox-x-write-b 0.2s ease-out 0.19s forwards !important;
+  transform: rotate(-45deg) !important;
+}
+
+@keyframes checkbox-x-write-a {
+  from {
+    scale: 0 1;
+  }
+
+  to {
+    scale: 1 1;
+  }
+}
+
+@keyframes checkbox-x-write-b {
+  from {
+    scale: 0 1;
+  }
+
+  to {
+    scale: 1 1;
+  }
+}
+
+.today-screen .task-x-mark span::before,
+.today-screen .task-x-mark span::after {
+  display: none !important;
+}
+
+html[data-resolved-theme="light"] .today-screen .task-x-mark span {
+  background: #111318 !important;
+}
+
+.today-screen .task-check,
+.today-screen .task-row.completed .task-check {
+  position: relative !important;
+  border: 0 !important;
+  background: transparent !important;
+  background-image: none !important;
+}
+
+.today-screen .task-check::before,
+.today-screen .task-row.completed .task-check::before {
+  position: absolute;
+  inset: 0;
+  padding: 2px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, #7c5cff 0%, #9b5cff 44%, #5cffb1 100%);
+  content: "";
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Final swipe colors: left action red, right edit emerald/violet. */
+.swipe-delete-backdrop {
+  color: #ffe8ee !important;
+  background:
+    radial-gradient(circle at 92% 50%, rgba(255, 92, 120, 0.42), transparent 4.6rem),
+    linear-gradient(90deg, rgba(255, 92, 120, 0), rgba(255, 58, 96, 0.24) 54%, rgba(255, 45, 82, 0.78)) !important;
+  box-shadow:
+    0 0 0 1px rgba(255, 92, 120, calc(var(--swipe-progress) * 0.18)),
+    0 0 24px rgba(255, 45, 82, calc(var(--swipe-progress) * 0.34)) !important;
+}
+
+.swipe-edit-backdrop {
+  color: #ecfff5 !important;
+  background:
+    radial-gradient(circle at 8% 50%, rgba(92, 255, 177, 0.34), transparent 4.8rem),
+    radial-gradient(circle at 18% 50%, rgba(155, 92, 255, 0.28), transparent 5.4rem),
+    linear-gradient(90deg, rgba(92, 255, 177, 0.68), rgba(124, 92, 255, 0.28) 48%, rgba(124, 92, 255, 0)) !important;
+  box-shadow:
+    0 0 0 1px rgba(92, 255, 177, calc(var(--swipe-progress) * 0.16)),
+    0 0 18px rgba(92, 255, 177, calc(var(--swipe-progress) * 0.25)),
+    0 0 24px rgba(124, 92, 255, calc(var(--swipe-progress) * 0.22)) !important;
+}
+
 html[data-resolved-theme="dark"] {
   --bg: #000;
   --card: rgba(10, 10, 13, 0.9);

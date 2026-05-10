@@ -1,0 +1,336 @@
+/* Final Chexar visual pass loaded after the legacy stylesheet. */
+
+.today-screen {
+  gap: 12px !important;
+}
+
+.unified-actions-section {
+  gap: 8px !important;
+}
+
+.unified-actions-section .section-header {
+  min-height: auto !important;
+  margin: 2px 0 0 !important;
+  padding: 0 2px !important;
+}
+
+.unified-actions-section .section-header h2 {
+  color: var(--text) !important;
+  font-size: 0.88rem !important;
+  font-weight: 760 !important;
+  line-height: 1.1 !important;
+}
+
+.action-list {
+  display: grid !important;
+  width: 100% !important;
+  gap: 7px !important;
+}
+
+.action-list .task-card-inline,
+.action-list .goal-card,
+.action-list .swipe-delete-shell,
+.action-list .reorderable-item {
+  width: 100% !important;
+}
+
+.action-list .task-row,
+.action-list .goal-card {
+  min-height: 50px !important;
+  border: 1px solid rgba(255, 255, 255, 0.075) !important;
+  border-radius: 16px !important;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.008)),
+    rgba(8, 8, 10, 0.92) !important;
+  box-shadow: none !important;
+}
+
+html[data-resolved-theme="light"] .action-list .task-row,
+html[data-resolved-theme="light"] .action-list .goal-card {
+  border-color: rgba(16, 20, 26, 0.07) !important;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.88), rgba(246, 247, 249, 0.74)),
+    rgba(247, 247, 248, 0.94) !important;
+}
+
+.action-list .task-row {
+  grid-template-columns: minmax(0, 1fr) 38px !important;
+  align-items: center !important;
+  padding: 5px 7px 5px 10px !important;
+}
+
+.action-list .task-row.completed,
+.action-list .goal-card.is-done {
+  width: 100% !important;
+  opacity: 0.56 !important;
+  filter: saturate(0.72) brightness(0.92) !important;
+  transform: scale(0.99) !important;
+}
+
+.action-list .task-row-main {
+  min-height: 38px !important;
+  gap: 9px !important;
+  padding: 0 !important;
+}
+
+.action-emoji {
+  display: inline-grid !important;
+  flex: 0 0 auto !important;
+  width: 24px !important;
+  height: 24px !important;
+  place-items: center !important;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", system-ui, sans-serif !important;
+  font-size: 1rem !important;
+  line-height: 1 !important;
+}
+
+.action-list .task-title,
+.action-list .goal-title-row h3 {
+  color: var(--text) !important;
+  font-size: 0.76rem !important;
+  font-weight: 720 !important;
+  line-height: 1.08 !important;
+  letter-spacing: 0 !important;
+}
+
+.action-list .task-title {
+  display: grid !important;
+  min-width: 0 !important;
+  gap: 3px !important;
+}
+
+.action-list .task-title small,
+.action-list .due-meta {
+  color: var(--muted) !important;
+  font-size: 0.56rem !important;
+  line-height: 1 !important;
+}
+
+.action-list .task-check-button {
+  width: 36px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  background: transparent !important;
+}
+
+.action-list .task-check,
+.action-list .task-row.completed .task-check {
+  width: 25px !important;
+  height: 25px !important;
+  border: 0 !important;
+  border-radius: 9px !important;
+  background: transparent !important;
+}
+
+.action-list .task-check::before,
+.action-list .task-row.completed .task-check::before {
+  padding: 1.5px !important;
+  background: linear-gradient(135deg, #7c5cff 0%, #22c98a 100%) !important;
+}
+
+.action-list .task-x-mark {
+  width: 26px !important;
+  height: 26px !important;
+  transform: translate(-2px, -2px) !important;
+}
+
+.action-list .task-x-mark span,
+.action-list .task-x-mark span:first-child,
+.action-list .task-x-mark span:nth-child(2) {
+  top: 12px !important;
+  left: 2px !important;
+  width: 22px !important;
+  height: 2.4px !important;
+  background: #fff !important;
+}
+
+html[data-resolved-theme="light"] .action-list .task-x-mark span {
+  background: #111318 !important;
+}
+
+.action-list .goal-card {
+  position: relative !important;
+  min-height: 54px !important;
+  padding: 7px 9px !important;
+  overflow: hidden !important;
+}
+
+.action-list .goal-card::before {
+  position: absolute !important;
+  inset: 0 auto 0 0 !important;
+  width: var(--goal-progress, 0%) !important;
+  max-width: 100% !important;
+  border-radius: inherit !important;
+  background: linear-gradient(90deg, rgba(255, 92, 92, 0.2) 0%, rgba(255, 184, 92, 0.18) 50%, rgba(34, 201, 138, 0.24) 100%) !important;
+  content: "" !important;
+  pointer-events: none !important;
+}
+
+.action-list .goal-card::after {
+  position: absolute !important;
+  inset: 0 !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), transparent 54%) !important;
+  content: "" !important;
+  pointer-events: none !important;
+}
+
+.action-list .goal-card > * {
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+.action-list .goal-top {
+  align-items: center !important;
+  gap: 9px !important;
+}
+
+.action-list .goal-title-progress {
+  grid-template-columns: minmax(0, 0.9fr) minmax(120px, 1.15fr) !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.action-list .goal-main-line,
+.action-list .goal-progress-stack {
+  gap: 3px !important;
+}
+
+.action-list .today-need {
+  max-width: 100% !important;
+  color: var(--text) !important;
+  font-size: 0.58rem !important;
+  line-height: 1 !important;
+}
+
+.action-list .today-need span,
+.action-list .goal-numbers {
+  color: var(--muted) !important;
+}
+
+.action-list .goal-numbers {
+  font-size: 0.56rem !important;
+  line-height: 1 !important;
+  text-align: right !important;
+}
+
+.progress-track,
+.mini-progress-track,
+.calendar-progress-track,
+.progress-rank-track {
+  overflow: hidden !important;
+  background: color-mix(in srgb, var(--text) 10%, transparent) !important;
+  box-shadow: none !important;
+}
+
+.today-screen .rhythm-fill,
+.progress-track span,
+.mini-progress-track span,
+.calendar-progress-track span,
+.progress-rank-track span,
+.rank-progress-fill,
+.progress-bar-fill,
+.progress-day-bar i {
+  background: linear-gradient(90deg, #ff5c5c 0%, #ffb85c 48%, #22c98a 100%) !important;
+  background-image: linear-gradient(90deg, #ff5c5c 0%, #ffb85c 48%, #22c98a 100%) !important;
+  box-shadow: none !important;
+}
+
+.today-screen .rhythm-fill {
+  opacity: 0.56 !important;
+  filter: saturate(1.35) !important;
+}
+
+.today-screen .rhythm-fill::before,
+.today-screen .rhythm-fill::after {
+  display: none !important;
+}
+
+.native-emoji-field {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 64px !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 8px 10px !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 14px !important;
+  background: color-mix(in srgb, var(--card) 84%, transparent) !important;
+}
+
+.native-emoji-field span {
+  color: var(--muted) !important;
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+}
+
+.native-emoji-field input {
+  min-height: 38px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  background: transparent !important;
+  color: var(--text) !important;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", system-ui, sans-serif !important;
+  font-size: 1.45rem !important;
+  line-height: 1 !important;
+  text-align: center !important;
+}
+
+.emoji-picker-preview,
+.template-icon,
+.progress-rank-icon {
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", system-ui, sans-serif !important;
+}
+
+.template-picker {
+  max-height: min(52vh, 420px) !important;
+}
+
+.template-list {
+  gap: 6px !important;
+}
+
+.template-button {
+  min-height: 48px !important;
+  align-items: center !important;
+}
+
+.template-button small {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.progress-rank-icon {
+  display: inline-grid !important;
+  width: 24px !important;
+  height: 24px !important;
+  place-items: center !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: 1rem !important;
+}
+
+.profile-header-copy {
+  max-width: calc(100% - 104px) !important;
+}
+
+.profile-header-copy span {
+  display: block !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+@media (max-width: 380px) {
+  .action-list .goal-title-progress {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 5px !important;
+  }
+
+  .action-list .goal-numbers {
+    text-align: left !important;
+  }
+}
