@@ -2,7 +2,7 @@ import { supabase } from "./lib/supabase";
 import { getTelegramUser, isBrowserFallbackAllowed, isTelegramUserMissing } from "./lib/telegram";
 import { getDailyCompletionPercent } from "./calculations";
 import { addDays, parseDateKey, todayKey } from "./dateUtils";
-import type { ActionSubitem, ActionSubitemStateByDate, ActionSubitemState, ActionTimerStateByDate, AppSettings, AppState, DailyRecord, GoalRepeatMode, ProgressEntry, ProgressGoal, TaskItem, TaskRepeatMode } from "./types";
+import type { ActionSubitem, ActionSubitemStateByDate, ActionSubitemState, AppSettings, AppState, DailyRecord, GoalRepeatMode, ProgressEntry, ProgressGoal, TaskItem, TaskOccurrence, TaskRepeatMode } from "./types";
 
 const BROWSER_USER_KEY = "chexar:browser-user-id";
 
@@ -21,6 +21,7 @@ type RemoteItem = {
   user_id: string;
   title: string;
   note?: string | null;
+  emoji?: string | null;
   icon: string | null;
   tracking_type: "checkbox" | "quantity";
   repeat_mode: "once" | "daily" | "weekdays" | "selected_days";
@@ -32,8 +33,20 @@ type RemoteItem = {
   unit: string | null;
   quick_add_values?: number[] | null;
   subitems?: unknown;
-  timer_minutes?: number | null;
+  sort_order?: number | null;
   archived: boolean | null;
+};
+
+type RemoteTaskOccurrence = {
+  id: string;
+  user_id: string;
+  task_id: string;
+  date: string;
+  status: "active" | "completed" | "skipped";
+  source: string | null;
+  moved_from_date: string | null;
+  is_carry_over: boolean | null;
+  created_at: string | null;
 };
 
 type RemoteDailyEntry = {
@@ -47,8 +60,6 @@ type RemoteDailyEntry = {
   completed_at?: string | null;
   is_late?: boolean | null;
   subitem_state?: unknown;
-  timer_seconds_done?: number | null;
-  timer_completed?: boolean | null;
 };
 
 type RemoteSettings = {
@@ -79,7 +90,7 @@ export async function loadRemoteData(currentSettings: AppSettings): Promise<Remo
 
   const userIdentity = getUserIdentity();
   const user = await runSupabaseStep("user bootstrap", () => findOrCreateUser(userIdentity));
-  const [{ data: itemRows, error: itemsError }, { data: entryRows, error: entriesError }, settingsResult] = await runSupabaseStep(
+  const [{ data: itemRows, error: itemsError }, { data: entryRows, error: entriesError }, { data: occurrenceRows, error: occurrencesError }, settingsResult] = await runSupabaseStep(
     "load user data",
     () =>
       Promise.all([
@@ -88,9 +99,15 @@ export async function loadRemoteData(currentSettings: AppSettings): Promise<Remo
           .select("*")
           .eq("user_id", user.id)
           .eq("archived", false)
+          .order("sort_order", { ascending: true, nullsFirst: false })
           .order("created_at", { ascending: true }),
         client
           .from("daily_entries")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("date", { ascending: true }),
+        client
+          .from("task_occurrences")
           .select("*")
           .eq("user_id", user.id)
           .order("date", { ascending: true }),
@@ -104,6 +121,7 @@ export async function loadRemoteData(currentSettings: AppSettings): Promise<Remo
 
   throwIfPostgrestError("load items", itemsError);
   throwIfPostgrestError("load daily_entries", entriesError);
+  throwIfPostgrestError("load task_occurrences", occurrencesError);
   throwIfPostgrestError("load settings", settingsResult.error);
 
   const settings = normalizeSettings(settingsResult.data as RemoteSettings | null, currentSettings);
@@ -112,7 +130,7 @@ export async function loadRemoteData(currentSettings: AppSettings): Promise<Remo
     await runSupabaseStep("settings bootstrap", () => saveRemoteSettings(user.id, settings));
   }
 
-  const appState = rowsToAppState((itemRows ?? []) as RemoteItem[], (entryRows ?? []) as RemoteDailyEntry[]);
+  const appState = rowsToAppState((itemRows ?? []) as RemoteItem[], (entryRows ?? []) as RemoteDailyEntry[], (occurrenceRows ?? []) as RemoteTaskOccurrence[]);
 
   return {
     user,
@@ -126,6 +144,7 @@ export async function saveRemoteSnapshot(userId: string, appState: AppState, set
   const client = requireSupabase();
   const itemRows = appStateToItemRows(userId, appState);
   const entryRows = appStateToEntryRows(userId, appState);
+  const occurrenceRows = appStateToOccurrenceRows(userId, appState);
   const existingItems = await client.from("items").select("id").eq("user_id", userId);
 
   if (existingItems.error) {
@@ -165,6 +184,20 @@ export async function saveRemoteSnapshot(userId: string, appState: AppState, set
 
   if (entryRows.length > 0) {
     const { error } = await client.from("daily_entries").insert(entryRows);
+
+    if (error) {
+      throw error;
+    }
+  }
+
+  const deleteOccurrences = await client.from("task_occurrences").delete().eq("user_id", userId);
+
+  if (deleteOccurrences.error) {
+    throw deleteOccurrences.error;
+  }
+
+  if (occurrenceRows.length > 0) {
+    const { error } = await client.from("task_occurrences").insert(occurrenceRows);
 
     if (error) {
       throw error;
@@ -342,7 +375,7 @@ function normalizeSettings(row: RemoteSettings | null, fallback: AppSettings): A
   };
 }
 
-function rowsToAppState(items: RemoteItem[], entries: RemoteDailyEntry[]): AppState {
+function rowsToAppState(items: RemoteItem[], entries: RemoteDailyEntry[], occurrences: RemoteTaskOccurrence[]): AppState {
   const entriesByItem = new Map<string, RemoteDailyEntry[]>();
 
   entries.forEach((entry) => {
@@ -370,6 +403,7 @@ function rowsToAppState(items: RemoteItem[], entries: RemoteDailyEntry[]): AppSt
         id: item.id,
         title: item.title,
         note: item.note?.trim() || undefined,
+        emoji: item.emoji?.trim() || undefined,
         iconType: item.icon ? "custom" : "letter",
         iconKey: item.icon ?? undefined,
         targetValue: Number(item.target_value ?? 0),
@@ -384,6 +418,7 @@ function rowsToAppState(items: RemoteItem[], entries: RemoteDailyEntry[]): AppSt
         progressEntries,
         completedAtByDate: getCompletedAtByDate(itemEntries),
         lateDates: getLateDates(itemEntries),
+        sortOrder: normalizeRemoteSortOrder(item.sort_order),
       });
 
       return;
@@ -391,14 +426,11 @@ function rowsToAppState(items: RemoteItem[], entries: RemoteDailyEntry[]): AppSt
 
     const subitems = normalizeRemoteSubitems(item.subitems);
     const subitemStateByDate = normalizeRemoteSubitemStateByDate(itemEntries, subitems);
-    const timerMinutes = subitems.length === 0 ? normalizeRemoteTimerMinutes(item.timer_minutes) : undefined;
-    const timerStateByDate = timerMinutes ? normalizeRemoteTimerStateByDate(itemEntries, timerMinutes) : {};
     const completedDates = itemEntries
       .filter(
         (entry) =>
           entry.checked === true ||
-          isRemoteSubitemEntryComplete(subitems, subitemStateByDate[entry.date]) ||
-          timerStateByDate[entry.date]?.completed === true,
+          isRemoteSubitemEntryComplete(subitems, subitemStateByDate[entry.date]),
       )
       .map((entry) => entry.date)
       .sort();
@@ -407,6 +439,7 @@ function rowsToAppState(items: RemoteItem[], entries: RemoteDailyEntry[]): AppSt
       id: item.id,
       title: item.title,
       note: item.note?.trim() || undefined,
+      emoji: item.emoji?.trim() || undefined,
       iconType: item.icon ? "custom" : "letter",
       iconKey: item.icon ?? undefined,
       priority: "medium",
@@ -422,21 +455,21 @@ function rowsToAppState(items: RemoteItem[], entries: RemoteDailyEntry[]): AppSt
       lateDates: getLateDates(itemEntries),
       subitems: subitems.length > 0 ? subitems : undefined,
       subitemStateByDate: Object.keys(subitemStateByDate).length > 0 ? subitemStateByDate : undefined,
-      timerMinutes,
-      timerStateByDate: Object.keys(timerStateByDate).length > 0 ? timerStateByDate : undefined,
+      sortOrder: normalizeRemoteSortOrder(item.sort_order),
     });
   });
 
-  return { goals, tasks };
+  return { goals, tasks, occurrences: remoteOccurrencesToApp(occurrences, goals, tasks) };
 }
 
 function appStateToItemRows(userId: string, appState: AppState) {
   return [
-    ...appState.goals.map((goal) => ({
+    ...appState.goals.map((goal, index) => ({
       id: goal.id,
       user_id: userId,
       title: goal.title.trim(),
       note: goal.note?.trim() || null,
+      emoji: goal.emoji ?? null,
       icon: goal.iconKey ?? null,
       tracking_type: "quantity",
       repeat_mode: toRemoteRepeat(goal.repeatMode),
@@ -448,15 +481,16 @@ function appStateToItemRows(userId: string, appState: AppState) {
       unit: goal.unit,
       quick_add_values: goal.quickAddValues,
       subitems: null,
-      timer_minutes: null,
+      sort_order: goal.sortOrder ?? index + 1,
       archived: false,
       updated_at: new Date().toISOString(),
     })),
-    ...appState.tasks.map((task) => ({
+    ...appState.tasks.map((task, index) => ({
       id: task.id,
       user_id: userId,
       title: task.title.trim(),
       note: task.note?.trim() || null,
+      emoji: task.emoji ?? null,
       icon: task.iconKey ?? null,
       tracking_type: "checkbox",
       repeat_mode: toRemoteRepeat(task.repeatMode),
@@ -468,7 +502,7 @@ function appStateToItemRows(userId: string, appState: AppState) {
       unit: null,
       quick_add_values: null,
       subitems: normalizeRemoteSubitems(task.subitems),
-      timer_minutes: task.subitems && task.subitems.length > 0 ? null : (task.timerMinutes ?? null),
+      sort_order: task.sortOrder ?? index + 1,
       archived: false,
       updated_at: new Date().toISOString(),
     })),
@@ -497,8 +531,6 @@ function appStateToEntryRows(userId: string, appState: AppState) {
       checked: null,
       value_added: entry.amount,
       subitem_state: null,
-      timer_seconds_done: null,
-      timer_completed: null,
       completed_at: goal.completedAtByDate?.[date] ?? null,
       is_late: goal.lateDates?.includes(date) ?? false,
       note: entry.notes.length > 0 ? Array.from(new Set(entry.notes)).join(" · ") : null,
@@ -507,7 +539,7 @@ function appStateToEntryRows(userId: string, appState: AppState) {
   });
 
   const checkboxEntries = appState.tasks.flatMap((task) => {
-    const dates = new Set([...(task.completedDates ?? []), ...Object.keys(task.subitemStateByDate ?? {}), ...Object.keys(task.timerStateByDate ?? {})]);
+    const dates = new Set([...(task.completedDates ?? []), ...Object.keys(task.subitemStateByDate ?? {})]);
 
     return Array.from(dates)
       .sort()
@@ -515,12 +547,10 @@ function appStateToEntryRows(userId: string, appState: AppState) {
         user_id: userId,
         item_id: task.id,
         date,
-        checked: (task.completedDates?.includes(date) ?? false) || task.timerStateByDate?.[date]?.completed === true,
+        checked: task.completedDates?.includes(date) ?? false,
         value_added: 0,
         note: null,
         subitem_state: task.subitemStateByDate?.[date] ?? null,
-        timer_seconds_done: task.timerStateByDate?.[date]?.secondsDone ?? null,
-        timer_completed: task.timerStateByDate?.[date]?.completed ?? false,
         completed_at: task.completedAtByDate?.[date] ?? null,
         is_late: task.lateDates?.includes(date) ?? false,
         updated_at: new Date().toISOString(),
@@ -530,6 +560,53 @@ function appStateToEntryRows(userId: string, appState: AppState) {
   return [...quantityEntries, ...checkboxEntries];
 }
 
+function appStateToOccurrenceRows(userId: string, appState: AppState) {
+  return (appState.occurrences ?? []).map((occurrence) => ({
+    id: occurrence.id,
+    user_id: userId,
+    task_id: occurrence.itemId,
+    date: occurrence.date,
+    status: occurrence.status,
+    source: occurrence.source,
+    moved_from_date: occurrence.movedFromDate ?? null,
+    is_carry_over: occurrence.isCarryOver,
+    updated_at: new Date().toISOString(),
+  }));
+}
+
+function remoteOccurrencesToApp(occurrences: RemoteTaskOccurrence[], goals: ProgressGoal[], tasks: TaskItem[]): TaskOccurrence[] {
+  const goalIds = new Set(goals.map((goal) => goal.id));
+  const taskIds = new Set(tasks.map((task) => task.id));
+
+  return occurrences
+    .map((row): TaskOccurrence | null => {
+      if (!row.task_id || !row.date) {
+        return null;
+      }
+
+      const itemType = goalIds.has(row.task_id) ? "goal" : taskIds.has(row.task_id) ? "task" : null;
+
+      if (!itemType) {
+        return null;
+      }
+
+      const source = row.source === "date_skip" ? "date_skip" : "carry_over";
+
+      return {
+        id: row.id,
+        itemId: row.task_id,
+        itemType,
+        date: row.date,
+        status: row.status === "completed" || row.status === "skipped" ? row.status : "active",
+        source,
+        movedFromDate: row.moved_from_date ?? undefined,
+        isCarryOver: row.is_carry_over ?? source === "carry_over",
+        createdAt: row.created_at ?? new Date().toISOString(),
+      };
+    })
+    .filter((occurrence): occurrence is TaskOccurrence => occurrence !== null);
+}
+
 function deriveDailyRecords(appState: AppState): DailyRecord[] {
   const dates = new Set<string>();
 
@@ -537,7 +614,6 @@ function deriveDailyRecords(appState: AppState): DailyRecord[] {
   appState.goals.forEach((goal) => Object.keys(goal.completedAtByDate ?? {}).forEach((date) => dates.add(date)));
   appState.tasks.forEach((task) => task.completedDates?.forEach((date) => dates.add(date)));
   appState.tasks.forEach((task) => Object.keys(task.subitemStateByDate ?? {}).forEach((date) => dates.add(date)));
-  appState.tasks.forEach((task) => Object.keys(task.timerStateByDate ?? {}).forEach((date) => dates.add(date)));
 
   return Array.from(dates)
     .sort()
@@ -619,6 +695,7 @@ function normalizeRemoteSubitems(value: unknown): ActionSubitem[] {
       }
 
       const targetCount = Number(record.targetCount);
+      const sortOrder = Number(record.sortOrder);
 
       const normalized: ActionSubitem = {
         id: typeof record.id === "string" && record.id.trim() ? record.id : globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2),
@@ -629,9 +706,18 @@ function normalizeRemoteSubitems(value: unknown): ActionSubitem[] {
         normalized.targetCount = Math.floor(targetCount);
       }
 
+      if (Number.isFinite(sortOrder)) {
+        normalized.sortOrder = sortOrder;
+      }
+
       return normalized;
     })
-    .filter((subitem): subitem is ActionSubitem => subitem !== null);
+    .filter((subitem): subitem is ActionSubitem => subitem !== null)
+    .map((subitem, index) => ({
+      ...subitem,
+      sortOrder: normalizeRemoteSortOrder(subitem.sortOrder, index + 1),
+    }))
+    .sort((first, second) => (first.sortOrder ?? 0) - (second.sortOrder ?? 0));
 }
 
 function normalizeRemoteSubitemStateByDate(entries: RemoteDailyEntry[], subitems: ActionSubitem[]): ActionSubitemStateByDate {
@@ -681,35 +767,6 @@ function isRemoteSubitemEntryComplete(subitems: ActionSubitem[], state: Record<s
   );
 }
 
-function normalizeRemoteTimerMinutes(value: unknown): number | undefined {
-  const minutes = Number(value);
-
-  if (!Number.isFinite(minutes) || minutes <= 0) {
-    return undefined;
-  }
-
-  return Math.max(Math.round(minutes * 100) / 100, 0);
-}
-
-function normalizeRemoteTimerStateByDate(entries: RemoteDailyEntry[], timerMinutes: number): ActionTimerStateByDate {
-  const result: ActionTimerStateByDate = {};
-  const totalSeconds = Math.max(Math.round(timerMinutes * 60), 1);
-
-  entries.forEach((entry) => {
-    const secondsDone = Math.max(Math.round(Number(entry.timer_seconds_done ?? 0)), 0);
-    const completed = entry.timer_completed === true || secondsDone >= totalSeconds;
-
-    if (secondsDone > 0 || completed || entry.checked === true) {
-      result[entry.date] = {
-        secondsDone: secondsDone > 0 ? Math.min(secondsDone, totalSeconds) : undefined,
-        completed: completed || entry.checked === true,
-      };
-    }
-  });
-
-  return result;
-}
-
 function normalizeRemoteDueTime(value: unknown): string | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -729,6 +786,12 @@ function normalizeRemoteDueTime(value: unknown): string | undefined {
   }
 
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function normalizeRemoteSortOrder(value: unknown, fallback = 0): number {
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function getCompletedAtByDate(entries: RemoteDailyEntry[]): Record<string, string> | undefined {

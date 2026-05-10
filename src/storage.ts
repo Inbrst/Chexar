@@ -1,4 +1,4 @@
-import type { ActionSubitem, ActionSubitemStateByDate, ActionTimerStateByDate, AppSettings, AppState, DailyRecord } from "./types";
+import type { ActionSubitem, ActionSubitemStateByDate, AppSettings, AppState, DailyRecord, TaskOccurrence } from "./types";
 import { addDays, todayKey } from "./dateUtils";
 import { mergeDuplicateActions } from "./actionMerge";
 
@@ -21,6 +21,7 @@ export function createEmptyState(): AppState {
   return {
     goals: [],
     tasks: [],
+    occurrences: [],
   };
 }
 
@@ -115,6 +116,7 @@ export function createSeedState(): AppState {
         completedDates: [],
       },
     ],
+    occurrences: [],
   };
 }
 
@@ -152,6 +154,7 @@ function migrateAppState(state: AppState): AppState {
 
   return mergeDuplicateActions({
     goals: state.goals.map((goal) => {
+      const goalIndex = state.goals.indexOf(goal);
       const startDate = goal.startDate ?? today;
       const endDate = goal.endDate ?? addDays(today, 29);
 
@@ -160,6 +163,7 @@ function migrateAppState(state: AppState): AppState {
         startDate,
         endDate,
         note: typeof goal.note === "string" && goal.note.trim() ? goal.note.trim() : undefined,
+        emoji: normalizeEmoji(goal.emoji),
         iconKey: goal.iconKey ?? (goal.iconType === "book" ? "book" : undefined),
         repeatMode: goal.repeatMode ?? "everyDay",
         selectedDays: Array.isArray(goal.selectedDays) ? goal.selectedDays : undefined,
@@ -167,10 +171,12 @@ function migrateAppState(state: AppState): AppState {
         progressEntries: Array.isArray(goal.progressEntries) ? goal.progressEntries : [],
         completedAtByDate: normalizeDateStringMap(goal.completedAtByDate),
         lateDates: Array.isArray(goal.lateDates) ? Array.from(new Set(goal.lateDates)).sort() : undefined,
+        sortOrder: normalizeSortOrder(goal.sortOrder, goalIndex + 1),
         quickAddValues: Array.isArray(goal.quickAddValues) ? goal.quickAddValues : [],
       };
     }),
     tasks: state.tasks.map((task) => {
+      const taskIndex = state.tasks.indexOf(task);
       const completedDates = Array.isArray(task.completedDates)
         ? Array.from(new Set(task.completedDates))
         : task.completed
@@ -180,23 +186,14 @@ function migrateAppState(state: AppState): AppState {
       const endDate = task.endDate ?? today;
       const subitems = normalizeSubitems(task.subitems);
       const subitemStateByDate = normalizeSubitemStateByDate(task.subitemStateByDate, subitems);
-      const timerMinutes = Number(task.timerMinutes);
-      const hasTimer = subitems.length === 0 && Number.isFinite(timerMinutes) && timerMinutes > 0;
-      const timerStateByDate = hasTimer ? normalizeTimerStateByDate(task.timerStateByDate) : {};
-      const mergedCompletedDates = Array.from(
-        new Set([
-          ...completedDates,
-          ...Object.entries(timerStateByDate)
-            .filter(([, state]) => state.completed === true || Number(state.secondsDone ?? 0) >= timerMinutes * 60)
-            .map(([date]) => date),
-        ]),
-      ).sort();
+      const mergedCompletedDates = Array.from(new Set(completedDates)).sort();
 
       return {
         ...task,
         startDate,
         endDate,
         note: typeof task.note === "string" && task.note.trim() ? task.note.trim() : undefined,
+        emoji: normalizeEmoji(task.emoji),
         repeatMode: task.repeatMode ?? "once",
         selectedDays: Array.isArray(task.selectedDays) ? task.selectedDays : undefined,
         dueTime: normalizeDueTime(task.dueTime),
@@ -208,12 +205,61 @@ function migrateAppState(state: AppState): AppState {
         lateDates: Array.isArray(task.lateDates) ? Array.from(new Set(task.lateDates)).sort() : undefined,
         subitems: subitems.length > 0 ? subitems : undefined,
         subitemStateByDate: Object.keys(subitemStateByDate).length > 0 ? subitemStateByDate : undefined,
-        timerMinutes: hasTimer ? timerMinutes : undefined,
-        timerStateByDate: Object.keys(timerStateByDate).length > 0 ? timerStateByDate : undefined,
+        sortOrder: normalizeSortOrder(task.sortOrder, taskIndex + 1),
         completed: mergedCompletedDates.includes(today),
       };
     }),
+    occurrences: normalizeOccurrences((state as AppState & { occurrences?: unknown }).occurrences),
   });
+}
+
+function normalizeOccurrences(value: unknown): TaskOccurrence[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item): TaskOccurrence | null => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+
+      const record = item as Record<string, unknown>;
+      const itemId = typeof record.itemId === "string" ? record.itemId : typeof record.taskId === "string" ? record.taskId : "";
+      const date = typeof record.date === "string" ? record.date : "";
+
+      if (!itemId || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return null;
+      }
+
+      const itemType = record.itemType === "goal" ? "goal" : "task";
+      const status = record.status === "completed" || record.status === "skipped" ? record.status : "active";
+
+      const source = record.source === "date_skip" ? "date_skip" : "carry_over";
+
+      return {
+        id: typeof record.id === "string" && record.id.trim() ? record.id : id("occurrence"),
+        itemId,
+        itemType,
+        date,
+        status,
+        source,
+        movedFromDate: typeof record.movedFromDate === "string" ? record.movedFromDate : undefined,
+        isCarryOver: typeof record.isCarryOver === "boolean" ? record.isCarryOver : source === "carry_over",
+        createdAt: typeof record.createdAt === "string" ? record.createdAt : new Date().toISOString(),
+      };
+    })
+    .filter((item): item is TaskOccurrence => item !== null);
+}
+
+function normalizeEmoji(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const emoji = value.trim();
+
+  return emoji ? emoji.slice(0, 8) : undefined;
 }
 
 function normalizeSubitems(subitems: unknown): ActionSubitem[] {
@@ -235,6 +281,7 @@ function normalizeSubitems(subitems: unknown): ActionSubitem[] {
       }
 
       const targetCount = Number(record.targetCount);
+      const sortOrder = Number(record.sortOrder);
 
       const normalized: ActionSubitem = {
         id: typeof record.id === "string" && record.id.trim() ? record.id : id("subitem"),
@@ -245,9 +292,18 @@ function normalizeSubitems(subitems: unknown): ActionSubitem[] {
         normalized.targetCount = Math.floor(targetCount);
       }
 
+      if (Number.isFinite(sortOrder)) {
+        normalized.sortOrder = sortOrder;
+      }
+
       return normalized;
     })
-    .filter((subitem): subitem is ActionSubitem => subitem !== null);
+    .filter((subitem): subitem is ActionSubitem => subitem !== null)
+    .map((subitem, index) => ({
+      ...subitem,
+      sortOrder: normalizeSortOrder(subitem.sortOrder, index + 1),
+    }))
+    .sort((first, second) => (first.sortOrder ?? 0) - (second.sortOrder ?? 0));
 }
 
 function normalizeSubitemStateByDate(value: unknown, subitems: ActionSubitem[]): ActionSubitemStateByDate {
@@ -286,33 +342,6 @@ function normalizeSubitemStateByDate(value: unknown, subitems: ActionSubitem[]):
   return result;
 }
 
-function normalizeTimerStateByDate(value: unknown): ActionTimerStateByDate {
-  if (!value || typeof value !== "object") {
-    return {};
-  }
-
-  const result: ActionTimerStateByDate = {};
-
-  Object.entries(value as Record<string, unknown>).forEach(([date, state]) => {
-    if (!state || typeof state !== "object") {
-      return;
-    }
-
-    const record = state as Record<string, unknown>;
-    const secondsDone = Number(record.secondsDone);
-    const dayState = {
-      completed: record.completed === true,
-      secondsDone: Number.isFinite(secondsDone) && secondsDone > 0 ? Math.round(secondsDone) : undefined,
-    };
-
-    if (dayState.completed || dayState.secondsDone) {
-      result[date] = dayState;
-    }
-  });
-
-  return result;
-}
-
 function normalizeDueTime(value: unknown): string | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -332,6 +361,12 @@ function normalizeDueTime(value: unknown): string | undefined {
   }
 
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function normalizeSortOrder(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function normalizeDateStringMap(value: unknown): Record<string, string> | undefined {

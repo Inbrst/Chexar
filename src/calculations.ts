@@ -115,10 +115,6 @@ export function isTaskCompletedOnDate(task: TaskItem, dateKey: string): boolean 
     return progress.total > 0 && progress.completed >= progress.total;
   }
 
-  if (hasTaskTimer(task)) {
-    return getTaskTimerProgress(task, dateKey).completed;
-  }
-
   if (task.completedDates?.includes(dateKey)) {
     return true;
   }
@@ -130,10 +126,6 @@ export function hasTaskSubitems(task: TaskItem): boolean {
   return Array.isArray(task.subitems) && task.subitems.length > 0;
 }
 
-export function hasTaskTimer(task: TaskItem): boolean {
-  return !hasTaskSubitems(task) && Number(task.timerMinutes ?? 0) > 0;
-}
-
 export function getTaskSubitemProgress(task: TaskItem, dateKey: string): { completed: number; total: number } {
   const subitems = normalizeTaskSubitems(task.subitems);
   const state = task.subitemStateByDate?.[dateKey] ?? {};
@@ -141,18 +133,6 @@ export function getTaskSubitemProgress(task: TaskItem, dateKey: string): { compl
   return {
     total: subitems.length,
     completed: subitems.filter((subitem) => isSubitemComplete(subitem, state[subitem.id])).length,
-  };
-}
-
-export function getTaskTimerProgress(task: TaskItem, dateKey: string): { secondsDone: number; totalSeconds: number; completed: boolean } {
-  const totalSeconds = Math.max(Math.round(Number(task.timerMinutes ?? 0) * 60), 0);
-  const state = task.timerStateByDate?.[dateKey];
-  const secondsDone = Math.max(Math.round(Number(state?.secondsDone ?? 0)), 0);
-
-  return {
-    secondsDone: totalSeconds > 0 ? Math.min(secondsDone, totalSeconds) : secondsDone,
-    totalSeconds,
-    completed: state?.completed === true || (totalSeconds > 0 && secondsDone >= totalSeconds),
   };
 }
 
@@ -476,7 +456,7 @@ function repeatMatchesDate(
 function hasActivityOnDate(dateKey: string, goals: ProgressGoal[], tasks: TaskItem[]): boolean {
   return (
     goals.some((goal) => goal.progressEntries.some((entry) => entry.date === dateKey)) ||
-    tasks.some((task) => isTaskCompletedOnDate(task, dateKey) || Boolean(task.subitemStateByDate?.[dateKey]) || Boolean(task.timerStateByDate?.[dateKey]))
+    tasks.some((task) => isTaskCompletedOnDate(task, dateKey) || Boolean(task.subitemStateByDate?.[dateKey]))
   );
 }
 

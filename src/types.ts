@@ -17,6 +17,7 @@ export type ActionSubitem = {
   id: string;
   title: string;
   targetCount?: number;
+  sortOrder?: number;
 };
 
 export type ActionSubitemState = {
@@ -26,17 +27,11 @@ export type ActionSubitemState = {
 
 export type ActionSubitemStateByDate = Record<string, Record<string, ActionSubitemState>>;
 
-export type ActionTimerState = {
-  secondsDone?: number;
-  completed?: boolean;
-};
-
-export type ActionTimerStateByDate = Record<string, ActionTimerState>;
-
 export type ProgressGoal = {
   id: string;
   title: string;
   note?: string;
+  emoji?: string;
   iconType: IconType;
   iconLabel?: string;
   iconKey?: string;
@@ -52,12 +47,14 @@ export type ProgressGoal = {
   progressEntries: ProgressEntry[];
   completedAtByDate?: Record<string, string>;
   lateDates?: string[];
+  sortOrder?: number;
 };
 
 export type TaskItem = {
   id: string;
   title: string;
   note?: string;
+  emoji?: string;
   iconType?: IconType;
   iconLabel?: string;
   iconKey?: string;
@@ -74,13 +71,25 @@ export type TaskItem = {
   lateDates?: string[];
   subitems?: ActionSubitem[];
   subitemStateByDate?: ActionSubitemStateByDate;
-  timerMinutes?: number;
-  timerStateByDate?: ActionTimerStateByDate;
+  sortOrder?: number;
+};
+
+export type TaskOccurrence = {
+  id: string;
+  itemId: string;
+  itemType: "goal" | "task";
+  date: string;
+  status: "active" | "completed" | "skipped";
+  source: "carry_over" | "date_skip";
+  movedFromDate?: string;
+  isCarryOver: boolean;
+  createdAt: string;
 };
 
 export type AppState = {
   goals: ProgressGoal[];
   tasks: TaskItem[];
+  occurrences: TaskOccurrence[];
 };
 
 export type DailyRecord = {

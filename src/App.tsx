@@ -50,12 +50,10 @@ import {
   getMonthAverageCompletion,
   getRequiredToday,
   getTaskSubitemProgress,
-  getTaskTimerProgress,
   getTodayLoggedAmount,
   getWeekRange,
   getWeekAverageCompletion,
   hasTaskSubitems,
-  hasTaskTimer,
   isGoalDueOnDate,
   isTaskCompletedOnDate,
   isTaskDueOnDate,
@@ -73,7 +71,7 @@ import {
   saveDailyRecords,
   saveSettings,
 } from "./storage";
-import type { ActionSubitem, ActionSubitemState, AppScreen, AppSettings, AppState, GoalRepeatMode, Priority, ProgressEntry, ProgressGoal, TaskItem, TaskRepeatMode } from "./types";
+import type { ActionSubitem, ActionSubitemState, AppScreen, AppSettings, AppState, GoalRepeatMode, Priority, ProgressEntry, ProgressGoal, TaskItem, TaskOccurrence, TaskRepeatMode } from "./types";
 import { mergeDuplicateActions, normalizeActionTitle } from "./actionMerge";
 import { hasRemotePersistence, loadRemoteData, saveRemoteSnapshot } from "./supabaseData";
 import { getTelegramConnectionStatus, getTelegramUser, initTelegramWebApp } from "./lib/telegram";
@@ -425,6 +423,10 @@ const uiCopy = {
     deleteActionTitle: "Delete action?",
     deleteActionText: "This will delete the action and its progress.",
     deleteConfirm: "Delete",
+    deleteToday: "Only this day",
+    deletePeriod: "Whole period",
+    deleteTodayText: "Hide it only on the selected date.",
+    deletePeriodText: "Delete the action and all its progress.",
     editAction: "Edit action",
     addProgress: "Add progress",
     requiredToday: "Required today",
@@ -470,16 +472,6 @@ const uiCopy = {
     inDay: "Per day",
     inWeek: "Per week",
     format: "Format",
-    timer: "Timer",
-    addTimer: "Add timer",
-    timerMinutes: "Minutes",
-    timerRule: "Timer and checklist cannot be enabled together.",
-    timerStart: "Start",
-    timerPause: "Pause",
-    timerContinue: "Continue",
-    timerFinish: "Finish",
-    timerDone: "Timer done",
-    remainingTime: "Left",
     dueBefore: "Do before",
     addDueTime: "Do before time",
     dueOnTime: "on time",
@@ -596,15 +588,6 @@ const uiCopy = {
     inDay: "В день",
     inWeek: "В неделю",
     format: "Формат",
-    timer: "Таймер",
-    addTimer: "Добавить таймер",
-    timerMinutes: "Минуты",
-    timerRule: "Таймер и список нельзя включить одновременно.",
-    timerStart: "Старт",
-    timerPause: "Пауза",
-    timerContinue: "Продолжить",
-    timerFinish: "Завершить",
-    timerDone: "Таймер завершен",
     remainingTime: "Осталось",
     dueBefore: "Сделать до",
     addDueTime: "Сделать до времени",
@@ -671,16 +654,30 @@ type EditState =
     }
   | null;
 
-type SubitemsSheetState = {
-  task: TaskItem;
-} | null;
+type ActionSheetState =
+  | {
+      type: "goal";
+      goal: ProgressGoal;
+    }
+  | {
+      type: "task";
+      task: TaskItem;
+    }
+  | null;
 
-type RunningTimerState = {
-  dateKey: string;
-  startedAt: number;
-  baseSeconds: number;
-  lastSavedAt: number;
-};
+type CarryOverCandidate =
+  | {
+      type: "goal";
+      goal: ProgressGoal;
+      movedFromDate: string;
+      detail: string;
+    }
+  | {
+      type: "task";
+      task: TaskItem;
+      movedFromDate: string;
+      detail?: string;
+    };
 
 type CalendarDayDetail = {
   id: string;
@@ -725,12 +722,24 @@ function formatNumber(value: number): string {
   }).format(value);
 }
 
-function formatTimerDuration(totalSeconds: number): string {
-  const seconds = Math.max(Math.round(totalSeconds), 0);
-  const minutesPart = Math.floor(seconds / 60);
-  const secondsPart = seconds % 60;
+function reorderById<T extends { id: string }>(items: T[], sourceId: string, targetId: string): T[] {
+  const ordered = [...items].sort((first, second) => {
+    const firstOrder = Number((first as { sortOrder?: number }).sortOrder ?? items.indexOf(first) + 1);
+    const secondOrder = Number((second as { sortOrder?: number }).sortOrder ?? items.indexOf(second) + 1);
 
-  return `${minutesPart}:${String(secondsPart).padStart(2, "0")}`;
+    return firstOrder - secondOrder;
+  });
+  const sourceIndex = ordered.findIndex((item) => item.id === sourceId);
+  const targetIndex = ordered.findIndex((item) => item.id === targetId);
+
+  if (sourceIndex === -1 || targetIndex === -1) {
+    return items;
+  }
+
+  const [source] = ordered.splice(sourceIndex, 1);
+  ordered.splice(targetIndex, 0, source);
+
+  return ordered;
 }
 
 function normalizeDueTimeInput(value: string): string | undefined {
@@ -855,6 +864,175 @@ function getDefaultQuickValues(unit: string): number[] {
   return [1, 5];
 }
 
+const actionEmojiOptions = ["✅", "📚", "🏃", "💪", "🏠", "🛒", "🌐", "⭐", "🔥", "🎯", "💧", "🌙", "💊", "📞", "✉️", "🚶"];
+
+const iconEmojiMap: Record<string, string> = {
+  book: "📚",
+  target: "🎯",
+  dumbbell: "💪",
+  run: "🏃",
+  home: "🏠",
+  cart: "🛒",
+  language: "🌐",
+  star: "⭐",
+  fire: "🔥",
+  plus: "✅",
+  graduation: "🎓",
+  droplet: "💧",
+  clock: "⏰",
+  calendar: "📅",
+  moon: "🌙",
+  pill: "💊",
+  shield: "🛡️",
+  phone: "📞",
+  mail: "✉️",
+};
+
+function getIconEmoji(iconKey?: string): string | undefined {
+  return iconKey ? iconEmojiMap[iconKey] : undefined;
+}
+
+function getActionEmoji(action: Pick<ProgressGoal | TaskItem, "emoji" | "iconKey" | "title">, fallback = "✅"): string {
+  return action.emoji?.trim() || getIconEmoji(action.iconKey) || fallback;
+}
+
+function getScheduledGoalsForDate(state: AppState, dateKey: string): ProgressGoal[] {
+  const date = parseDateKey(dateKey);
+  const skippedIds = new Set(
+    (state.occurrences ?? [])
+      .filter((occurrence) => occurrence.itemType === "goal" && occurrence.date === dateKey && occurrence.status === "skipped")
+      .map((occurrence) => occurrence.itemId),
+  );
+  const scheduled = state.goals.filter((goal) => !skippedIds.has(goal.id) && isGoalDueOnDate(goal, date, dateKey));
+  const scheduledIds = new Set(scheduled.map((goal) => goal.id));
+  const carried = (state.occurrences ?? [])
+    .filter((occurrence) => occurrence.itemType === "goal" && occurrence.date === dateKey && occurrence.status !== "skipped" && !scheduledIds.has(occurrence.itemId) && !skippedIds.has(occurrence.itemId))
+    .map((occurrence) => state.goals.find((goal) => goal.id === occurrence.itemId))
+    .filter((goal): goal is ProgressGoal => Boolean(goal))
+    .map((goal) => ({
+      ...goal,
+      startDate: dateKey,
+      endDate: dateKey,
+      repeatMode: "everyDay" as GoalRepeatMode,
+      selectedDays: undefined,
+    }));
+
+  return [...scheduled, ...carried];
+}
+
+function getScheduledTasksForDate(state: AppState, dateKey: string): TaskItem[] {
+  const date = parseDateKey(dateKey);
+  const skippedIds = new Set(
+    (state.occurrences ?? [])
+      .filter((occurrence) => occurrence.itemType === "task" && occurrence.date === dateKey && occurrence.status === "skipped")
+      .map((occurrence) => occurrence.itemId),
+  );
+  const scheduled = state.tasks.filter((task) => !skippedIds.has(task.id) && isTaskDueOnDate(task, date, dateKey));
+  const scheduledIds = new Set(scheduled.map((task) => task.id));
+  const carried = (state.occurrences ?? [])
+    .filter((occurrence) => occurrence.itemType === "task" && occurrence.date === dateKey && occurrence.status !== "skipped" && !scheduledIds.has(occurrence.itemId) && !skippedIds.has(occurrence.itemId))
+    .map((occurrence) => state.tasks.find((task) => task.id === occurrence.itemId))
+    .filter((task): task is TaskItem => Boolean(task))
+    .map((task) => ({
+      ...task,
+      startDate: dateKey,
+      endDate: dateKey,
+      date: dateKey,
+      repeatMode: "once" as TaskRepeatMode,
+      selectedDays: undefined,
+    }));
+
+  return [...scheduled, ...carried];
+}
+
+function getEffectiveStateForDate(state: AppState, dateKey: string): AppState {
+  return {
+    ...state,
+    goals: getScheduledGoalsForDate(state, dateKey),
+    tasks: getScheduledTasksForDate(state, dateKey),
+  };
+}
+
+function getCarryOverCandidates(state: AppState, todayDateKey: string, language: AppSettings["language"]): CarryOverCandidate[] {
+  const yesterday = addDays(todayDateKey, -1);
+  const yesterdayDate = parseDateKey(yesterday);
+  const todayDate = parseDateKey(todayDateKey);
+  const alreadyCarried = new Set(
+    (state.occurrences ?? [])
+      .filter((occurrence) => occurrence.date === todayDateKey && occurrence.status !== "skipped")
+      .map((occurrence) => occurrence.itemId),
+  );
+  const candidates: CarryOverCandidate[] = [];
+
+  state.tasks.forEach((task) => {
+    if (
+      alreadyCarried.has(task.id) ||
+      !isTaskDueOnDate(task, yesterdayDate, yesterday) ||
+      isTaskDueOnDate(task, todayDate, todayDateKey) ||
+      isTaskCompletedOnDate(task, yesterday)
+    ) {
+      return;
+    }
+
+    candidates.push({
+      type: "task",
+      task,
+      movedFromDate: yesterday,
+      detail: language === "en" ? "not done" : "не выполнено",
+    });
+  });
+
+  state.goals.forEach((goal) => {
+    if (alreadyCarried.has(goal.id) || !isGoalDueOnDate(goal, yesterdayDate, yesterday) || isGoalDueOnDate(goal, todayDate, todayDateKey)) {
+      return;
+    }
+
+    const required = getRequiredToday(goal, yesterday);
+    const logged = getTodayLoggedAmount(goal, yesterday);
+    const completed = required <= 0 || logged >= required;
+
+    if (completed) {
+      return;
+    }
+
+    candidates.push({
+      type: "goal",
+      goal,
+      movedFromDate: yesterday,
+      detail: `${formatNumber(logged)} / ${formatNumber(required)} ${goal.unit}`,
+    });
+  });
+
+  return candidates;
+}
+
+function createCarryOverOccurrence(candidate: CarryOverCandidate, dateKey: string): TaskOccurrence {
+  return {
+    id: createId("occurrence"),
+    itemId: candidate.type === "goal" ? candidate.goal.id : candidate.task.id,
+    itemType: candidate.type,
+    date: dateKey,
+    status: "active",
+    source: "carry_over",
+    movedFromDate: candidate.movedFromDate,
+    isCarryOver: true,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function createDateSkipOccurrence(itemId: string, itemType: TaskOccurrence["itemType"], dateKey: string): TaskOccurrence {
+  return {
+    id: createId("occurrence"),
+    itemId,
+    itemType,
+    date: dateKey,
+    status: "skipped",
+    source: "date_skip",
+    isCarryOver: false,
+    createdAt: new Date().toISOString(),
+  };
+}
+
 function getSubitemCopy(language: AppSettings["language"]) {
   return language === "en"
     ? {
@@ -972,8 +1150,8 @@ function getCalendarDayDetails(
 ): CalendarDayDetails {
   const dateKey = toDateKey(date);
   const record = dayRecords.find((item) => item.date === dateKey);
-  const dueGoals = appState.goals.filter((goal) => isGoalDueOnDate(goal, date, dateKey));
-  const dueTasks = appState.tasks.filter((task) => isTaskDueOnDate(task, date, dateKey));
+  const dueGoals = getScheduledGoalsForDate(appState, dateKey);
+  const dueTasks = getScheduledTasksForDate(appState, dateKey);
   const completed: CalendarDayDetail[] = [];
   const remaining: CalendarDayDetail[] = [];
   const missed: CalendarDayDetail[] = [];
@@ -1499,13 +1677,13 @@ function dedupeTodayTasks(tasks: TaskItem[], dateKey: string): TaskItem[] {
 
 function sortTasksForToday(tasks: TaskItem[], dateKey: string): TaskItem[] {
   return tasks
-    .map((task, index) => ({ task, index, completed: isTaskCompletedOnDate(task, dateKey) }))
+    .map((task, index) => ({ task, index, completed: isTaskCompletedOnDate(task, dateKey), sortOrder: task.sortOrder ?? index + 1 }))
     .sort((first, second) => {
       if (first.completed !== second.completed) {
         return first.completed ? 1 : -1;
       }
 
-      return first.index - second.index;
+      return first.sortOrder - second.sortOrder || first.index - second.index;
     })
     .map((item) => item.task);
 }
@@ -1521,6 +1699,7 @@ function sortGoalsForToday(goals: ProgressGoal[], dateKey: string): ProgressGoal
       return {
         goal,
         index,
+        sortOrder: goal.sortOrder ?? index + 1,
         completed,
         overRatio,
       };
@@ -1534,7 +1713,7 @@ function sortGoalsForToday(goals: ProgressGoal[], dateKey: string): ProgressGoal
         return first.overRatio - second.overRatio;
       }
 
-      return first.index - second.index;
+      return first.sortOrder - second.sortOrder || first.index - second.index;
     })
     .map((item) => item.goal);
 }
@@ -1544,13 +1723,14 @@ export default function App() {
   const [appState, setAppState] = useState<AppState>(() => loadAppState());
   const [dayRecords, setDayRecords] = useState(() => loadDailyRecords());
     const [progressSheet, setProgressSheet] = useState<ProgressSheetState>(null);
+    const [actionSheet, setActionSheet] = useState<ActionSheetState>(null);
     const [confirmState, setConfirmState] = useState<ConfirmState>(null);
     const [deleteState, setDeleteState] = useState<DeleteState>(null);
     const [editState, setEditState] = useState<EditState>(null);
-    const [subitemsSheet, setSubitemsSheet] = useState<SubitemsSheetState>(null);
-    const [runningTimers, setRunningTimers] = useState<Record<string, RunningTimerState>>({});
     const [timerNow, setTimerNow] = useState(() => Date.now());
+    const [expandedTaskIds, setExpandedTaskIds] = useState<Record<string, boolean>>({});
     const [addSheetOpen, setAddSheetOpen] = useState(false);
+  const [carryOverOpen, setCarryOverOpen] = useState(false);
   const [viewAllSheet, setViewAllSheet] = useState<ViewAllState>(null);
   const [activeScreen, setActiveScreen] = useState<AppScreen>("today");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -1567,6 +1747,8 @@ export default function App() {
   const activeUiCopy = uiCopy[settings.language];
   const activeDate = getActiveDate(selectedDate, today);
   const activeDateDate = useMemo(() => parseDateKey(activeDate), [activeDate]);
+  const activeDateState = useMemo(() => getEffectiveStateForDate(appState, activeDate), [activeDate, appState]);
+  const actualTodayState = useMemo(() => getEffectiveStateForDate(appState, today), [appState, today]);
   const activeDateLabel = useMemo(() => formatTodayDate(activeDateDate, settings.language), [activeDateDate, settings.language]);
   const isSelectedDateMode = selectedDate !== null;
   const selectedDateNote =
@@ -1576,27 +1758,31 @@ export default function App() {
         ? activeUiCopy.pastDay
         : undefined;
   const daily = useMemo(
-    () => calculateDailyProgress(appState.goals, appState.tasks, activeDate),
-    [activeDate, appState.goals, appState.tasks],
+    () => calculateDailyProgress(activeDateState.goals, activeDateState.tasks, activeDate),
+    [activeDate, activeDateState.goals, activeDateState.tasks],
   );
   const actualTodayDaily = useMemo(
-    () => (activeDate === today ? daily : calculateDailyProgress(appState.goals, appState.tasks, today)),
-    [activeDate, appState.goals, appState.tasks, daily, today],
+    () => (activeDate === today ? daily : calculateDailyProgress(actualTodayState.goals, actualTodayState.tasks, today)),
+    [activeDate, actualTodayState.goals, actualTodayState.tasks, daily, today],
   );
   const todayGoals = useMemo(
-    () => appState.goals.filter((goal) => isGoalDueOnDate(goal, activeDateDate, activeDate)),
-    [activeDate, activeDateDate, appState.goals],
+    () => activeDateState.goals,
+    [activeDateState.goals],
   );
   const todayTasks = useMemo(
-    () => appState.tasks.filter((task) => isTaskDueOnDate(task, activeDateDate, activeDate)),
-    [activeDate, activeDateDate, appState.tasks],
+    () => activeDateState.tasks,
+    [activeDateState.tasks],
   );
   const sortedTodayGoals = useMemo(() => sortGoalsForToday(todayGoals, activeDate), [activeDate, todayGoals]);
   const visibleTodayTasks = useMemo(() => sortTasksForToday(dedupeTodayTasks(todayTasks, activeDate), activeDate), [activeDate, todayTasks]);
   const hasActiveDateItems = sortedTodayGoals.length > 0 || visibleTodayTasks.length > 0;
   const viewAllGoals = useMemo(
-    () => appState.goals.filter((goal) => isGoalDueOnDate(goal, activeDateDate, activeDate) || goal.currentValue >= goal.targetValue),
-    [activeDate, activeDateDate, appState.goals],
+    () => activeDateState.goals.filter((goal) => isGoalDueOnDate(goal, activeDateDate, activeDate) || goal.currentValue >= goal.targetValue),
+    [activeDate, activeDateDate, activeDateState.goals],
+  );
+  const carryOverCandidates = useMemo(
+    () => (activeDate === today ? getCarryOverCandidates(appState, today, settings.language) : []),
+    [activeDate, appState, settings.language, today],
   );
   const rhythmTrend = useMemo(
     () => getLastNDaysCompletionTrend(7, dayRecords, daily.percent, activeDate),
@@ -1704,123 +1890,10 @@ export default function App() {
   }, [settings]);
 
   useEffect(() => {
-    if (Object.keys(runningTimers).length === 0) {
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      setTimerNow(Date.now());
-    }, 1000);
-
-    return () => window.clearInterval(intervalId);
-  }, [runningTimers]);
-
-  useEffect(() => {
     const intervalId = window.setInterval(() => setTimerNow(Date.now()), 60000);
 
     return () => window.clearInterval(intervalId);
   }, []);
-
-  useEffect(() => {
-    const runningEntries = Object.entries(runningTimers);
-
-    if (runningEntries.length === 0) {
-      return;
-    }
-
-    const now = timerNow;
-    const nextRunningTimers = { ...runningTimers };
-    let changedTimers = false;
-    const timerUpdates: Array<{ taskId: string; dateKey: string; secondsDone: number; completed: boolean }> = [];
-
-    runningEntries.forEach(([taskId, running]) => {
-      const task = appState.tasks.find((item) => item.id === taskId);
-
-      if (!task || !hasTaskTimer(task)) {
-        delete nextRunningTimers[taskId];
-        changedTimers = true;
-        return;
-      }
-
-      const totalSeconds = getTaskTimerProgress(task, running.dateKey).totalSeconds;
-      const secondsDone = Math.min(running.baseSeconds + Math.floor((now - running.startedAt) / 1000), totalSeconds);
-
-      if (secondsDone >= totalSeconds) {
-        timerUpdates.push({ taskId, dateKey: running.dateKey, secondsDone: totalSeconds, completed: true });
-        delete nextRunningTimers[taskId];
-        changedTimers = true;
-        return;
-      }
-
-      if (now - running.lastSavedAt >= 15000) {
-        timerUpdates.push({ taskId, dateKey: running.dateKey, secondsDone, completed: false });
-        nextRunningTimers[taskId] = {
-          ...running,
-          baseSeconds: secondsDone,
-          startedAt: now,
-          lastSavedAt: now,
-        };
-        changedTimers = true;
-      }
-    });
-
-    if (timerUpdates.length > 0) {
-      setAppState((state) => ({
-        ...state,
-        tasks: state.tasks.map((task) => {
-          const update = timerUpdates.find((item) => item.taskId === task.id);
-
-          if (!update || !hasTaskTimer(task)) {
-            return task;
-          }
-
-          const timer = getTaskTimerProgress(task, update.dateKey);
-          const nextSeconds = Math.max(Math.min(Math.round(update.secondsDone), timer.totalSeconds), 0);
-          const completed = update.completed || nextSeconds >= timer.totalSeconds;
-          const completedDates = new Set(task.completedDates ?? []);
-
-          if (completed) {
-            completedDates.add(update.dateKey);
-          } else {
-            completedDates.delete(update.dateKey);
-          }
-
-          const completedAtByDate = { ...(task.completedAtByDate ?? {}) };
-          const lateDates = new Set(task.lateDates ?? []);
-          const completedAt = completed ? (completedAtByDate[update.dateKey] ?? new Date().toISOString()) : undefined;
-
-          if (completedAt) {
-            completedAtByDate[update.dateKey] = completedAt;
-
-            if (isLateForDueTime(update.dateKey, task.dueTime, completedAt)) {
-              lateDates.add(update.dateKey);
-            } else {
-              lateDates.delete(update.dateKey);
-            }
-          }
-
-          return {
-            ...task,
-            timerStateByDate: {
-              ...(task.timerStateByDate ?? {}),
-              [update.dateKey]: {
-                secondsDone: nextSeconds > 0 ? nextSeconds : undefined,
-                completed,
-              },
-            },
-            completedDates: Array.from(completedDates).sort(),
-            completedAtByDate: Object.keys(completedAtByDate).length > 0 ? completedAtByDate : undefined,
-            lateDates: Array.from(lateDates).sort(),
-            completed: completedDates.has(today),
-          };
-        }),
-      }));
-    }
-
-    if (changedTimers) {
-      setRunningTimers(nextRunningTimers);
-    }
-  }, [appState.tasks, runningTimers, timerNow, today]);
 
   useEffect(() => {
     if (import.meta.env.DEV) {
@@ -1850,14 +1923,15 @@ export default function App() {
       setConfirmState(null);
       setDeleteState(null);
       setEditState(null);
-      setSubitemsSheet(null);
+      setActionSheet(null);
       setViewAllSheet(null);
-      setRunningTimers({});
+      setCarryOverOpen(false);
+      setExpandedTaskIds({});
     setSelectedDate(null);
     setActiveScreen("today");
   }
 
-    function deleteAction() {
+    function deleteActionForPeriod() {
       if (!deleteState) {
         return;
       }
@@ -1866,15 +1940,97 @@ export default function App() {
       setAppState((state) => ({
         ...state,
         goals: state.goals.filter((goal) => goal.id !== deleteState.goal.id),
+        occurrences: (state.occurrences ?? []).filter((occurrence) => occurrence.itemId !== deleteState.goal.id),
       }));
     } else {
       setAppState((state) => ({
         ...state,
         tasks: state.tasks.filter((task) => task.id !== deleteState.task.id),
+        occurrences: (state.occurrences ?? []).filter((occurrence) => occurrence.itemId !== deleteState.task.id),
       }));
     }
 
       setDeleteState(null);
+      setActionSheet(null);
+    }
+
+    function deleteActionForActiveDate() {
+      if (!deleteState) {
+        return;
+      }
+
+      const itemId = deleteState.type === "goal" ? deleteState.goal.id : deleteState.task.id;
+      const itemType = deleteState.type;
+
+      setAppState((state) => {
+        const existingSkip = (state.occurrences ?? []).some(
+          (occurrence) => occurrence.itemId === itemId && occurrence.itemType === itemType && occurrence.date === activeDate && occurrence.status === "skipped",
+        );
+        const occurrences = existingSkip
+          ? state.occurrences ?? []
+          : [...(state.occurrences ?? []), createDateSkipOccurrence(itemId, itemType, activeDate)];
+
+        if (itemType === "goal") {
+          return {
+            ...state,
+            goals: state.goals.map((goal) => {
+              if (goal.id !== itemId) {
+                return goal;
+              }
+
+              const removedAmount = goal.progressEntries
+                .filter((entry) => entry.date === activeDate)
+                .reduce((total, entry) => total + entry.amount, 0);
+              const completedAtByDate = { ...(goal.completedAtByDate ?? {}) };
+              const lateDates = new Set(goal.lateDates ?? []);
+
+              delete completedAtByDate[activeDate];
+              lateDates.delete(activeDate);
+
+              return {
+                ...goal,
+                currentValue: Math.max(goal.currentValue - removedAmount, 0),
+                progressEntries: goal.progressEntries.filter((entry) => entry.date !== activeDate),
+                completedAtByDate: Object.keys(completedAtByDate).length > 0 ? completedAtByDate : undefined,
+                lateDates: Array.from(lateDates).sort(),
+              };
+            }),
+            occurrences,
+          };
+        }
+
+        return {
+          ...state,
+          tasks: state.tasks.map((task) => {
+            if (task.id !== itemId) {
+              return task;
+            }
+
+            const completedDates = new Set(task.completedDates ?? []);
+            const completedAtByDate = { ...(task.completedAtByDate ?? {}) };
+            const lateDates = new Set(task.lateDates ?? []);
+            const subitemStateByDate = { ...(task.subitemStateByDate ?? {}) };
+
+            completedDates.delete(activeDate);
+            delete completedAtByDate[activeDate];
+            lateDates.delete(activeDate);
+            delete subitemStateByDate[activeDate];
+
+            return {
+              ...task,
+              completedDates: Array.from(completedDates).sort(),
+              completedAtByDate: Object.keys(completedAtByDate).length > 0 ? completedAtByDate : undefined,
+              lateDates: Array.from(lateDates).sort(),
+              subitemStateByDate: Object.keys(subitemStateByDate).length > 0 ? subitemStateByDate : undefined,
+              completed: task.date === activeDate ? false : task.completed,
+            };
+          }),
+          occurrences,
+        };
+      });
+
+      setDeleteState(null);
+      setActionSheet(null);
     }
 
     function updateGoal(
@@ -1882,6 +2038,7 @@ export default function App() {
       update: {
         title: string;
         note?: string;
+        emoji?: string;
         iconKey?: string;
         repeatMode: GoalRepeatMode;
         selectedDays?: number[];
@@ -1901,6 +2058,7 @@ export default function App() {
                   ...goal,
                   title: update.title.trim(),
                   note: update.note?.trim() || undefined,
+                  emoji: update.emoji,
                   iconType: update.iconKey === "book" ? "book" : update.iconKey ? "custom" : "letter",
                   iconKey: update.iconKey,
                   targetValue: update.targetValue,
@@ -1917,7 +2075,7 @@ export default function App() {
       );
     }
 
-    function updateTask(taskId: string, update: { title: string; note?: string; iconKey?: string; repeatMode: TaskRepeatMode; selectedDays?: number[]; dueTime?: string }) {
+    function updateTask(taskId: string, update: { title: string; note?: string; emoji?: string; iconKey?: string; repeatMode: TaskRepeatMode; selectedDays?: number[]; dueTime?: string }) {
       setAppState((state) =>
         mergeDuplicateActions({
           ...state,
@@ -1927,6 +2085,7 @@ export default function App() {
                   ...task,
                   title: update.title.trim(),
                   note: update.note?.trim() || undefined,
+                  emoji: update.emoji,
                   iconType: update.iconKey ? "custom" : "letter",
                   iconKey: update.iconKey,
                   repeatMode: update.repeatMode,
@@ -1944,9 +2103,9 @@ export default function App() {
       return;
     }
 
-    setAppState((state) => ({
-      ...state,
-      goals: state.goals.map((goal) => {
+    setAppState((state) => {
+      let completedCarryOver = false;
+      const goals = state.goals.map((goal) => {
         if (goal.id !== goalId) {
           return goal;
         }
@@ -1961,6 +2120,8 @@ export default function App() {
         if (completedNow && completedAt && isLateForDueTime(activeDate, goal.dueTime, completedAt)) {
           lateDates.add(activeDate);
         }
+
+        completedCarryOver = required > 0 && nextLogged >= required;
 
         return {
           ...goal,
@@ -1982,132 +2143,21 @@ export default function App() {
             : goal.completedAtByDate,
           lateDates: Array.from(lateDates).sort(),
         };
-      }),
-    }));
-  }
+      });
 
-  function setTaskTimerProgress(taskId: string, dateKey: string, secondsDone: number, completed: boolean) {
-    setAppState((state) => ({
-      ...state,
-      tasks: state.tasks.map((task) => {
-        if (task.id !== taskId || !hasTaskTimer(task)) {
-          return task;
-        }
-
-        const timer = getTaskTimerProgress(task, dateKey);
-        const totalSeconds = timer.totalSeconds;
-        const nextSeconds = Math.max(Math.min(Math.round(secondsDone), totalSeconds), 0);
-        const nextCompleted = completed || (totalSeconds > 0 && nextSeconds >= totalSeconds);
-        const timerStateByDate = {
-          ...(task.timerStateByDate ?? {}),
-          [dateKey]: {
-            secondsDone: nextSeconds > 0 ? nextSeconds : undefined,
-            completed: nextCompleted,
-          },
-        };
-        const completedDates = new Set(task.completedDates ?? []);
-
-        if (nextCompleted) {
-          completedDates.add(dateKey);
-        } else {
-          completedDates.delete(dateKey);
-        }
-
-        const completedAtByDate = { ...(task.completedAtByDate ?? {}) };
-        const lateDates = new Set(task.lateDates ?? []);
-        const completedAt = nextCompleted ? (completedAtByDate[dateKey] ?? new Date().toISOString()) : undefined;
-
-        if (completedAt) {
-          completedAtByDate[dateKey] = completedAt;
-
-          if (isLateForDueTime(dateKey, task.dueTime, completedAt)) {
-            lateDates.add(dateKey);
-          } else {
-            lateDates.delete(dateKey);
-          }
-        } else {
-          delete completedAtByDate[dateKey];
-          lateDates.delete(dateKey);
-        }
-
-        return {
-          ...task,
-          timerStateByDate,
-          completedDates: Array.from(completedDates).sort(),
-          completedAtByDate: Object.keys(completedAtByDate).length > 0 ? completedAtByDate : undefined,
-          lateDates: Array.from(lateDates).sort(),
-          completed: completedDates.has(today),
-        };
-      }),
-    }));
-  }
-
-  function getDisplayedTimerSeconds(task: TaskItem, dateKey: string): number {
-    const progress = getTaskTimerProgress(task, dateKey);
-    const running = runningTimers[task.id];
-
-    if (!running || running.dateKey !== dateKey) {
-      return progress.secondsDone;
-    }
-
-    return Math.min(running.baseSeconds + Math.floor((timerNow - running.startedAt) / 1000), progress.totalSeconds);
-  }
-
-  function startTaskTimer(task: TaskItem, dateKey: string) {
-    if (!hasTaskTimer(task) || getTaskTimerProgress(task, dateKey).completed) {
-      return;
-    }
-
-    const now = Date.now();
-    setRunningTimers((timers) => ({
-      ...timers,
-      [task.id]: {
-        dateKey,
-        startedAt: now,
-        baseSeconds: getTaskTimerProgress(task, dateKey).secondsDone,
-        lastSavedAt: now,
-      },
-    }));
-  }
-
-  function pauseTaskTimer(task: TaskItem, dateKey: string) {
-    const running = runningTimers[task.id];
-
-    if (!running || running.dateKey !== dateKey) {
-      return;
-    }
-
-    const timer = getTaskTimerProgress(task, dateKey);
-    const secondsDone = Math.min(running.baseSeconds + Math.floor((Date.now() - running.startedAt) / 1000), timer.totalSeconds);
-    setTaskTimerProgress(task.id, dateKey, secondsDone, false);
-    setRunningTimers((timers) => {
-      const next = { ...timers };
-      delete next[task.id];
-      return next;
-    });
-  }
-
-  function finishTaskTimer(task: TaskItem, dateKey: string) {
-    const timer = getTaskTimerProgress(task, dateKey);
-    setTaskTimerProgress(task.id, dateKey, timer.totalSeconds, true);
-    setRunningTimers((timers) => {
-      const next = { ...timers };
-      delete next[task.id];
-      return next;
+      return {
+        ...state,
+        goals,
+        occurrences: (state.occurrences ?? []).map((occurrence) =>
+          occurrence.itemId === goalId && occurrence.date === activeDate && completedCarryOver
+            ? { ...occurrence, status: "completed" }
+            : occurrence,
+        ),
+      };
     });
   }
 
   function setTaskCompleted(taskId: string, completed: boolean) {
-    setRunningTimers((timers) => {
-      if (!timers[taskId]) {
-        return timers;
-      }
-
-      const next = { ...timers };
-      delete next[taskId];
-      return next;
-    });
-
     setAppState((state) => ({
       ...state,
       tasks: state.tasks.map((task) => {
@@ -2140,42 +2190,26 @@ export default function App() {
           lateDates.delete(activeDate);
         }
 
-        const timer = hasTaskTimer(task) ? getTaskTimerProgress(task, activeDate) : null;
-        const timerStateByDate =
-          timer && !completed
-            ? {
-                ...(task.timerStateByDate ?? {}),
-                [activeDate]: {
-                  secondsDone: 0,
-                  completed: false,
-                },
-              }
-            : timer && completed
-              ? {
-                  ...(task.timerStateByDate ?? {}),
-                  [activeDate]: {
-                    secondsDone: timer.totalSeconds,
-                    completed: true,
-                  },
-                }
-              : task.timerStateByDate;
-
         return {
           ...task,
           completed: completedDates.has(today),
           completedDates: Array.from(completedDates).sort(),
           completedAtByDate: Object.keys(completedAtByDate).length > 0 ? completedAtByDate : undefined,
           lateDates: Array.from(lateDates).sort(),
-          timerStateByDate,
         };
       }),
+      occurrences: (state.occurrences ?? []).map((occurrence) =>
+        occurrence.itemId === taskId && occurrence.date === activeDate
+          ? { ...occurrence, status: completed ? "completed" : "active" }
+          : occurrence,
+      ),
     }));
   }
 
   function updateTaskSubitem(taskId: string, subitemId: string, nextState: ActionSubitemState) {
-    setAppState((state) => ({
-      ...state,
-      tasks: state.tasks.map((task) => {
+    setAppState((state) => {
+      let occurrenceCompleted = false;
+      const tasks = state.tasks.map((task) => {
         if (task.id !== taskId) {
           return task;
         }
@@ -2207,6 +2241,7 @@ export default function App() {
         } else {
           completedDates.delete(activeDate);
         }
+        occurrenceCompleted = allComplete;
 
         const completedAtByDate = { ...(task.completedAtByDate ?? {}) };
         const lateDates = new Set(task.lateDates ?? []);
@@ -2233,12 +2268,94 @@ export default function App() {
           lateDates: Array.from(lateDates).sort(),
           completed: completedDates.has(today),
         };
-      }),
+      });
+
+      return {
+        ...state,
+        tasks,
+        occurrences: (state.occurrences ?? []).map((occurrence) =>
+          occurrence.itemId === taskId && occurrence.date === activeDate
+            ? { ...occurrence, status: occurrenceCompleted ? "completed" : "active" }
+            : occurrence,
+        ),
+      };
+    });
+  }
+
+  function advanceTaskSubitem(taskId: string, subitemId: string) {
+    const task = appState.tasks.find((item) => item.id === taskId);
+    const subitem = task?.subitems?.find((item) => item.id === subitemId);
+
+    if (!task || !subitem) {
+      return;
+    }
+
+    const currentState = task.subitemStateByDate?.[activeDate]?.[subitemId] ?? {};
+
+    if (subitem.targetCount && subitem.targetCount > 1) {
+      const nextCount = Math.min(Number(currentState.count ?? 0) + 1, subitem.targetCount);
+      updateTaskSubitem(taskId, subitemId, {
+        count: nextCount,
+        completed: nextCount >= subitem.targetCount,
+      });
+      return;
+    }
+
+    updateTaskSubitem(taskId, subitemId, { completed: true });
+  }
+
+  function reorderTasks(sourceId: string, targetId: string) {
+    if (sourceId === targetId) {
+      return;
+    }
+
+    setAppState((state) => ({
+      ...state,
+      tasks: reorderById(state.tasks, sourceId, targetId).map((task, index) => ({
+        ...task,
+        sortOrder: index + 1,
+      })),
+    }));
+  }
+
+  function reorderGoals(sourceId: string, targetId: string) {
+    if (sourceId === targetId) {
+      return;
+    }
+
+    setAppState((state) => ({
+      ...state,
+      goals: reorderById(state.goals, sourceId, targetId).map((goal, index) => ({
+        ...goal,
+        sortOrder: index + 1,
+      })),
+    }));
+  }
+
+  function reorderTaskSubitems(taskId: string, sourceId: string, targetId: string) {
+    if (sourceId === targetId) {
+      return;
+    }
+
+    setAppState((state) => ({
+      ...state,
+      tasks: state.tasks.map((task) =>
+        task.id === taskId
+          ? {
+              ...task,
+              subitems: reorderById(task.subitems ?? [], sourceId, targetId).map((subitem, index) => ({
+                ...subitem,
+                sortOrder: index + 1,
+              })),
+            }
+          : task,
+      ),
     }));
   }
 
   function createGoal(goal: {
     title: string;
+    emoji?: string;
     iconKey?: string;
     targetValue: number;
     currentValue: number;
@@ -2270,6 +2387,7 @@ export default function App() {
         {
           id: createId("goal"),
           title,
+          emoji: goal.emoji,
           iconType: goal.iconKey === "book" ? "book" : goal.iconKey ? "custom" : "letter",
           iconKey: goal.iconKey,
           targetValue: goal.targetValue,
@@ -2282,6 +2400,7 @@ export default function App() {
           dueTime: goal.dueTime,
           quickAddValues: goal.quickAddValues,
           progressEntries: initialEntry,
+          sortOrder: state.goals.length + 1,
         },
       ],
     }));
@@ -2289,6 +2408,7 @@ export default function App() {
 
   function createTask(task: {
     title: string;
+    emoji?: string;
     iconKey?: string;
     priority?: Priority;
     startDate: string;
@@ -2296,7 +2416,6 @@ export default function App() {
     repeatMode: TaskRepeatMode;
     selectedDays?: number[];
     subitems?: ActionSubitem[];
-    timerMinutes?: number;
     dueTime?: string;
   }) {
     setAppState((state) => ({
@@ -2306,6 +2425,7 @@ export default function App() {
         {
           id: createId("task"),
           title: task.title.trim(),
+          emoji: task.emoji,
           iconType: task.iconKey ? "custom" : "letter",
           iconKey: task.iconKey,
           priority: task.priority,
@@ -2317,13 +2437,33 @@ export default function App() {
           date: task.startDate,
           completed: false,
           completedDates: [],
-          subitems: task.subitems && task.subitems.length > 0 ? task.subitems : undefined,
+          subitems:
+            task.subitems && task.subitems.length > 0
+              ? task.subitems.map((subitem, index) => ({ ...subitem, sortOrder: subitem.sortOrder ?? index + 1 }))
+              : undefined,
           subitemStateByDate: undefined,
-          timerMinutes: task.subitems && task.subitems.length > 0 ? undefined : task.timerMinutes,
-          timerStateByDate: undefined,
+          sortOrder: state.tasks.length + 1,
         },
       ],
     }));
+  }
+
+  function moveCarryOverToToday(candidates: CarryOverCandidate[]) {
+    if (candidates.length === 0) {
+      return;
+    }
+
+    setAppState((state) => {
+      const existingKeys = new Set((state.occurrences ?? []).map((occurrence) => `${occurrence.itemId}|${occurrence.date}|${occurrence.source}`));
+      const nextOccurrences = candidates
+        .map((candidate) => createCarryOverOccurrence(candidate, today))
+        .filter((occurrence) => !existingKeys.has(`${occurrence.itemId}|${occurrence.date}|${occurrence.source}`));
+
+      return {
+        ...state,
+        occurrences: [...(state.occurrences ?? []), ...nextOccurrences],
+      };
+    });
   }
 
   function selectScreen(screen: AppScreen) {
@@ -2400,6 +2540,13 @@ export default function App() {
                 trend={rhythmTrend}
                 copy={activeUiCopy}
               />
+              {carryOverCandidates.length > 0 && (
+                <CarryOverBanner
+                  count={carryOverCandidates.length}
+                  language={settings.language}
+                  onReview={() => setCarryOverOpen(true)}
+                />
+              )}
               {isSelectedDateMode && !hasActiveDateItems ? (
                 <section className="section-block">
                   <EmptySectionCard
@@ -2417,49 +2564,31 @@ export default function App() {
                       {visibleTodayTasks.length > 0 ? visibleTodayTasks.map((task) => {
                         const completedToday = isTaskCompletedOnDate(task, activeDate);
                         const taskHasSubitems = hasTaskSubitems(task);
-                        const taskHasTimer = hasTaskTimer(task);
-                        const timerRunning = runningTimers[task.id]?.dateKey === activeDate;
 
                         return (
-                          <TaskRow
-                            key={task.id}
-                            task={task}
+                          <ReorderableItem key={task.id} id={task.id} scope="today-tasks" onMove={reorderTasks}>
+                            <TaskRow
+                              task={task}
                               completed={completedToday}
                               dateKey={activeDate}
                               isToday={activeDate === today}
-                              timerSecondsDone={taskHasTimer ? getDisplayedTimerSeconds(task, activeDate) : undefined}
-                              timerRunning={timerRunning}
+                              expanded={taskHasSubitems && expandedTaskIds[task.id] === true}
                               nowMs={timerNow}
                               copy={activeUiCopy}
-                              deleteLabel={activeUiCopy.deleteConfirm}
                               editLabel={activeUiCopy.editAction}
                               toggleLabel={completedToday ? activeUiCopy.undoDoneTitle : activeUiCopy.markDoneTitle}
-                              onClick={() => {
-                                if (taskHasSubitems) {
-                                  setSubitemsSheet({ task });
-                                  return;
-                                }
-
-                                if (taskHasTimer && !completedToday) {
-                                  if (timerRunning) {
-                                    pauseTaskTimer(task, activeDate);
-                                  } else {
-                                    startTaskTimer(task, activeDate);
-                                  }
-                                  return;
-                                }
-
+                              onClick={() => setActionSheet({ type: "task", task })}
+                              onToggle={() => {
                                 setConfirmState({
                                   task,
                                   nextCompleted: !completedToday,
                                 });
                               }}
-                            onTimerStart={() => startTaskTimer(task, activeDate)}
-                            onTimerPause={() => pauseTaskTimer(task, activeDate)}
-                            onTimerFinish={() => finishTaskTimer(task, activeDate)}
-                            onDelete={() => setDeleteState({ type: "task", task })}
-                            onEdit={() => setEditState({ type: "task", task })}
-                          />
+                              onSubitemAdvance={(subitemId) => advanceTaskSubitem(task.id, subitemId)}
+                              onSubitemMove={(sourceId, targetId) => reorderTaskSubitems(task.id, sourceId, targetId)}
+                              onEdit={() => setEditState({ type: "task", task })}
+                            />
+                          </ReorderableItem>
                         );
                       }) : (
                         <EmptySectionCard title={activeUiCopy.emptyChecklistTitle} text={activeUiCopy.emptyChecklistText} buttonLabel={activeUiCopy.add} onAdd={() => setAddSheetOpen(true)} />
@@ -2471,16 +2600,17 @@ export default function App() {
                       <SectionHeader title={activeUiCopy.progressSection} />
                       <div className="goal-list">
                         {sortedTodayGoals.length > 0 ? sortedTodayGoals.map((goal) => (
-                          <GoalCard
-                            key={goal.id}
-                            goal={goal}
+                          <ReorderableItem key={goal.id} id={goal.id} scope="today-goals" onMove={reorderGoals}>
+                            <GoalCard
+                              goal={goal}
                           today={activeDate}
                             copy={activeUiCopy}
                             nowMs={timerNow}
                             onOpenManual={() => setProgressSheet({ goal })}
-                            onDelete={() => setDeleteState({ type: "goal", goal })}
+                            onQuickAdd={(amount) => addProgress(goal.id, amount)}
                             onEdit={() => setEditState({ type: "goal", goal })}
-                          />
+                            />
+                          </ReorderableItem>
                       )) : (
                         <EmptySectionCard title={activeUiCopy.emptyProgressTitle} text={activeUiCopy.emptyProgressText} buttonLabel={activeUiCopy.add} onAdd={() => setAddSheetOpen(true)} />
                       )}
@@ -2511,30 +2641,16 @@ export default function App() {
               today={activeDate}
               copy={activeUiCopy}
               onClose={() => setProgressSheet(null)}
+              onEdit={() => {
+                setEditState({ type: "goal", goal: progressSheet.goal });
+                setProgressSheet(null);
+              }}
               onSave={(amount, note) => {
                 addProgress(progressSheet.goal.id, amount, note);
                 setProgressSheet(null);
               }}
             />
           )}
-
-          {subitemsSheet && (() => {
-            const task = appState.tasks.find((item) => item.id === subitemsSheet.task.id);
-
-            if (!task) {
-              return null;
-            }
-
-            return (
-              <SubitemsSheet
-                task={task}
-                dateKey={activeDate}
-                language={settings.language}
-                onClose={() => setSubitemsSheet(null)}
-                onChange={updateTaskSubitem}
-              />
-            );
-          })()}
 
           {confirmState && (
             <ConfirmDialog
@@ -2550,15 +2666,35 @@ export default function App() {
             />
           )}
 
+          {actionSheet && actionSheet.type === "task" && (
+            <TaskActionSheet
+              task={actionSheet.task}
+              completed={isTaskCompletedOnDate(actionSheet.task, activeDate)}
+              copy={activeUiCopy}
+              onClose={() => setActionSheet(null)}
+              onToggle={() => {
+                setConfirmState({
+                  task: actionSheet.task,
+                  nextCompleted: !isTaskCompletedOnDate(actionSheet.task, activeDate),
+                });
+                setActionSheet(null);
+              }}
+              onEdit={() => {
+                setEditState({ type: "task", task: actionSheet.task });
+                setActionSheet(null);
+              }}
+            />
+          )}
+
             {deleteState && (
-              <ConfirmDialog
-                title={activeUiCopy.deleteActionTitle}
-              description={activeUiCopy.deleteActionText}
-              confirmLabel={activeUiCopy.deleteConfirm}
-              cancelLabel={activeUiCopy.cancel}
-              danger
-              onCancel={() => setDeleteState(null)}
-                onConfirm={deleteAction}
+              <DeleteActionSheet
+                state={deleteState}
+                dateLabel={activeDateLabel}
+                language={settings.language}
+                copy={activeUiCopy}
+                onClose={() => setDeleteState(null)}
+                onDeleteToday={deleteActionForActiveDate}
+                onDeletePeriod={deleteActionForPeriod}
               />
             )}
 
@@ -2568,11 +2704,16 @@ export default function App() {
                 copy={activeUiCopy}
                 language={settings.language}
                 onClose={() => setEditState(null)}
+                onDelete={() => {
+                  setDeleteState(editState);
+                  setEditState(null);
+                }}
                 onSave={(update) => {
                   if (editState.type === "goal") {
                     updateGoal(editState.goal.id, {
                       title: update.title,
                       note: update.note,
+                      emoji: update.emoji,
                       iconKey: update.iconKey,
                       repeatMode: update.repeatMode as GoalRepeatMode,
                       selectedDays: update.selectedDays,
@@ -2586,6 +2727,7 @@ export default function App() {
                     updateTask(editState.task.id, {
                       title: update.title,
                       note: update.note,
+                      emoji: update.emoji,
                       iconKey: update.iconKey,
                       repeatMode: update.repeatMode,
                       selectedDays: update.selectedDays,
@@ -2617,6 +2759,18 @@ export default function App() {
             />
           )}
 
+          {carryOverOpen && (
+            <CarryOverReviewSheet
+              candidates={carryOverCandidates}
+              language={settings.language}
+              onClose={() => setCarryOverOpen(false)}
+              onMove={(selected) => {
+                moveCarryOverToToday(selected);
+                setCarryOverOpen(false);
+              }}
+            />
+          )}
+
           {viewAllSheet && (
             <ViewAllSheet
               type={viewAllSheet}
@@ -2630,6 +2784,7 @@ export default function App() {
                 setViewAllSheet(null);
                 setProgressSheet({ goal });
               }}
+              onQuickAddGoal={(goal, amount) => addProgress(goal.id, amount)}
               onToggleTask={(task) => {
                 const completedToday = isTaskCompletedOnDate(task, activeDate);
 
@@ -2960,7 +3115,6 @@ function GoalCard({
   copy,
   nowMs,
   onOpenManual,
-  onDelete,
   onEdit,
 }: {
   goal: ProgressGoal;
@@ -2968,7 +3122,7 @@ function GoalCard({
   copy: UiCopy;
   nowMs: number;
   onOpenManual: () => void;
-  onDelete?: () => void;
+  onQuickAdd?: (amount: number) => void;
   onEdit?: () => void;
 }) {
   const progressPercent = getGoalProgressPercent(goal);
@@ -2987,7 +3141,7 @@ function GoalCard({
   }
 
   return (
-    <SwipeDeleteShell deleteLabel={copy.deleteConfirm} editLabel={copy.editAction} onDelete={onDelete} onEdit={onEdit} onTap={onOpenManual}>
+    <SwipeDeleteShell deleteLabel={copy.markDoneTitle} editLabel={copy.editAction} onEdit={onEdit} onTap={onOpenManual}>
       <article
         className={`goal-card ${isTodayDone ? "is-done" : ""} ${isGoalCompleted ? "is-complete" : ""}`}
         role="button"
@@ -2995,7 +3149,7 @@ function GoalCard({
         onKeyDown={handleKeyDown}
       >
         <div className="goal-top">
-          <ActionIconBadge className="goal-icon" iconKey={goal.iconKey ?? (goal.iconType === "book" ? "book" : undefined)} title={goal.title} />
+          <span className="action-emoji" aria-hidden="true">{getActionEmoji(goal, "📈")}</span>
           <div className="goal-content">
             <div className="goal-title-row">
               <div className="goal-title-progress">
@@ -3036,17 +3190,14 @@ function TaskRow({
   dateKey,
   isToday,
   copy,
-  timerSecondsDone,
-  timerRunning = false,
+  expanded = false,
   nowMs,
-  deleteLabel,
   editLabel,
   toggleLabel,
   onClick,
-  onTimerStart,
-  onTimerPause,
-  onTimerFinish,
-  onDelete,
+  onToggle,
+  onSubitemAdvance,
+  onSubitemMove,
   onEdit,
 }: {
   task: TaskItem;
@@ -3054,73 +3205,34 @@ function TaskRow({
   dateKey: string;
   isToday: boolean;
   copy: UiCopy;
-  timerSecondsDone?: number;
-  timerRunning?: boolean;
+  expanded?: boolean;
   nowMs: number;
-  deleteLabel: string;
   editLabel?: string;
   toggleLabel: string;
   onClick: () => void;
-  onTimerStart?: () => void;
-  onTimerPause?: () => void;
-  onTimerFinish?: () => void;
-  onDelete?: () => void;
+  onToggle?: () => void;
+  onSubitemAdvance?: (subitemId: string) => void;
+  onSubitemMove?: (sourceId: string, targetId: string) => void;
   onEdit?: () => void;
 }) {
   const subitemProgress = hasTaskSubitems(task) ? getTaskSubitemProgress(task, dateKey) : null;
-  const timerProgress = hasTaskTimer(task) ? getTaskTimerProgress(task, dateKey) : null;
-  const secondsDone = timerProgress ? Math.min(timerSecondsDone ?? timerProgress.secondsDone, timerProgress.totalSeconds) : 0;
-  const remainingSeconds = timerProgress ? Math.max(timerProgress.totalSeconds - secondsDone, 0) : 0;
-  const timerStarted = timerProgress ? secondsDone > 0 : false;
+  const subitems = [...(task.subitems ?? [])].sort((first, second) => (first.sortOrder ?? 0) - (second.sortOrder ?? 0));
+  const dayState = task.subitemStateByDate?.[dateKey] ?? {};
   const dueMeta = formatDueMeta(task.dueTime, dateKey, completed, task.completedAtByDate?.[dateKey], task.lateDates?.includes(dateKey) ?? false, nowMs, copy);
 
   return (
-    <SwipeDeleteShell deleteLabel={deleteLabel} editLabel={editLabel} onDelete={onDelete} onEdit={onEdit}>
-      <div className={`task-row ${timerProgress ? "with-timer" : ""} ${completed ? "completed" : ""} priority-${task.priority ?? "medium"}`}>
+    <SwipeDeleteShell deleteLabel={toggleLabel} editLabel={editLabel} onDelete={onToggle ?? onClick} onEdit={onEdit}>
+      <div className={`task-card-inline ${expanded ? "expanded" : ""}`}>
+      <div className={`task-row ${completed ? "completed" : ""} ${subitemProgress ? "with-subitems" : ""} priority-${task.priority ?? "medium"}`}>
         <button type="button" className="task-row-main" onClick={onClick}>
-          <ActionIconBadge className="task-icon" iconKey={task.iconKey} title={task.title} />
+          <span className="action-emoji" aria-hidden="true">{getActionEmoji(task)}</span>
           <span className="task-title">
             {task.title}
             {subitemProgress && <small>{subitemProgress.completed}/{subitemProgress.total}</small>}
-            {timerProgress && (
-              <small>
-                {completed ? copy.timerDone : `${copy.remainingTime}: ${formatTimerDuration(remainingSeconds)}`}
-              </small>
-            )}
             {dueMeta && <small className="due-meta">{dueMeta}</small>}
             {!isToday && <small>{task.date}</small>}
           </span>
         </button>
-        {timerProgress && !completed && onTimerStart && (
-          <div className="task-timer-actions">
-            <button
-              type="button"
-              className="task-timer-button primary"
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={(event) => {
-                event.stopPropagation();
-                if (timerRunning) {
-                  onTimerPause?.();
-                } else {
-                  onTimerStart?.();
-                }
-              }}
-            >
-              {timerRunning ? copy.timerPause : timerStarted ? copy.timerContinue : copy.timerStart}
-            </button>
-            <button
-              type="button"
-              className="task-timer-button"
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={(event) => {
-                event.stopPropagation();
-                onTimerFinish?.();
-              }}
-            >
-              {copy.timerFinish}
-            </button>
-          </div>
-        )}
         <button
           type="button"
           className="task-check-button"
@@ -3129,7 +3241,7 @@ function TaskRow({
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation();
-            onClick();
+            (onToggle ?? onClick)();
           }}
         >
           <span className="task-check" aria-hidden="true">
@@ -3141,6 +3253,34 @@ function TaskRow({
             )}
           </span>
         </button>
+      </div>
+      {expanded && subitems.length > 0 && (
+        <div className="inline-subitems" aria-label={task.title}>
+          {subitems.map((subitem) => {
+            const state = dayState[subitem.id] ?? {};
+            const target = subitem.targetCount && subitem.targetCount > 1 ? subitem.targetCount : 1;
+            const current = subitem.targetCount && subitem.targetCount > 1 ? Math.min(Number(state.count ?? 0), target) : state.completed ? 1 : 0;
+            const percent = target > 0 ? clampPercent((current / target) * 100) : 0;
+            const isComplete = current >= target;
+
+            return (
+              <ReorderableItem key={subitem.id} id={subitem.id} scope={`subitems-${task.id}`} onMove={(sourceId, targetId) => onSubitemMove?.(sourceId, targetId)}>
+                <SwipeAdvanceShell onAdvance={() => onSubitemAdvance?.(subitem.id)}>
+                  <div className={`inline-subitem-row ${isComplete ? "completed" : ""}`}>
+                    <div className="inline-subitem-head">
+                      <span>{subitem.title}</span>
+                      <strong>{current}/{target}</strong>
+                    </div>
+                    <div className="mini-progress-track" style={{ "--mini-progress": `${percent}%` } as CSSProperties}>
+                      <span />
+                    </div>
+                  </div>
+                </SwipeAdvanceShell>
+              </ReorderableItem>
+            );
+          })}
+        </div>
+      )}
       </div>
     </SwipeDeleteShell>
   );
@@ -3230,6 +3370,198 @@ function SubitemsSheet({
         })}
       </div>
     </BottomSheet>
+  );
+}
+
+function ReorderableItem({
+  id,
+  scope,
+  onMove,
+  children,
+}: {
+  id: string;
+  scope: string;
+  onMove: (sourceId: string, targetId: string) => void;
+  children: ReactNode;
+}) {
+  const [dragging, setDragging] = useState(false);
+  const startPoint = useRef<{ x: number; y: number } | null>(null);
+  const longPressTimer = useRef<number | null>(null);
+  const activeRef = useRef(false);
+  const suppressClick = useRef(false);
+
+  function clearLongPress() {
+    if (longPressTimer.current !== null) {
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }
+
+  function endDrag() {
+    clearLongPress();
+    activeRef.current = false;
+    startPoint.current = null;
+    setDragging(false);
+  }
+
+  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+
+    startPoint.current = { x: event.clientX, y: event.clientY };
+    suppressClick.current = false;
+    longPressTimer.current = window.setTimeout(() => {
+      activeRef.current = true;
+      suppressClick.current = true;
+      setDragging(true);
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }, 420);
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const start = startPoint.current;
+
+    if (!start) {
+      return;
+    }
+
+    if (!activeRef.current && (Math.abs(event.clientX - start.x) > 10 || Math.abs(event.clientY - start.y) > 10)) {
+      clearLongPress();
+      return;
+    }
+
+    if (!activeRef.current) {
+      return;
+    }
+
+    event.preventDefault();
+    const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>(
+      `[data-reorder-scope="${scope}"][data-reorder-id]`,
+    );
+    const targetId = target?.dataset.reorderId;
+
+    if (targetId && targetId !== id) {
+      onMove(id, targetId);
+    }
+  }
+
+  function handlePointerEnd(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    endDrag();
+  }
+
+  return (
+    <div
+      className={`reorderable-item ${dragging ? "is-dragging" : ""}`}
+      data-reorder-id={id}
+      data-reorder-scope={scope}
+      onPointerDownCapture={handlePointerDown}
+      onPointerMoveCapture={handlePointerMove}
+      onPointerUpCapture={handlePointerEnd}
+      onPointerCancelCapture={handlePointerEnd}
+      onClickCapture={(event) => {
+        if (suppressClick.current) {
+          event.preventDefault();
+          event.stopPropagation();
+          suppressClick.current = false;
+        }
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function SwipeAdvanceShell({ children, onAdvance }: { children: ReactNode; onAdvance?: () => void }) {
+  const [offset, setOffset] = useState(0);
+  const startPoint = useRef<{ x: number; y: number } | null>(null);
+  const offsetRef = useRef(0);
+  const suppressClick = useRef(false);
+
+  if (!onAdvance) {
+    return <>{children}</>;
+  }
+
+  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+
+    startPoint.current = { x: event.clientX, y: event.clientY };
+    suppressClick.current = false;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!startPoint.current) {
+      return;
+    }
+
+    const deltaX = event.clientX - startPoint.current.x;
+    const deltaY = event.clientY - startPoint.current.y;
+
+    if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
+      offsetRef.current = 0;
+      setOffset(0);
+      return;
+    }
+
+    if (deltaX < -6) {
+      event.preventDefault();
+      suppressClick.current = true;
+      const nextOffset = Math.max(deltaX, -82);
+      offsetRef.current = nextOffset;
+      setOffset(nextOffset);
+    }
+  }
+
+  function handlePointerEnd(event: ReactPointerEvent<HTMLDivElement>) {
+    const shouldAdvance = offsetRef.current <= -54;
+    startPoint.current = null;
+    offsetRef.current = 0;
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    setOffset(0);
+
+    if (shouldAdvance) {
+      suppressClick.current = true;
+      onAdvance?.();
+    }
+  }
+
+  return (
+    <div
+      className={`swipe-advance-shell ${offset < -4 ? "is-advancing" : ""}`}
+      style={
+        {
+          "--advance-x": `${offset}px`,
+          "--advance-progress": Math.min(Math.abs(offset) / 82, 1),
+        } as CSSProperties
+      }
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerEnd}
+      onPointerCancel={handlePointerEnd}
+      onClickCapture={(event) => {
+        if (suppressClick.current) {
+          event.preventDefault();
+          event.stopPropagation();
+          suppressClick.current = false;
+        }
+      }}
+    >
+      <div className="swipe-advance-backdrop" aria-hidden="true">
+        <Plus size={16} />
+      </div>
+      <div className="swipe-advance-content">{children}</div>
+    </div>
   );
 }
 
@@ -3401,15 +3733,18 @@ function EditActionSheet({
   copy,
   language,
   onClose,
+  onDelete,
   onSave,
 }: {
   state: Exclude<EditState, null>;
   copy: UiCopy;
   language: AppSettings["language"];
   onClose: () => void;
+  onDelete?: () => void;
   onSave: (update: {
     title: string;
     note?: string;
+    emoji?: string;
     iconKey?: string;
     repeatMode: TaskRepeatMode;
     selectedDays?: number[];
@@ -3426,6 +3761,7 @@ function EditActionSheet({
   const [title, setTitle] = useState(action.title);
   const [note, setNote] = useState(action.note ?? "");
   const [iconKey, setIconKey] = useState<string | undefined>(action.iconKey);
+  const [emoji, setEmoji] = useState(action.emoji);
   const [repeatMode, setRepeatMode] = useState<TaskRepeatMode>(initialRepeatMode);
   const [selectedDays, setSelectedDays] = useState<number[]>(action.selectedDays ?? defaultGoalSelectedDays);
   const [dueTimeEnabled, setDueTimeEnabled] = useState(Boolean(action.dueTime));
@@ -3435,7 +3771,7 @@ function EditActionSheet({
   const [unit, setUnit] = useState(isGoal ? state.goal.unit : "");
   const [quickValues, setQuickValues] = useState(isGoal ? state.goal.quickAddValues.join(", ") : "");
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
-  const selectedIcon = iconKey ? getActionIcon(iconKey) : undefined;
+  const selectedEmoji = emoji ?? getIconEmoji(iconKey);
   const titleIsValid = title.trim().length > 0;
   const numericTarget = Number(targetValue);
   const numericCurrent = Number(currentValue);
@@ -3465,6 +3801,7 @@ function EditActionSheet({
     const update = {
       title,
       note,
+      emoji,
       iconKey,
       repeatMode,
       selectedDays: repeatMode === "selectedDays" ? selectedDays : undefined,
@@ -3493,38 +3830,37 @@ function EditActionSheet({
         </label>
 
         <div className="field-group">
-          <span>{copy.icon}</span>
-          <button type="button" className="icon-picker-trigger" onClick={() => setIconPickerOpen((open) => !open)}>
-            {selectedIcon ? (
-              <>
-                <ActionIconGlyph iconKey={selectedIcon.key} size={17} />
-                {copy.changeIcon}
-              </>
-            ) : (
-              copy.chooseIcon
-            )}
+          <span>Emoji</span>
+          <button type="button" className="icon-picker-trigger emoji-picker-trigger" onClick={() => setIconPickerOpen((open) => !open)}>
+            <span className="emoji-picker-preview" aria-hidden="true">{selectedEmoji ?? "＋"}</span>
+            {selectedEmoji ? copy.changeIcon : copy.chooseIcon}
           </button>
           {iconPickerOpen && (
             <div className="icon-choice-grid" aria-label={copy.iconPickerAria}>
               <button
                 type="button"
-                className={iconKey === undefined ? "active" : ""}
+                className={emoji === undefined && iconKey === undefined ? "active" : ""}
                 title={copy.noIcon}
                 aria-label={copy.noIcon}
-                onClick={() => setIconKey(undefined)}
+                onClick={() => {
+                  setEmoji(undefined);
+                  setIconKey(undefined);
+                }}
               >
                 <X size={18} />
               </button>
-              {actionIcons.map((option) => (
+              {actionEmojiOptions.map((option) => (
                 <button
-                  key={option.key}
+                  key={option}
                   type="button"
-                  className={iconKey === option.key ? "active" : ""}
-                  title={option.title}
-                  aria-label={option.title}
-                  onClick={() => setIconKey(option.key)}
+                  className={emoji === option ? "active" : ""}
+                  aria-label={option}
+                  onClick={() => {
+                    setEmoji(option);
+                    setIconKey(undefined);
+                  }}
                 >
-                  <ActionIconGlyph iconKey={option.key} size={18} />
+                  <span aria-hidden="true">{option}</span>
                 </button>
               ))}
             </div>
@@ -3604,6 +3940,11 @@ function EditActionSheet({
           >
             {copy.save}
           </button>
+          {onDelete && (
+            <button type="button" className="primary-sheet-button danger-action" onClick={onDelete}>
+              {copy.deleteConfirm}
+            </button>
+          )}
           <button type="button" className="ghost-sheet-button" onClick={onClose}>
             {copy.cancel}
           </button>
@@ -3626,6 +3967,7 @@ function ViewAllSheet({
   nowMs,
   onClose,
   onOpenManual,
+  onQuickAddGoal,
   onToggleTask,
 }: {
   type: Exclude<ViewAllState, null>;
@@ -3636,6 +3978,7 @@ function ViewAllSheet({
   nowMs: number;
   onClose: () => void;
   onOpenManual: (goal: ProgressGoal) => void;
+  onQuickAddGoal: (goal: ProgressGoal, amount: number) => void;
   onToggleTask: (task: TaskItem) => void;
 }) {
   const isGoals = type === "goals";
@@ -3652,6 +3995,7 @@ function ViewAllSheet({
               copy={copy}
               nowMs={nowMs}
               onOpenManual={() => onOpenManual(goal)}
+              onQuickAdd={(amount) => onQuickAddGoal(goal, amount)}
             />
           ))}
         {!isGoals &&
@@ -3667,7 +4011,6 @@ function ViewAllSheet({
                 isToday
                 copy={copy}
                 nowMs={nowMs}
-                deleteLabel={copy.deleteConfirm}
                 toggleLabel={completedToday ? copy.undoDoneTitle : copy.markDoneTitle}
                 onClick={() => onToggleTask(task)}
               />
@@ -4695,12 +5038,14 @@ function ProgressSheet({
   today,
   copy,
   onClose,
+  onEdit,
   onSave,
 }: {
   goal: ProgressGoal;
   today: string;
   copy: UiCopy;
   onClose: () => void;
+  onEdit?: () => void;
   onSave: (amount: number, note?: string) => void;
 }) {
   const requiredToday = getRequiredToday(goal, today);
@@ -4729,7 +5074,7 @@ function ProgressSheet({
         </div>
         <div className="progress-template-buttons" aria-label={copy.completedInput}>
           {amountTemplates.map((value) => (
-            <button key={value} type="button" onClick={() => setAmount(String(value))}>
+            <button key={value} type="button" onClick={() => onSave(value)}>
               <span className="quick-plus-mark" aria-hidden="true">
                 <span />
                 <span />
@@ -4758,11 +5103,184 @@ function ProgressSheet({
           <button type="submit" className="primary-sheet-button">
             {copy.save}
           </button>
+          {onEdit && (
+            <button type="button" className="ghost-sheet-button" onClick={onEdit}>
+              {copy.editAction}
+            </button>
+          )}
           <button type="button" className="ghost-sheet-button" onClick={onClose}>
             {copy.cancel}
           </button>
         </div>
       </form>
+    </BottomSheet>
+  );
+}
+
+function DeleteActionSheet({
+  state,
+  dateLabel,
+  language,
+  copy,
+  onClose,
+  onDeleteToday,
+  onDeletePeriod,
+}: {
+  state: Exclude<DeleteState, null>;
+  dateLabel: string;
+  language: AppSettings["language"];
+  copy: UiCopy;
+  onClose: () => void;
+  onDeleteToday: () => void;
+  onDeletePeriod: () => void;
+}) {
+  const action = state.type === "goal" ? state.goal : state.task;
+  const deleteTodayLabel = language === "en" ? "Only this day" : "Только сегодня";
+  const deletePeriodLabel = language === "en" ? "Whole period" : "На весь период";
+  const deleteTodayText = language === "en" ? `Hide from ${dateLabel}.` : `Скрыть на ${dateLabel}.`;
+  const deletePeriodText = language === "en" ? "Delete the action and all progress." : "Удалить действие и весь прогресс.";
+
+  return (
+    <BottomSheet title={copy.deleteActionTitle} subtitle={action.title} closeLabel={copy.close} onClose={onClose}>
+      <div className="delete-choice-sheet">
+        <button type="button" className="delete-choice-button" onClick={onDeleteToday}>
+          <CalendarDays size={18} aria-hidden="true" />
+          <span>
+            <strong>{deleteTodayLabel}</strong>
+            <small>{deleteTodayText}</small>
+          </span>
+        </button>
+        <button type="button" className="delete-choice-button danger" onClick={onDeletePeriod}>
+          <Trash2 size={18} aria-hidden="true" />
+          <span>
+            <strong>{deletePeriodLabel}</strong>
+            <small>{deletePeriodText}</small>
+          </span>
+        </button>
+        <button type="button" className="ghost-sheet-button" onClick={onClose}>
+          {copy.cancel}
+        </button>
+      </div>
+    </BottomSheet>
+  );
+}
+
+function TaskActionSheet({
+  task,
+  completed,
+  copy,
+  onClose,
+  onToggle,
+  onEdit,
+}: {
+  task: TaskItem;
+  completed: boolean;
+  copy: UiCopy;
+  onClose: () => void;
+  onToggle: () => void;
+  onEdit: () => void;
+}) {
+  return (
+    <BottomSheet title={task.title} subtitle={task.note} closeLabel={copy.close} onClose={onClose}>
+      <div className="task-action-sheet">
+        <button type="button" className="sheet-row-action primary" onClick={onToggle}>
+          <span className="action-emoji" aria-hidden="true">{getActionEmoji(task)}</span>
+          {completed ? copy.undoDoneTitle : copy.markDoneTitle}
+        </button>
+        <button type="button" className="sheet-row-action" onClick={onEdit}>
+          <span aria-hidden="true">✎</span>
+          {copy.editAction}
+        </button>
+      </div>
+    </BottomSheet>
+  );
+}
+
+function CarryOverBanner({
+  count,
+  language,
+  onReview,
+}: {
+  count: number;
+  language: AppSettings["language"];
+  onReview: () => void;
+}) {
+  return (
+    <section className="carry-over-banner">
+      <span>{language === "en" ? `${count} missed from yesterday` : `${count} пропущено вчера`}</span>
+      <button type="button" onClick={onReview}>
+        {language === "en" ? "Review" : "Разобрать"}
+      </button>
+    </section>
+  );
+}
+
+function CarryOverReviewSheet({
+  candidates,
+  language,
+  onClose,
+  onMove,
+}: {
+  candidates: CarryOverCandidate[];
+  language: AppSettings["language"];
+  onClose: () => void;
+  onMove: (selected: CarryOverCandidate[]) => void;
+}) {
+  const [selectedIds, setSelectedIds] = useState(() => new Set(candidates.map((candidate) => (candidate.type === "goal" ? candidate.goal.id : candidate.task.id))));
+
+  function getCandidateId(candidate: CarryOverCandidate): string {
+    return candidate.type === "goal" ? candidate.goal.id : candidate.task.id;
+  }
+
+  function toggleCandidate(candidate: CarryOverCandidate) {
+    const id = getCandidateId(candidate);
+    setSelectedIds((current) => {
+      const next = new Set(current);
+
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+
+      return next;
+    });
+  }
+
+  const selected = candidates.filter((candidate) => selectedIds.has(getCandidateId(candidate)));
+
+  return (
+    <BottomSheet
+      title={language === "en" ? "Move missed tasks?" : "Перенести пропущенное?"}
+      subtitle={language === "en" ? "Create one-time items for today." : "Создадим разовые пункты на сегодня."}
+      closeLabel={language === "en" ? "Close" : "Закрыть"}
+      onClose={onClose}
+    >
+      <div className="carry-review-list">
+        {candidates.map((candidate) => {
+          const action = candidate.type === "goal" ? candidate.goal : candidate.task;
+          const id = getCandidateId(candidate);
+
+          return (
+            <button key={id} type="button" className={`carry-review-row ${selectedIds.has(id) ? "selected" : ""}`} onClick={() => toggleCandidate(candidate)}>
+              <span className="action-emoji" aria-hidden="true">{getActionEmoji(action)}</span>
+              <span>
+                <strong>{action.title}</strong>
+                <small>{candidate.detail}</small>
+              </span>
+              <span className="carry-check" aria-hidden="true">{selectedIds.has(id) ? "✓" : ""}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="sheet-actions">
+        <button type="button" className="primary-sheet-button" disabled={selected.length === 0} onClick={() => onMove(selected)}>
+          {language === "en" ? "Move selected to today" : "Перенести выбранное"}
+        </button>
+        <button type="button" className="ghost-sheet-button" onClick={onClose}>
+          {language === "en" ? "Skip" : "Пропустить"}
+        </button>
+      </div>
     </BottomSheet>
   );
 }
@@ -4946,6 +5464,7 @@ function AddSheet({
   onClose: () => void;
   onCreateGoal: (goal: {
     title: string;
+    emoji?: string;
     targetValue: number;
     currentValue: number;
     unit: string;
@@ -4959,6 +5478,7 @@ function AddSheet({
   }) => void;
   onCreateTask: (task: {
     title: string;
+    emoji?: string;
     iconKey?: string;
     priority?: Priority;
     startDate: string;
@@ -4967,11 +5487,11 @@ function AddSheet({
     selectedDays?: number[];
     dueTime?: string;
     subitems?: ActionSubitem[];
-    timerMinutes?: number;
   }) => void;
 }) {
   const [title, setTitle] = useState("");
   const [iconKey, setIconKey] = useState<string | undefined>(undefined);
+  const [emoji, setEmoji] = useState<string | undefined>(undefined);
   const [trackingMode, setTrackingMode] = useState<ActionTrackingMode>("amount");
   const [targetValue, setTargetValue] = useState("");
   const [currentValue, setCurrentValue] = useState("0");
@@ -4984,20 +5504,17 @@ function AddSheet({
   const [quickValues, setQuickValues] = useState("");
   const [subitemsEnabled, setSubitemsEnabled] = useState(false);
   const [subitemDrafts, setSubitemDrafts] = useState<ActionSubitem[]>([]);
-  const [timerEnabled, setTimerEnabled] = useState(false);
-  const [timerMinutes, setTimerMinutes] = useState("");
   const [dueTimeEnabled, setDueTimeEnabled] = useState(false);
   const [dueTime, setDueTime] = useState("11:00");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
 
-  const selectedIcon = iconKey ? getActionIcon(iconKey) : undefined;
+  const selectedEmoji = emoji ?? getIconEmoji(iconKey);
   const subitemCopy = getSubitemCopy(language);
   const dates = getPeriodDates(today, period, startDate, endDate);
   const numericTarget = Number(targetValue);
   const numericCurrent = Number(currentValue) || 0;
-  const numericTimerMinutes = Number(timerMinutes);
   const normalizedDueTime = dueTimeEnabled ? normalizeDueTimeInput(dueTime) : undefined;
   const taskRepeatMode: TaskRepeatMode = trackingMode === "done" && period === "today" ? "once" : repeatMode;
   const activeSelectedDays = repeatMode === "selectedDays" ? selectedDays : undefined;
@@ -5042,10 +5559,6 @@ function AddSheet({
           repeatMode: taskRepeatMode,
           selectedDays,
         }, copy);
-  const timerErrors =
-    trackingMode === "done" && timerEnabled && (!Number.isFinite(numericTimerMinutes) || numericTimerMinutes <= 0)
-      ? [copy.validationPositive]
-      : [];
   const duplicateError =
     title.trim() && !baseErrors.includes(copy.validationDate) && !baseErrors.includes(copy.validationDays)
       ? hasDuplicateActionForSchedule(
@@ -5060,7 +5573,7 @@ function AddSheet({
           existingTasks,
         )
       : false;
-  const errors = duplicateError ? [...baseErrors, ...timerErrors, copy.validationDuplicate] : [...baseErrors, ...timerErrors];
+  const errors = duplicateError ? [...baseErrors, copy.validationDuplicate] : baseErrors;
   const hasUnsavedChanges =
     title.trim() !== "" ||
     targetValue !== "" ||
@@ -5072,14 +5585,14 @@ function AddSheet({
     quickValues.trim() !== "" ||
     subitemsEnabled ||
     subitemDrafts.some((subitem) => subitem.title.trim()) ||
-    timerEnabled ||
-    timerMinutes.trim() !== "" ||
     dueTimeEnabled ||
-    iconKey !== undefined;
+    iconKey !== undefined ||
+    emoji !== undefined;
 
   function applyTemplate(template: ActionTemplate) {
     setTitle(getTemplateTitle(template, language));
     setIconKey(template.iconKey);
+    setEmoji(getIconEmoji(template.iconKey));
     setTrackingMode(template.trackingMode);
     setPeriod(template.period);
     setRepeatMode(template.repeatMode);
@@ -5090,8 +5603,6 @@ function AddSheet({
     setQuickValues(template.quickValues?.join(", ") ?? "");
     setSubitemsEnabled(false);
     setSubitemDrafts([]);
-    setTimerEnabled(false);
-    setTimerMinutes("");
     setDueTimeEnabled(false);
     setDueTime("11:00");
     setAdvancedOpen(false);
@@ -5117,7 +5628,6 @@ function AddSheet({
 
     setPeriod("month");
     setSubitemsEnabled(false);
-    setTimerEnabled(false);
   }
 
   function addSubitemDraft() {
@@ -5147,6 +5657,7 @@ function AddSheet({
     if (trackingMode === "amount") {
       onCreateGoal({
         title,
+        emoji,
         iconKey,
         targetValue: numericTarget,
         currentValue: numericCurrent,
@@ -5163,6 +5674,7 @@ function AddSheet({
 
     onCreateTask({
       title,
+      emoji,
       iconKey,
       priority: "medium",
       startDate: dates.startDate,
@@ -5177,9 +5689,9 @@ function AddSheet({
               title: subitem.title.trim(),
               targetCount: subitem.targetCount && subitem.targetCount > 1 ? Math.floor(subitem.targetCount) : undefined,
             }))
+            .map((subitem, index) => ({ ...subitem, sortOrder: index + 1 }))
             .filter((subitem) => subitem.title)
         : undefined,
-      timerMinutes: timerEnabled && !subitemsEnabled ? numericTimerMinutes : undefined,
     });
   }
 
@@ -5199,38 +5711,37 @@ function AddSheet({
         </div>
 
         <div className="field-group">
-          <span>{copy.icon}</span>
-          <button type="button" className="icon-picker-trigger" onClick={() => setIconPickerOpen((open) => !open)}>
-            {selectedIcon ? (
-              <>
-                <ActionIconGlyph iconKey={selectedIcon.key} size={17} />
-                {copy.changeIcon}
-              </>
-            ) : (
-              copy.chooseIcon
-            )}
+          <span>Emoji</span>
+          <button type="button" className="icon-picker-trigger emoji-picker-trigger" onClick={() => setIconPickerOpen((open) => !open)}>
+            <span className="emoji-picker-preview" aria-hidden="true">{selectedEmoji ?? "＋"}</span>
+            {selectedEmoji ? copy.changeIcon : copy.chooseIcon}
           </button>
           {iconPickerOpen && (
             <div className="icon-choice-grid" aria-label={copy.iconPickerAria}>
               <button
                 type="button"
-                className={iconKey === undefined ? "active" : ""}
+                className={emoji === undefined && iconKey === undefined ? "active" : ""}
                 title={copy.noIcon}
                 aria-label={copy.noIcon}
-                onClick={() => setIconKey(undefined)}
+                onClick={() => {
+                  setEmoji(undefined);
+                  setIconKey(undefined);
+                }}
               >
                 <X size={18} />
               </button>
-              {actionIcons.map((option) => (
+              {actionEmojiOptions.map((option) => (
               <button
-                key={option.key}
+                key={option}
                 type="button"
-                className={iconKey === option.key ? "active" : ""}
-                title={option.title}
-                aria-label={option.title}
-                onClick={() => setIconKey(option.key)}
+                className={emoji === option ? "active" : ""}
+                aria-label={option}
+                onClick={() => {
+                  setEmoji(option);
+                  setIconKey(undefined);
+                }}
               >
-                <ActionIconGlyph iconKey={option.key} size={18} />
+                <span aria-hidden="true">{option}</span>
               </button>
               ))}
             </div>
@@ -5263,8 +5774,6 @@ function AddSheet({
                 }
 
                 if (nextEnabled) {
-                  setTimerEnabled(false);
-                  setTimerMinutes("");
                 }
               }}
             >
@@ -5301,47 +5810,6 @@ function AddSheet({
                   <Plus size={15} aria-hidden="true" />
                   {subitemCopy.addItem}
                 </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {trackingMode === "done" && (
-          <div className={`timer-builder ${timerEnabled ? "open" : ""}`}>
-            <button
-              type="button"
-              className="timer-toggle"
-              onClick={() => {
-                const nextEnabled = !timerEnabled;
-                setTimerEnabled(nextEnabled);
-
-                if (nextEnabled) {
-                  setSubitemsEnabled(false);
-                  setSubitemDrafts([]);
-
-                  if (!timerMinutes.trim()) {
-                    setTimerMinutes("10");
-                  }
-                }
-              }}
-            >
-              <span>{copy.addTimer}</span>
-              <Clock3 size={16} aria-hidden="true" />
-            </button>
-            {timerEnabled && (
-              <div className="timer-draft-row">
-                <label>
-                  <span>{copy.timerMinutes}</span>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={timerMinutes}
-                    onChange={(event) => setTimerMinutes(event.target.value)}
-                    placeholder="10"
-                  />
-                </label>
-                <small>{copy.timerRule}</small>
               </div>
             )}
           </div>
@@ -5446,7 +5914,7 @@ function AddSheet({
             <>
               <PreviewRow icon={<CalendarDays size={16} />} label={copy.period} value={getPeriodSummary(period, dates.startDate, dates.endDate, language)} />
               <PreviewRow icon={<TrendingUp size={16} />} label={copy.repeat} value={getActionRepeatLabel(period, repeatMode, language)} />
-              <PreviewRow icon={timerEnabled ? <Clock3 size={16} /> : <Check size={16} />} label={copy.format} value={timerEnabled ? `${formatNumber(numericTimerMinutes || 0)} ${copy.timerMinutes.toLowerCase()}` : copy.doneNotDone} />
+              <PreviewRow icon={<Check size={16} />} label={copy.format} value={copy.doneNotDone} />
               {normalizedDueTime && <PreviewRow icon={<Clock3 size={16} />} label={copy.dueBefore} value={normalizedDueTime} />}
             </>
           )}
@@ -5511,7 +5979,7 @@ function TemplateGroup({
           return (
             <button key={`${template.group}-${template.title}`} type="button" className="template-button" onClick={() => onSelect(template)}>
               <span className="template-icon" aria-hidden="true">
-                <ActionIconGlyph iconKey={template.iconKey} size={17} />
+                {getIconEmoji(template.iconKey) ?? "✅"}
               </span>
               <span>
                 <strong>{title}</strong>

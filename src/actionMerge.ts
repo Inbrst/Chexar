@@ -1,5 +1,5 @@
 import { todayKey } from "./dateUtils";
-import type { ActionSubitem, ActionSubitemStateByDate, ActionTimerStateByDate, AppState, GoalRepeatMode, ProgressEntry, ProgressGoal, TaskItem, TaskRepeatMode } from "./types";
+import type { ActionSubitem, ActionSubitemStateByDate, AppState, GoalRepeatMode, ProgressEntry, ProgressGoal, TaskItem, TaskRepeatMode } from "./types";
 
 export function normalizeActionTitle(title: string): string {
   return title.trim().replace(/\s+/g, " ").toLocaleLowerCase();
@@ -9,6 +9,7 @@ export function mergeDuplicateActions(state: AppState): AppState {
   return {
     goals: mergeActionList(state.goals, mergeProgressGoals),
     tasks: mergeActionList(state.tasks, mergeTasks),
+    occurrences: state.occurrences ?? [],
   };
 }
 
@@ -69,6 +70,7 @@ function mergeProgressGoals(existing: ProgressGoal, incoming: ProgressGoal): Pro
     ...existing,
     title: existing.title.trim() || incoming.title.trim(),
     note: existing.note?.trim() || incoming.note?.trim() || undefined,
+    emoji: existing.emoji ?? incoming.emoji,
     iconType: existing.iconKey || incoming.iconKey ? "custom" : existing.iconType,
     iconKey: existing.iconKey ?? incoming.iconKey,
     iconLabel: existing.iconLabel ?? incoming.iconLabel,
@@ -84,6 +86,7 @@ function mergeProgressGoals(existing: ProgressGoal, incoming: ProgressGoal): Pro
     progressEntries,
     completedAtByDate: mergeDateStringMap(existing.completedAtByDate, incoming.completedAtByDate),
     lateDates: Array.from(new Set([...(existing.lateDates ?? []), ...(incoming.lateDates ?? [])])).sort(),
+    sortOrder: mergeSortOrder(existing.sortOrder, incoming.sortOrder),
   };
 }
 
@@ -92,13 +95,12 @@ function mergeTasks(existing: TaskItem, incoming: TaskItem): TaskItem {
   const schedule = mergeTaskSchedule(existing, incoming);
   const subitems = mergeSubitems(existing.subitems, incoming.subitems);
   const subitemStateByDate = mergeSubitemStateByDate(existing.subitemStateByDate, incoming.subitemStateByDate);
-  const timerMinutes = subitems.length === 0 ? Math.max(existing.timerMinutes ?? 0, incoming.timerMinutes ?? 0) : 0;
-  const timerStateByDate = timerMinutes > 0 ? mergeTimerStateByDate(existing.timerStateByDate, incoming.timerStateByDate) : {};
 
   return {
     ...existing,
     title: existing.title.trim() || incoming.title.trim(),
     note: existing.note?.trim() || incoming.note?.trim() || undefined,
+    emoji: existing.emoji ?? incoming.emoji,
     iconType: existing.iconKey || incoming.iconKey ? "custom" : (existing.iconType ?? incoming.iconType),
     iconKey: existing.iconKey ?? incoming.iconKey,
     iconLabel: existing.iconLabel ?? incoming.iconLabel,
@@ -115,8 +117,7 @@ function mergeTasks(existing: TaskItem, incoming: TaskItem): TaskItem {
     lateDates: Array.from(new Set([...(existing.lateDates ?? []), ...(incoming.lateDates ?? [])])).sort(),
     subitems: subitems.length > 0 ? subitems : undefined,
     subitemStateByDate: Object.keys(subitemStateByDate).length > 0 ? subitemStateByDate : undefined,
-    timerMinutes: timerMinutes > 0 ? timerMinutes : undefined,
-    timerStateByDate: Object.keys(timerStateByDate).length > 0 ? timerStateByDate : undefined,
+    sortOrder: mergeSortOrder(existing.sortOrder, incoming.sortOrder),
   };
 }
 
@@ -144,10 +145,11 @@ function mergeSubitems(first?: ActionSubitem[], second?: ActionSubitem[]): Actio
       id: existing?.id ?? subitem.id,
       title: existing?.title ?? subitem.title,
       targetCount: Math.max(existing?.targetCount ?? 1, subitem.targetCount ?? 1) > 1 ? Math.max(existing?.targetCount ?? 1, subitem.targetCount ?? 1) : undefined,
+      sortOrder: mergeSortOrder(existing?.sortOrder, subitem.sortOrder),
     });
   });
 
-  return Array.from(byTitle.values());
+  return Array.from(byTitle.values()).sort((first, second) => (first.sortOrder ?? 0) - (second.sortOrder ?? 0));
 }
 
 function mergeSubitemStateByDate(first?: ActionSubitemStateByDate, second?: ActionSubitemStateByDate): ActionSubitemStateByDate {
@@ -158,23 +160,6 @@ function mergeSubitemStateByDate(first?: ActionSubitemStateByDate, second?: Acti
       result[date] = {
         ...(result[date] ?? {}),
         ...states,
-      };
-    });
-  });
-
-  return result;
-}
-
-function mergeTimerStateByDate(first?: ActionTimerStateByDate, second?: ActionTimerStateByDate): ActionTimerStateByDate {
-  const result: ActionTimerStateByDate = {};
-
-  [first, second].forEach((source) => {
-    Object.entries(source ?? {}).forEach(([date, state]) => {
-      const existing = result[date];
-      const secondsDone = Math.max(existing?.secondsDone ?? 0, state.secondsDone ?? 0);
-      result[date] = {
-        completed: existing?.completed === true || state.completed === true,
-        secondsDone: secondsDone > 0 ? secondsDone : undefined,
       };
     });
   });
@@ -197,6 +182,12 @@ function mergeProgressEntries(first: ProgressEntry[], second: ProgressEntry[]): 
       return true;
     })
     .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function mergeSortOrder(first?: number, second?: number): number | undefined {
+  const values = [first, second].filter((value): value is number => Number.isFinite(value));
+
+  return values.length > 0 ? Math.min(...values) : undefined;
 }
 
 function mergeGoalSchedule(first: ProgressGoal, second: ProgressGoal): { repeatMode: GoalRepeatMode; selectedDays?: number[] } {
