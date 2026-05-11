@@ -69,6 +69,7 @@ function mergeProgressGoals(existing: ProgressGoal, incoming: ProgressGoal): Pro
   return {
     ...existing,
     title: existing.title.trim() || incoming.title.trim(),
+    groupName: existing.groupName?.trim() || incoming.groupName?.trim() || undefined,
     note: existing.note?.trim() || incoming.note?.trim() || undefined,
     emoji: existing.emoji ?? incoming.emoji,
     iconType: existing.iconKey || incoming.iconKey ? "custom" : existing.iconType,
@@ -99,6 +100,7 @@ function mergeTasks(existing: TaskItem, incoming: TaskItem): TaskItem {
   return {
     ...existing,
     title: existing.title.trim() || incoming.title.trim(),
+    groupName: existing.groupName?.trim() || incoming.groupName?.trim() || undefined,
     note: existing.note?.trim() || incoming.note?.trim() || undefined,
     emoji: existing.emoji ?? incoming.emoji,
     iconType: existing.iconKey || incoming.iconKey ? "custom" : (existing.iconType ?? incoming.iconType),

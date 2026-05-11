@@ -36,7 +36,7 @@ import {
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { CSSProperties, FormEvent, KeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import type { CSSProperties, FormEvent, KeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode, RefObject } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   calculateDailyProgress,
@@ -431,6 +431,8 @@ const uiCopy = {
     editAction: "Edit action",
     addProgress: "Add progress",
     requiredToday: "Required today",
+    toFinishDaily: "To finish",
+    recommendedToFinish: (value: string) => `rec. ${value}`,
     completedInput: "Completed",
     note: "Note",
     comment: "Comment",
@@ -443,10 +445,14 @@ const uiCopy = {
     addSheetSubtitle: "Create an action for a day or period",
     name: "Name",
     namePlaceholder: "For example, English",
+    group: "Group",
+    groupPlaceholder: "Home, health, study",
     templates: "Templates",
     icon: "Icon",
     changeIcon: "Change icon",
     chooseIcon: "Choose icon",
+    emojiHint: "Choose one emoji from the list or type it from the keyboard.",
+    emojiWarning: "Use an emoji here.",
     iconPickerAria: "Icon selection",
     noIcon: "No icon",
     tracking: "How to track?",
@@ -482,7 +488,7 @@ const uiCopy = {
     advanced: "More",
     progressTemplates: "With progress",
     checklistTemplates: "Checklist",
-    validationTitle: "Add an action name.",
+    validationTitle: "Add a name.",
     validationPositive: "Enter a value above 0.",
     validationUnit: "Enter a unit.",
     validationCurrent: "Already done cannot be below 0.",
@@ -548,6 +554,8 @@ const uiCopy = {
     editAction: "Редактировать",
     addProgress: "Внести прогресс",
     requiredToday: "Нужно сегодня",
+    toFinishDaily: "До финиша",
+    recommendedToFinish: (value: string) => `рек. ${value}`,
     completedInput: "Выполнено",
     note: "Заметка",
     comment: "Комментарий",
@@ -560,10 +568,14 @@ const uiCopy = {
     addSheetSubtitle: "Создай действие на день или период",
     name: "Название",
     namePlaceholder: "Например, Английский",
+    group: "Группа",
+    groupPlaceholder: "Дом, здоровье, учеба",
     templates: "Шаблоны",
     icon: "Иконка",
     changeIcon: "Изменить иконку",
     chooseIcon: "Выбрать иконку",
+    emojiHint: "Выбери один emoji из списка или введи его с клавиатуры.",
+    emojiWarning: "Здесь нужен именно emoji.",
     iconPickerAria: "Выбор иконки",
     noIcon: "Без иконки",
     tracking: "Как отмечать?",
@@ -600,7 +612,7 @@ const uiCopy = {
     advanced: "Дополнительно",
     progressTemplates: "С прогрессом",
     checklistTemplates: "Чек-лист",
-    validationTitle: "Добавьте название действия.",
+    validationTitle: "Добавьте название.",
     validationPositive: "Укажите значение больше 0.",
     validationUnit: "Укажите единицу измерения.",
     validationCurrent: "Уже сделано не может быть меньше 0.",
@@ -667,6 +679,33 @@ type ActionSheetState =
     }
   | null;
 
+type TodayActionItem =
+  | {
+      type: "task";
+      task: TaskItem;
+      id: string;
+      groupName?: string;
+      sortOrder: number;
+      completed: boolean;
+      index: number;
+    }
+  | {
+      type: "goal";
+      goal: ProgressGoal;
+      id: string;
+      groupName?: string;
+      sortOrder: number;
+      completed: boolean;
+      index: number;
+    };
+
+type TodayActionGroup = {
+  key: string;
+  title?: string;
+  items: TodayActionItem[];
+  order: number;
+};
+
 type CarryOverCandidate =
   | {
       type: "goal";
@@ -699,6 +738,7 @@ type CalendarDayDetails = {
 };
 
 type ProgressPeriod = "week" | "month" | "year" | "period";
+type ProgressPanelId = "metrics" | "rhythm" | "chart" | "balance" | "days" | "actions";
 type CalendarFilterMode = "all" | "activity" | "closed" | "partial" | "missed";
 
 type ProgressChartPoint = {
@@ -867,7 +907,30 @@ function getDefaultQuickValues(unit: string): number[] {
   return [1, 5];
 }
 
-const actionEmojiOptions = ["✅", "📚", "🏃", "💪", "🏠", "🛒", "🌐", "⭐", "🔥", "🎯", "💧", "🌙", "💊", "📞", "✉️", "🚶"];
+function getFillToneStyle(percent: number): CSSProperties {
+  const clamped = clampPercent(percent);
+  const hue = Math.round(4 + clamped * 1.42);
+  const secondHue = Math.min(hue + 18, 156);
+
+  return {
+    "--fill-hue": `${hue}`,
+    "--fill-hue-2": `${secondHue}`,
+    "--rhythm-hue-start": `${hue}`,
+    "--rhythm-hue-end": `${secondHue}`,
+  } as CSSProperties;
+}
+
+const emojiPattern = /[\p{Extended_Pictographic}\p{Emoji_Presentation}]/u;
+
+const actionEmojiOptions = [
+  "✅", "❌", "⭐", "🔥", "🎯", "📌", "📚", "📝", "💡", "🧠",
+  "🌐", "🎓", "💻", "📞", "✉️", "📅", "⏰", "💊", "💧", "🥗",
+  "☕", "🍎", "🏃", "🚶", "💪", "🧘", "🏋️", "⚽", "🚴", "🏊",
+  "🏠", "🧹", "🛒", "💼", "💰", "📈", "🎧", "🎵", "🎨", "📷",
+  "🌙", "☀️", "🌿", "🛡️", "🚗", "✈️", "🎁", "❤️", "🧩", "🔧",
+  "🍞", "🥛", "🥚", "🧺", "🛏️", "🪴", "📖", "🔤", "🧪", "🔒",
+  "🧾", "🗂️", "🧭", "🏆", "🚀", "🪙", "🧼", "🦷", "👟", "🕯️",
+];
 
 const iconEmojiMap: Record<string, string> = {
   book: "📚",
@@ -896,7 +959,7 @@ function getIconEmoji(iconKey?: string): string | undefined {
 }
 
 function normalizeEmojiChoice(value: string): string | undefined {
-  const normalized = Array.from(value.trim()).slice(0, 2).join("");
+  const normalized = Array.from(value.trim()).filter((char) => emojiPattern.test(char)).slice(0, 2).join("");
 
   return normalized || undefined;
 }
@@ -930,6 +993,88 @@ function inferEmojiFromTitle(title: string): string | undefined {
 
 function getActionEmoji(action: Pick<ProgressGoal | TaskItem, "emoji" | "iconKey" | "title">, fallback = "✅"): string {
   return action.emoji?.trim() || getIconEmoji(action.iconKey) || inferEmojiFromTitle(action.title) || fallback;
+}
+
+function EmojiPickerPanel({
+  value,
+  title,
+  copy,
+  inputRef,
+  onChange,
+}: {
+  value?: string;
+  title: string;
+  copy: UiCopy;
+  inputRef?: RefObject<HTMLInputElement | null>;
+  onChange: (emoji?: string) => void;
+}) {
+  const [draftValue, setDraftValue] = useState(value ?? "");
+  const suggestedEmoji = inferEmojiFromTitle(title);
+  const showWarning = draftValue.trim().length > 0 && !normalizeEmojiChoice(draftValue);
+
+  useEffect(() => {
+    setDraftValue(value ?? "");
+  }, [value]);
+
+  function handleInputChange(nextValue: string) {
+    setDraftValue(nextValue);
+
+    const normalized = normalizeEmojiChoice(nextValue);
+    if (normalized) {
+      onChange(normalized);
+      return;
+    }
+
+    if (!nextValue.trim()) {
+      onChange(undefined);
+    }
+  }
+
+  function selectEmoji(nextEmoji?: string) {
+    setDraftValue(nextEmoji ?? "");
+    onChange(nextEmoji);
+  }
+
+  return (
+    <div className="emoji-picker-panel">
+      <label className="native-emoji-field">
+        <span>{copy.chooseIcon}</span>
+        <input
+          ref={inputRef}
+          value={draftValue}
+          inputMode="text"
+          autoComplete="off"
+          placeholder={suggestedEmoji ?? "🙂"}
+          aria-describedby="emoji-picker-hint"
+          onChange={(event) => handleInputChange(event.target.value)}
+        />
+      </label>
+      <p id="emoji-picker-hint" className={`emoji-input-hint ${showWarning ? "warning" : ""}`}>
+        {showWarning ? copy.emojiWarning : copy.emojiHint}
+      </p>
+      <div className="emoji-choice-grid" role="listbox" aria-label={copy.iconPickerAria}>
+        <button
+          type="button"
+          className={`emoji-choice ${!value ? "active" : ""}`}
+          aria-selected={!value}
+          onClick={() => selectEmoji(undefined)}
+        >
+          <span aria-hidden="true">×</span>
+        </button>
+        {actionEmojiOptions.map((option) => (
+          <button
+            type="button"
+            className={`emoji-choice ${value === option ? "active" : ""}`}
+            aria-selected={value === option}
+            key={option}
+            onClick={() => selectEmoji(option)}
+          >
+            <span aria-hidden="true">{option}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function getScheduledGoalsForDate(state: AppState, dateKey: string): ProgressGoal[] {
@@ -1756,6 +1901,77 @@ function sortGoalsForToday(goals: ProgressGoal[], dateKey: string): ProgressGoal
     .map((item) => item.goal);
 }
 
+function normalizeActionGroupName(value?: string): string {
+  return value?.trim().replace(/\s+/g, " ") ?? "";
+}
+
+function groupTodayActions(tasks: TaskItem[], goals: ProgressGoal[], dateKey: string): TodayActionGroup[] {
+  const items: TodayActionItem[] = [
+    ...tasks.map((task, index) => ({
+      type: "task" as const,
+      task,
+      id: task.id,
+      groupName: normalizeActionGroupName(task.groupName) || undefined,
+      sortOrder: task.sortOrder ?? index + 1,
+      completed: isTaskCompletedOnDate(task, dateKey),
+      index,
+    })),
+    ...goals.map((goal, index) => {
+      const required = getRequiredToday(goal, dateKey);
+      const logged = getTodayLoggedAmount(goal, dateKey);
+
+      return {
+        type: "goal" as const,
+        goal,
+        id: goal.id,
+        groupName: normalizeActionGroupName(goal.groupName) || undefined,
+        sortOrder: goal.sortOrder ?? index + 1,
+        completed: goal.currentValue >= goal.targetValue || logged >= required,
+        index,
+      };
+    }),
+  ].sort((first, second) => {
+    if (first.completed !== second.completed) {
+      return first.completed ? 1 : -1;
+    }
+
+    return first.sortOrder - second.sortOrder || (first.type === "task" ? 0 : 1) - (second.type === "task" ? 0 : 1) || first.index - second.index;
+  });
+
+  const grouped = new Map<string, TodayActionGroup>();
+
+  items.forEach((item) => {
+    const title = normalizeActionGroupName(item.groupName);
+    const key = title.toLocaleLowerCase();
+    const existing = grouped.get(key);
+
+    if (existing) {
+      existing.items.push(item);
+      existing.order = Math.min(existing.order, item.sortOrder);
+      return;
+    }
+
+    grouped.set(key, {
+      key,
+      title: title || undefined,
+      items: [item],
+      order: item.sortOrder,
+    });
+  });
+
+  return Array.from(grouped.values()).sort((first, second) => {
+    if (!first.title && second.title) {
+      return -1;
+    }
+
+    if (first.title && !second.title) {
+      return 1;
+    }
+
+    return first.order - second.order || (first.title ?? "").localeCompare(second.title ?? "");
+  });
+}
+
 export default function App() {
   const today = useMemo(() => todayKey(), []);
   const [appState, setAppState] = useState<AppState>(() => loadAppState());
@@ -1813,6 +2029,10 @@ export default function App() {
   );
   const sortedTodayGoals = useMemo(() => sortGoalsForToday(todayGoals, activeDate), [activeDate, todayGoals]);
   const visibleTodayTasks = useMemo(() => sortTasksForToday(dedupeTodayTasks(todayTasks, activeDate), activeDate), [activeDate, todayTasks]);
+  const groupedTodayActions = useMemo(
+    () => groupTodayActions(visibleTodayTasks, sortedTodayGoals, activeDate),
+    [activeDate, sortedTodayGoals, visibleTodayTasks],
+  );
   const hasActiveDateItems = sortedTodayGoals.length > 0 || visibleTodayTasks.length > 0;
   const viewAllGoals = useMemo(
     () => activeDateState.goals.filter((goal) => isGoalDueOnDate(goal, activeDateDate, activeDate) || goal.currentValue >= goal.targetValue),
@@ -2075,6 +2295,7 @@ export default function App() {
       goalId: string,
       update: {
         title: string;
+        groupName?: string;
         note?: string;
         emoji?: string;
         iconKey?: string;
@@ -2095,6 +2316,7 @@ export default function App() {
               ? {
                   ...goal,
                   title: update.title.trim(),
+                  groupName: update.groupName?.trim() || undefined,
                   note: update.note?.trim() || undefined,
                   emoji: update.emoji,
                   iconType: update.iconKey === "book" ? "book" : update.iconKey ? "custom" : "letter",
@@ -2113,7 +2335,7 @@ export default function App() {
       );
     }
 
-    function updateTask(taskId: string, update: { title: string; note?: string; emoji?: string; iconKey?: string; repeatMode: TaskRepeatMode; selectedDays?: number[]; dueTime?: string }) {
+    function updateTask(taskId: string, update: { title: string; groupName?: string; note?: string; emoji?: string; iconKey?: string; repeatMode: TaskRepeatMode; selectedDays?: number[]; dueTime?: string }) {
       setAppState((state) =>
         mergeDuplicateActions({
           ...state,
@@ -2122,6 +2344,7 @@ export default function App() {
               ? {
                   ...task,
                   title: update.title.trim(),
+                  groupName: update.groupName?.trim() || undefined,
                   note: update.note?.trim() || undefined,
                   emoji: update.emoji,
                   iconType: update.iconKey ? "custom" : "letter",
@@ -2393,6 +2616,7 @@ export default function App() {
 
   function createGoal(goal: {
     title: string;
+    groupName?: string;
     emoji?: string;
     iconKey?: string;
     targetValue: number;
@@ -2425,6 +2649,7 @@ export default function App() {
         {
           id: createId("goal"),
           title,
+          groupName: goal.groupName?.trim() || undefined,
           emoji: goal.emoji,
           iconType: goal.iconKey === "book" ? "book" : goal.iconKey ? "custom" : "letter",
           iconKey: goal.iconKey,
@@ -2446,6 +2671,7 @@ export default function App() {
 
   function createTask(task: {
     title: string;
+    groupName?: string;
     emoji?: string;
     iconKey?: string;
     priority?: Priority;
@@ -2463,6 +2689,7 @@ export default function App() {
         {
           id: createId("task"),
           title: task.title.trim(),
+          groupName: task.groupName?.trim() || undefined,
           emoji: task.emoji,
           iconType: task.iconKey ? "custom" : "letter",
           iconKey: task.iconKey,
@@ -2520,6 +2747,13 @@ export default function App() {
     setActiveScreen("calendar");
   }
 
+  function shiftActiveDateBySwipe(dayDelta: number) {
+    const nextDate = addDays(activeDate, dayDelta);
+    setSelectedDate(nextDate === today ? null : nextDate);
+    setActiveScreen("today");
+    setViewAllSheet(null);
+  }
+
   return (
     <div className="app-shell">
       <div className="background-glow" />
@@ -2572,6 +2806,7 @@ export default function App() {
                 selectedMode={isSelectedDateMode}
                 onBackToCalendar={returnToCalendar}
                 onAdd={() => setAddSheetOpen(true)}
+                onDateSwipe={shiftActiveDateBySwipe}
               />
               <RhythmCard
                 daily={daily}
@@ -2586,50 +2821,60 @@ export default function App() {
                 />
               )}
               <section className="section-block unified-actions-section">
-                <SectionHeader title={activeUiCopy.actionsSection} />
                 <div className="action-list">
-                  {visibleTodayTasks.map((task) => {
-                    const completedToday = isTaskCompletedOnDate(task, activeDate);
-                    const taskHasSubitems = hasTaskSubitems(task);
+                  {groupedTodayActions.map((group) => (
+                    <div key={group.key || "ungrouped"} className={`action-group ${group.title ? "has-title" : "is-ungrouped"}`}>
+                      {group.title && <div className="action-group-title">{group.title}</div>}
+                      {group.items.map((item) => {
+                        if (item.type === "task") {
+                          const task = item.task;
+                          const completedToday = isTaskCompletedOnDate(task, activeDate);
+                          const taskHasSubitems = hasTaskSubitems(task);
 
-                    return (
-                      <ReorderableItem key={`task-${task.id}`} id={task.id} scope="today-tasks" onMove={reorderTasks}>
-                        <TaskRow
-                          task={task}
-                          completed={completedToday}
-                          dateKey={activeDate}
-                          isToday={activeDate === today}
-                          expanded={taskHasSubitems && expandedTaskIds[task.id] === true}
-                          nowMs={timerNow}
-                          copy={activeUiCopy}
-                          editLabel={activeUiCopy.editAction}
-                          toggleLabel={completedToday ? activeUiCopy.undoDoneTitle : activeUiCopy.markDoneTitle}
-                          onClick={() => setActionSheet({ type: "task", task })}
-                          onToggle={() => {
-                            setConfirmState({
-                              task,
-                              nextCompleted: !completedToday,
-                            });
-                          }}
-                          onSubitemAdvance={(subitemId) => advanceTaskSubitem(task.id, subitemId)}
-                          onSubitemMove={(sourceId, targetId) => reorderTaskSubitems(task.id, sourceId, targetId)}
-                          onEdit={() => setEditState({ type: "task", task })}
-                        />
-                      </ReorderableItem>
-                    );
-                  })}
-                  {sortedTodayGoals.map((goal) => (
-                    <ReorderableItem key={`goal-${goal.id}`} id={goal.id} scope="today-goals" onMove={reorderGoals}>
-                      <GoalCard
-                        goal={goal}
-                        today={activeDate}
-                        copy={activeUiCopy}
-                        nowMs={timerNow}
-                        onOpenManual={() => setProgressSheet({ goal })}
-                        onQuickAdd={(amount) => addProgress(goal.id, amount)}
-                        onEdit={() => setEditState({ type: "goal", goal })}
-                      />
-                    </ReorderableItem>
+                          return (
+                            <ReorderableItem key={`task-${task.id}`} id={task.id} scope="today-tasks" onMove={reorderTasks}>
+                              <TaskRow
+                                task={task}
+                                completed={completedToday}
+                                dateKey={activeDate}
+                                isToday={activeDate === today}
+                                expanded={taskHasSubitems && expandedTaskIds[task.id] === true}
+                                nowMs={timerNow}
+                                copy={activeUiCopy}
+                                editLabel={activeUiCopy.editAction}
+                                toggleLabel={completedToday ? activeUiCopy.undoDoneTitle : activeUiCopy.markDoneTitle}
+                                onClick={() => setActionSheet({ type: "task", task })}
+                                onToggle={() => {
+                                  setConfirmState({
+                                    task,
+                                    nextCompleted: !completedToday,
+                                  });
+                                }}
+                                onSubitemAdvance={(subitemId) => advanceTaskSubitem(task.id, subitemId)}
+                                onSubitemMove={(sourceId, targetId) => reorderTaskSubitems(task.id, sourceId, targetId)}
+                                onEdit={() => setEditState({ type: "task", task })}
+                              />
+                            </ReorderableItem>
+                          );
+                        }
+
+                        const goal = item.goal;
+
+                        return (
+                          <ReorderableItem key={`goal-${goal.id}`} id={goal.id} scope="today-goals" onMove={reorderGoals}>
+                            <GoalCard
+                              goal={goal}
+                              today={activeDate}
+                              copy={activeUiCopy}
+                              nowMs={timerNow}
+                              onOpenManual={() => setProgressSheet({ goal })}
+                              onQuickAdd={(amount) => addProgress(goal.id, amount)}
+                              onEdit={() => setEditState({ type: "goal", goal })}
+                            />
+                          </ReorderableItem>
+                        );
+                      })}
+                    </div>
                   ))}
                   {!hasActiveDateItems && (
                     <EmptySectionCard
@@ -2735,6 +2980,7 @@ export default function App() {
                   if (editState.type === "goal") {
                     updateGoal(editState.goal.id, {
                       title: update.title,
+                      groupName: update.groupName,
                       note: update.note,
                       emoji: update.emoji,
                       iconKey: update.iconKey,
@@ -2749,6 +2995,7 @@ export default function App() {
                   } else {
                     updateTask(editState.task.id, {
                       title: update.title,
+                      groupName: update.groupName,
                       note: update.note,
                       emoji: update.emoji,
                       iconKey: update.iconKey,
@@ -2987,6 +3234,7 @@ function Header({
   selectedMode = false,
   onBackToCalendar,
   onAdd,
+  onDateSwipe,
 }: {
   copy: UiCopy;
   dateLabel: string;
@@ -2994,7 +3242,37 @@ function Header({
   selectedMode?: boolean;
   onBackToCalendar?: () => void;
   onAdd: () => void;
+  onDateSwipe?: (dayDelta: number) => void;
 }) {
+  const swipeStart = useRef<{ x: number; y: number } | null>(null);
+
+  function handleDatePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    swipeStart.current = { x: event.clientX, y: event.clientY };
+    event.currentTarget?.setPointerCapture?.(event.pointerId);
+  }
+
+  function handleDatePointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    const start = swipeStart.current;
+    swipeStart.current = null;
+
+    if (event.currentTarget?.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    if (!start || !onDateSwipe) {
+      return;
+    }
+
+    const deltaX = event.clientX - start.x;
+    const deltaY = event.clientY - start.y;
+
+    if (Math.abs(deltaX) < 44 || Math.abs(deltaX) < Math.abs(deltaY) * 1.25) {
+      return;
+    }
+
+    onDateSwipe(deltaX < 0 ? 1 : -1);
+  }
+
   return (
     <header className="hero-header">
       <div>
@@ -3006,7 +3284,17 @@ function Header({
         ) : null}
         {dateNote && <p className="selected-date-note">{dateNote}</p>}
       </div>
-      <div className="hero-date" aria-label={dateLabel}>{dateLabel}</div>
+      <div
+        className="hero-date"
+        aria-label={dateLabel}
+        onPointerDown={handleDatePointerDown}
+        onPointerUp={handleDatePointerUp}
+        onPointerCancel={() => {
+          swipeStart.current = null;
+        }}
+      >
+        {dateLabel}
+      </div>
       <div className="header-actions">
         <button className="icon-button primary-action" type="button" aria-label={copy.add} onClick={onAdd}>
           <span className="header-plus-mark" aria-hidden="true">
@@ -3028,13 +3316,9 @@ function RhythmCard({
   trend: number[];
   copy: UiCopy;
 }) {
-  const progressRatio = Math.min(Math.max(daily.percent, 0), 100) / 100;
-  const startHue = Math.round(2 + progressRatio * 132);
-  const endHue = Math.min(startHue + 22, 146);
   const cardStyle = {
     "--daily-percent": `${daily.percent}%`,
-    "--rhythm-hue-start": `${startHue}`,
-    "--rhythm-hue-end": `${endHue}`,
+    ...getFillToneStyle(daily.percent),
   } as CSSProperties;
 
   return (
@@ -3152,7 +3436,9 @@ function GoalCard({
   const isGoalCompleted = goal.currentValue >= goal.targetValue;
   const isTodayDone = isGoalCompleted || loggedToday >= requiredToday;
   const dueMeta = formatDueMeta(goal.dueTime, today, isTodayDone, goal.completedAtByDate?.[today], goal.lateDates?.includes(today) ?? false, nowMs, copy);
-  const progressStyle = { "--goal-progress": `${progressPercent}%` } as CSSProperties;
+  const progressStyle = { "--goal-progress": `${progressPercent}%`, ...getFillToneStyle(progressPercent) } as CSSProperties;
+  const requiredLine = requiredToday > 0 ? `${formatNumber(requiredToday)} ${goal.unit} ${copy.perDay}` : "";
+  const titleLine = !isGoalCompleted && requiredLine ? `${goal.title} (${copy.recommendedToFinish(requiredLine)})` : goal.title;
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (event.key === "Enter" || event.key === " ") {
@@ -3162,7 +3448,7 @@ function GoalCard({
   }
 
   return (
-    <SwipeDeleteShell deleteLabel={copy.markDoneTitle} editLabel={copy.editAction} onEdit={onEdit} onTap={onOpenManual}>
+    <SwipeDeleteShell deleteLabel={copy.markDoneTitle} editLabel={copy.editAction} deleteTone="complete" onEdit={onEdit} onTap={onOpenManual}>
       <article
         className={`goal-card ${isTodayDone ? "is-done" : ""} ${isGoalCompleted ? "is-complete" : ""}`}
         style={progressStyle}
@@ -3176,23 +3462,10 @@ function GoalCard({
             <div className="goal-title-row">
               <div className="goal-title-progress">
                 <div className="goal-main-line">
-                  <h3 title={goal.title}>{goal.title}</h3>
+                  <h3 title={titleLine}>{titleLine}</h3>
                   {dueMeta && <small className="due-meta">{dueMeta}</small>}
-                  <span className="today-need">
-                    {isGoalCompleted ? (
-                      copy.done
-                    ) : (
-                      <>
-                        <span>{copy.todayLabel}</span>
-                        <strong>{formatNumber(requiredToday)} {goal.unit}</strong>
-                      </>
-                    )}
-                  </span>
                 </div>
                 <div className="goal-progress-stack">
-                  <div className="progress-track" style={progressStyle}>
-                    <span />
-                  </div>
                   <span className="goal-numbers">
                     {formatNumber(goal.currentValue)} / {formatNumber(goal.targetValue)} ({formatNumber(Math.round(progressPercent))}%)
                   </span>
@@ -3243,10 +3516,24 @@ function TaskRow({
   const dueMeta = formatDueMeta(task.dueTime, dateKey, completed, task.completedAtByDate?.[dateKey], task.lateDates?.includes(dateKey) ?? false, nowMs, copy);
 
   return (
-    <SwipeDeleteShell deleteLabel={toggleLabel} editLabel={editLabel} onDelete={onToggle ?? onClick} onEdit={onEdit}>
+    <SwipeDeleteShell deleteLabel={toggleLabel} editLabel={editLabel} deleteTone={completed ? "undo" : "complete"} onDelete={onToggle ?? onClick} onEdit={onEdit}>
       <div className={`task-card-inline ${expanded ? "expanded" : ""}`}>
       <div className={`task-row ${completed ? "completed" : ""} ${subitemProgress ? "with-subitems" : ""} priority-${task.priority ?? "medium"}`}>
-        <button type="button" className="task-row-main" onClick={onClick}>
+        <button
+          type="button"
+          className="task-row-main"
+          onClick={(event) => {
+            if (event.detail > 1) {
+              return;
+            }
+
+            onClick();
+          }}
+          onDoubleClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+        >
           <span className="action-emoji" aria-hidden="true">{getActionEmoji(task)}</span>
           <span className="task-title">
             {task.title}
@@ -3263,7 +3550,15 @@ function TaskRow({
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation();
+            if (event.detail > 1) {
+              return;
+            }
+
             (onToggle ?? onClick)();
+          }}
+          onDoubleClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
           }}
         >
           <span className="task-check" aria-hidden="true">
@@ -3293,7 +3588,7 @@ function TaskRow({
                       <span>{subitem.title}</span>
                       <strong>{current}/{target}</strong>
                     </div>
-                    <div className="mini-progress-track" style={{ "--mini-progress": `${percent}%` } as CSSProperties}>
+                    <div className="mini-progress-track" style={{ "--mini-progress": `${percent}%`, ...getFillToneStyle(percent) } as CSSProperties}>
                       <span />
                     </div>
                   </div>
@@ -3592,6 +3887,7 @@ function SwipeDeleteShell({
   children,
   deleteLabel,
   editLabel,
+  deleteTone = "complete",
   onDelete,
   onEdit,
   onTap,
@@ -3599,6 +3895,7 @@ function SwipeDeleteShell({
   children: ReactNode;
   deleteLabel: string;
   editLabel?: string;
+  deleteTone?: "complete" | "undo" | "danger";
   onDelete?: () => void;
   onEdit?: () => void;
   onTap?: () => void;
@@ -3607,6 +3904,7 @@ function SwipeDeleteShell({
   const startPoint = useRef<{ x: number; y: number } | null>(null);
   const offsetRef = useRef(0);
   const suppressClick = useRef(false);
+  const lastTapAt = useRef(0);
   const isSwiping = Math.abs(offset) > 4;
   const isEditing = offset > 4;
   const isDeleting = offset < -4;
@@ -3679,6 +3977,14 @@ function SwipeDeleteShell({
       suppressClick.current = shouldSuppressClick;
 
       if (!shouldSuppressClick && onTap) {
+        const now = Date.now();
+
+        if (now - lastTapAt.current < 320) {
+          suppressClick.current = true;
+          return;
+        }
+
+        lastTapAt.current = now;
         onTap();
       }
     }
@@ -3686,7 +3992,7 @@ function SwipeDeleteShell({
 
   return (
     <div
-      className={`swipe-delete-shell ${isSwiping ? "is-swiping" : ""} ${isEditing ? "is-editing" : ""} ${isDeleting ? "is-deleting" : ""}`}
+      className={`swipe-delete-shell delete-tone-${deleteTone} ${isSwiping ? "is-swiping" : ""} ${isEditing ? "is-editing" : ""} ${isDeleting ? "is-deleting" : ""}`}
       style={
         {
           "--swipe-x": `${offset}px`,
@@ -3703,6 +4009,11 @@ function SwipeDeleteShell({
           event.stopPropagation();
           suppressClick.current = false;
         }
+      }}
+      onDoubleClickCapture={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        suppressClick.current = true;
       }}
     >
       <div className="swipe-edit-backdrop" aria-hidden="true">
@@ -3756,6 +4067,7 @@ function EditActionSheet({
   onDelete?: () => void;
   onSave: (update: {
     title: string;
+    groupName?: string;
     note?: string;
     emoji?: string;
     iconKey?: string;
@@ -3772,6 +4084,7 @@ function EditActionSheet({
   const action = isGoal ? state.goal : state.task;
   const initialRepeatMode = isGoal ? state.goal.repeatMode : state.task.repeatMode;
   const [title, setTitle] = useState(action.title);
+  const [groupName, setGroupName] = useState(action.groupName ?? "");
   const [note, setNote] = useState(action.note ?? "");
   const [iconKey, setIconKey] = useState<string | undefined>(action.iconKey);
   const [emoji, setEmoji] = useState(action.emoji);
@@ -3814,6 +4127,7 @@ function EditActionSheet({
 
     const update = {
       title,
+      groupName: groupName.trim() || undefined,
       note,
       emoji,
       iconKey,
@@ -3848,6 +4162,11 @@ function EditActionSheet({
           <input value={title} onChange={(event) => setTitle(event.target.value)} autoFocus />
         </label>
 
+        <label className="compact-group-field">
+          <span>{copy.group}</span>
+          <input value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder={copy.groupPlaceholder} />
+        </label>
+
         <div className="field-group">
           <span>{copy.icon}</span>
           <button type="button" className="icon-picker-trigger emoji-picker-trigger" onClick={openEmojiInput}>
@@ -3855,20 +4174,16 @@ function EditActionSheet({
             {selectedEmoji ? copy.changeIcon : copy.chooseIcon}
           </button>
           {iconPickerOpen && (
-            <label className="native-emoji-field">
-              <span>{copy.chooseIcon}</span>
-              <input
-                ref={emojiInputRef}
-                value={emoji ?? ""}
-                inputMode="text"
-                autoComplete="off"
-                placeholder={inferEmojiFromTitle(title) ?? "🙂"}
-                onChange={(event) => {
-                  setEmoji(normalizeEmojiChoice(event.target.value));
-                  setIconKey(undefined);
-                }}
-              />
-            </label>
+            <EmojiPickerPanel
+              value={emoji}
+              title={title}
+              copy={copy}
+              inputRef={emojiInputRef}
+              onChange={(nextEmoji) => {
+                setEmoji(nextEmoji);
+                setIconKey(undefined);
+              }}
+            />
           )}
         </div>
 
@@ -4083,6 +4398,7 @@ function ProgressScreen({
   const todayDate = useMemo(() => parseDateKey(today), [today]);
   const [period, setPeriod] = useState<ProgressPeriod>("week");
   const [rangeSheetOpen, setRangeSheetOpen] = useState(false);
+  const [expandedPanel, setExpandedPanel] = useState<ProgressPanelId | null>(null);
   const [customRange, setCustomRange] = useState(() => ({
     startDate: addDays(today, -29),
     endDate: today,
@@ -4135,9 +4451,14 @@ function ProgressScreen({
 
     setPeriod(value);
   };
+  const getPanelClass = (panelId: ProgressPanelId) =>
+    `progress-panel ${expandedPanel === panelId ? "is-expanded" : expandedPanel ? "is-compressed" : ""}`;
+  const togglePanel = (panelId: ProgressPanelId) => {
+    setExpandedPanel((currentPanel) => (currentPanel === panelId ? null : panelId));
+  };
 
   return (
-    <main className={`progress-screen ${!hasAnyData ? "progress-screen-empty" : ""}`}>
+    <main className={`progress-screen ${!hasAnyData ? "progress-screen-empty" : ""} ${expandedPanel ? "has-expanded-panel" : ""}`}>
       <div className="progress-period-tabs" role="group" aria-label={copy.period}>
         {periodOptions.map((option) => (
           <button
@@ -4160,7 +4481,7 @@ function ProgressScreen({
         </section>
       )}
 
-      <section className="progress-kpi-grid">
+      <section className={`progress-kpi-grid ${getPanelClass("metrics")}`} onClick={() => togglePanel("metrics")}>
         <ProgressKpiCard
           title={copy.completion}
           value={`${summary.average}%`}
@@ -4191,7 +4512,7 @@ function ProgressScreen({
         />
       </section>
 
-      <section className="progress-rhythm-card">
+      <section className={getPanelClass("rhythm") + " progress-rhythm-card"} onClick={() => togglePanel("rhythm")}>
         <div>
           <span>{copy.periodRhythm}</span>
           <strong>{getProgressRhythmTitle(summary.average, language)}</strong>
@@ -4200,17 +4521,21 @@ function ProgressScreen({
         <MiniRhythmChart values={trendValues} ariaLabel={copy.dynamics} />
       </section>
 
-      <section className="progress-chart-card">
+      <section className={getPanelClass("chart") + " progress-chart-card"} onClick={() => togglePanel("chart")}>
         <h2>{copy.dynamics}</h2>
+        <div className="progress-chart-summary" aria-hidden={expandedPanel !== "chart"}>
+          <span>{copy.completion}: {summary.average}%</span>
+          <span>{summary.completedDays}/{range.length} {language === "en" ? "days" : "дней"}</span>
+        </div>
         <ProgressLineChart points={chartPoints} />
       </section>
 
       <section className="progress-insight-grid">
-        <ProgressBalanceCard balance={balance} copy={copy} />
-        <ProgressBestDaysCard days={weekdayAverages} copy={copy} />
+        <ProgressBalanceCard balance={balance} copy={copy} className={getPanelClass("balance")} onClick={() => togglePanel("balance")} />
+        <ProgressBestDaysCard days={weekdayAverages} copy={copy} className={getPanelClass("days")} onClick={() => togglePanel("days")} />
       </section>
 
-      <section className="progress-best-card">
+      <section className={getPanelClass("actions") + " progress-best-card"} onClick={() => togglePanel("actions")}>
         <h2>{copy.bestActions}</h2>
         <div className="progress-rank-list">
           {actionRanks.length > 0 ? actionRanks.map((action, index) => (
@@ -4218,7 +4543,7 @@ function ProgressScreen({
               <span className="progress-rank-index">{index + 1}</span>
               <ActionIconBadge className="progress-rank-icon" emoji={action.emoji} iconKey={action.iconKey} title={action.title} />
               <strong>{action.title}</strong>
-              <div className="progress-rank-track" style={{ "--rank-progress": `${action.percent}%` } as CSSProperties}>
+              <div className="progress-rank-track" style={{ "--rank-progress": `${action.percent}%`, ...getFillToneStyle(action.percent) } as CSSProperties}>
                 <span />
               </div>
               <em>{action.percent}%</em>
@@ -4387,7 +4712,7 @@ function ProgressLineChart({ points }: { points: ProgressChartPoint[] }) {
       <polyline className="progress-chart-line" points={linePoints} />
       {coordinates.map((point) => (
         <g key={`${point.label}-${point.x}`}>
-          <circle className={`progress-chart-point ${point.hasData ? "" : "empty"}`} cx={point.x} cy={point.y} r="3.2" />
+          <circle className={`progress-chart-point ${point.hasData ? "" : "empty"}`} cx={point.x} cy={point.y} r="3.2" style={getFillToneStyle(point.value)} />
           {showPointLabels && point.hasData && <text className="progress-chart-value-label" x={point.x} y={point.y - 8}>{point.value}%</text>}
           <text className="progress-chart-x-label" x={point.x} y={height - 8}>{point.label}</text>
         </g>
@@ -4399,15 +4724,19 @@ function ProgressLineChart({ points }: { points: ProgressChartPoint[] }) {
 function ProgressBalanceCard({
   balance,
   copy,
+  className,
+  onClick,
 }: {
   balance: ReturnType<typeof getProgressBalance>;
   copy: (typeof progressCopy)[AppSettings["language"]];
+  className?: string;
+  onClick?: () => void;
 }) {
   const checklistStart = balance.progressShare;
   const missesStart = Math.min(balance.progressShare + balance.checklistShare, 100);
 
   return (
-    <section className="progress-balance-card">
+    <section className={`progress-balance-card ${className ?? ""}`} onClick={onClick}>
       <h2>{copy.taskBalance}</h2>
       <div className="progress-balance-content">
         <div
@@ -4442,17 +4771,27 @@ function ProgressLegendItem({ className, label, value }: { className: string; la
   );
 }
 
-function ProgressBestDaysCard({ days, copy }: { days: Array<{ label: string; value: number }>; copy: (typeof progressCopy)[AppSettings["language"]] }) {
+function ProgressBestDaysCard({
+  days,
+  copy,
+  className,
+  onClick,
+}: {
+  days: Array<{ label: string; value: number }>;
+  copy: (typeof progressCopy)[AppSettings["language"]];
+  className?: string;
+  onClick?: () => void;
+}) {
   const maxValue = Math.max(...days.map((day) => day.value), 0);
 
   return (
-    <section className="progress-best-days-card">
+    <section className={`progress-best-days-card ${className ?? ""}`} onClick={onClick}>
       <h2>{copy.bestDays}</h2>
       <div className="progress-day-bars">
         {days.map((day) => (
           <div className={`progress-day-bar ${day.value === maxValue && maxValue > 0 ? "best" : ""}`} key={day.label}>
             <span>{day.value > 0 ? `${day.value}%` : ""}</span>
-            <i style={{ "--bar-value": `${day.value}%` } as CSSProperties} />
+            <i style={{ "--bar-value": `${day.value}%`, ...getFillToneStyle(day.value) } as CSSProperties} />
             <small>{day.label}</small>
           </div>
         ))}
@@ -5470,6 +5809,7 @@ function AddSheet({
   onClose: () => void;
   onCreateGoal: (goal: {
     title: string;
+    groupName?: string;
     emoji?: string;
     targetValue: number;
     currentValue: number;
@@ -5484,6 +5824,7 @@ function AddSheet({
   }) => void;
   onCreateTask: (task: {
     title: string;
+    groupName?: string;
     emoji?: string;
     iconKey?: string;
     priority?: Priority;
@@ -5496,6 +5837,7 @@ function AddSheet({
   }) => void;
 }) {
   const [title, setTitle] = useState("");
+  const [groupName, setGroupName] = useState("");
   const [iconKey, setIconKey] = useState<string | undefined>(undefined);
   const [emoji, setEmoji] = useState<string | undefined>(undefined);
   const [trackingMode, setTrackingMode] = useState<ActionTrackingMode>("amount");
@@ -5583,6 +5925,7 @@ function AddSheet({
   const errors = duplicateError ? [...baseErrors, copy.validationDuplicate] : baseErrors;
   const hasUnsavedChanges =
     title.trim() !== "" ||
+    groupName.trim() !== "" ||
     targetValue !== "" ||
     currentValue !== "0" ||
     unit.trim() !== "" ||
@@ -5669,6 +6012,7 @@ function AddSheet({
     if (trackingMode === "amount") {
       onCreateGoal({
         title,
+        groupName: groupName.trim() || undefined,
         emoji: emoji ?? inferEmojiFromTitle(title),
         iconKey,
         targetValue: numericTarget,
@@ -5686,6 +6030,7 @@ function AddSheet({
 
     onCreateTask({
       title,
+      groupName: groupName.trim() || undefined,
       emoji: emoji ?? inferEmojiFromTitle(title),
       iconKey,
       priority: "medium",
@@ -5722,6 +6067,11 @@ function AddSheet({
           </button>
         </div>
 
+        <label className="compact-group-field">
+          <span>{copy.group}</span>
+          <input value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder={copy.groupPlaceholder} />
+        </label>
+
         <div className="field-group">
           <span>{copy.icon}</span>
           <button type="button" className="icon-picker-trigger emoji-picker-trigger" onClick={openEmojiInput}>
@@ -5729,20 +6079,16 @@ function AddSheet({
             {selectedEmoji ? copy.changeIcon : copy.chooseIcon}
           </button>
           {iconPickerOpen && (
-            <label className="native-emoji-field">
-              <span>{copy.chooseIcon}</span>
-              <input
-                ref={emojiInputRef}
-                value={emoji ?? ""}
-                inputMode="text"
-                autoComplete="off"
-                placeholder={inferEmojiFromTitle(title) ?? "🙂"}
-                onChange={(event) => {
-                  setEmoji(normalizeEmojiChoice(event.target.value));
-                  setIconKey(undefined);
-                }}
-              />
-            </label>
+            <EmojiPickerPanel
+              value={emoji}
+              title={title}
+              copy={copy}
+              inputRef={emojiInputRef}
+              onChange={(nextEmoji) => {
+                setEmoji(nextEmoji);
+                setIconKey(undefined);
+              }}
+            />
           )}
         </div>
 

@@ -20,6 +20,7 @@ type RemoteItem = {
   id: string;
   user_id: string;
   title: string;
+  group_name?: string | null;
   note?: string | null;
   emoji?: string | null;
   icon: string | null;
@@ -288,6 +289,7 @@ function requireSupabase() {
 }
 
 const OPTIONAL_ITEM_COLUMNS = new Set([
+  "group_name",
   "note",
   "emoji",
   "quick_add_values",
@@ -493,6 +495,7 @@ function rowsToAppState(items: RemoteItem[], entries: RemoteDailyEntry[], occurr
       goals.push({
         id: item.id,
         title: item.title,
+        groupName: item.group_name?.trim() || undefined,
         note: item.note?.trim() || undefined,
         emoji: item.emoji?.trim() || undefined,
         iconType: item.icon ? "custom" : "letter",
@@ -529,6 +532,7 @@ function rowsToAppState(items: RemoteItem[], entries: RemoteDailyEntry[], occurr
     tasks.push({
       id: item.id,
       title: item.title,
+      groupName: item.group_name?.trim() || undefined,
       note: item.note?.trim() || undefined,
       emoji: item.emoji?.trim() || undefined,
       iconType: item.icon ? "custom" : "letter",
@@ -559,6 +563,7 @@ function appStateToItemRows(userId: string, appState: AppState) {
       id: goal.id,
       user_id: userId,
       title: goal.title.trim(),
+      group_name: goal.groupName?.trim() || null,
       note: goal.note?.trim() || null,
       emoji: goal.emoji ?? null,
       icon: goal.iconKey ?? null,
@@ -580,6 +585,7 @@ function appStateToItemRows(userId: string, appState: AppState) {
       id: task.id,
       user_id: userId,
       title: task.title.trim(),
+      group_name: task.groupName?.trim() || null,
       note: task.note?.trim() || null,
       emoji: task.emoji ?? null,
       icon: task.iconKey ?? null,

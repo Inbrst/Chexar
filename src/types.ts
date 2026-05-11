@@ -30,6 +30,7 @@ export type ActionSubitemStateByDate = Record<string, Record<string, ActionSubit
 export type ProgressGoal = {
   id: string;
   title: string;
+  groupName?: string;
   note?: string;
   emoji?: string;
   iconType: IconType;
@@ -53,6 +54,7 @@ export type ProgressGoal = {
 export type TaskItem = {
   id: string;
   title: string;
+  groupName?: string;
   note?: string;
   emoji?: string;
   iconType?: IconType;
