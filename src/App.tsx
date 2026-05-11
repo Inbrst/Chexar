@@ -1,4 +1,5 @@
 import {
+  ArrowUpDown,
   ArrowLeft,
   BarChart3,
   BookOpen,
@@ -27,6 +28,7 @@ import {
   Plus,
   Shield,
   ShoppingCart,
+  Search,
   Sun,
   Star,
   Target,
@@ -640,7 +642,7 @@ type AiPeriod = "today" | "week" | "month" | "custom";
 
 type AiSubitemDraft = {
   title: string;
-  target?: number | null;
+  target?: number;
 };
 
 type AiActionDraft = {
@@ -1133,16 +1135,26 @@ function normalizeAiActionDraft(value: unknown, fallbackText: string): AiActionD
   const record = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
   const local = buildLocalAiDraft(fallbackText);
   const target = Number(record.target_value);
+  const toSubitemDraft = (item: unknown): AiSubitemDraft | null => {
+    const subitem = typeof item === "object" && item !== null ? (item as Record<string, unknown>) : {};
+    const title = typeof subitem.title === "string" ? subitem.title.trim() : "";
+    const count = Number(subitem.target ?? subitem.targetCount);
+
+    if (!title) {
+      return null;
+    }
+
+    const draft: AiSubitemDraft = { title };
+    if (Number.isFinite(count) && count > 1) {
+      draft.target = Math.floor(count);
+    }
+
+    return draft;
+  };
   const subitems = Array.isArray(record.subitems)
     ? record.subitems
-        .map((item) => {
-          const subitem = typeof item === "object" && item !== null ? (item as Record<string, unknown>) : {};
-          const title = typeof subitem.title === "string" ? subitem.title.trim() : "";
-          const count = Number(subitem.target ?? subitem.targetCount);
-
-          return title ? { title, target: Number.isFinite(count) && count > 1 ? Math.floor(count) : undefined } : null;
-        })
-        .filter((item): item is AiSubitemDraft => Boolean(item))
+        .map(toSubitemDraft)
+        .filter((item): item is AiSubitemDraft => item !== null)
         .slice(0, 12)
     : [];
 
@@ -1169,9 +1181,18 @@ function normalizeAiSubitems(value: unknown, title: string): AiSubitemDraft[] {
       const subitemTitle = typeof subitem.title === "string" ? subitem.title.trim() : "";
       const count = Number(subitem.target ?? subitem.targetCount);
 
-      return subitemTitle ? { title: subitemTitle, target: Number.isFinite(count) && count > 1 ? Math.floor(count) : undefined } : null;
+      if (!subitemTitle) {
+        return null;
+      }
+
+      const draft: AiSubitemDraft = { title: subitemTitle };
+      if (Number.isFinite(count) && count > 1) {
+        draft.target = Math.floor(count);
+      }
+
+      return draft;
     })
-    .filter((item): item is AiSubitemDraft => Boolean(item))
+    .filter((item): item is AiSubitemDraft => item !== null)
     .slice(0, 12);
 }
 
@@ -2206,6 +2227,9 @@ export default function App() {
     const [timerNow, setTimerNow] = useState(() => Date.now());
     const [expandedTaskIds, setExpandedTaskIds] = useState<Record<string, boolean>>({});
     const [addSheetOpen, setAddSheetOpen] = useState(false);
+  const [todaySearchOpen, setTodaySearchOpen] = useState(false);
+  const [todaySearchQuery, setTodaySearchQuery] = useState("");
+  const [todaySortByName, setTodaySortByName] = useState(false);
   const [carryOverOpen, setCarryOverOpen] = useState(false);
   const [viewAllSheet, setViewAllSheet] = useState<ViewAllState>(null);
   const [activeScreen, setActiveScreen] = useState<AppScreen>("today");
@@ -2255,7 +2279,36 @@ export default function App() {
     () => groupTodayActions(visibleTodayTasks, sortedTodayGoals, activeDate),
     [activeDate, sortedTodayGoals, visibleTodayTasks],
   );
+  const normalizedTodaySearch = todaySearchQuery.trim().toLocaleLowerCase();
+  const displayedTodayActionGroups = useMemo(() => {
+    const getItemTitle = (item: TodayActionItem) => (item.type === "task" ? item.task.title : item.goal.title);
+    const matchesSearch = (item: TodayActionItem, groupTitle: string) => {
+      if (!normalizedTodaySearch) {
+        return true;
+      }
+
+      const source =
+        item.type === "task"
+          ? `${item.task.title} ${item.task.groupName ?? ""} ${item.task.note ?? ""} ${item.task.emoji ?? ""}`
+          : `${item.goal.title} ${item.goal.groupName ?? ""} ${item.goal.note ?? ""} ${item.goal.emoji ?? ""} ${item.goal.unit}`;
+
+      return `${groupTitle} ${source}`.toLocaleLowerCase().includes(normalizedTodaySearch);
+    };
+
+    return groupedTodayActions
+      .map((group) => {
+        const items = group.items.filter((item) => matchesSearch(item, group.title ?? ""));
+        const sortedItems = todaySortByName ? [...items].sort((left, right) => getItemTitle(left).localeCompare(getItemTitle(right))) : items;
+
+        return {
+          ...group,
+          items: sortedItems,
+        };
+      })
+      .filter((group) => group.items.length > 0);
+  }, [groupedTodayActions, normalizedTodaySearch, todaySortByName]);
   const hasActiveDateItems = sortedTodayGoals.length > 0 || visibleTodayTasks.length > 0;
+  const hasDisplayedTodayItems = displayedTodayActionGroups.some((group) => group.items.length > 0);
   const viewAllGoals = useMemo(
     () => activeDateState.goals.filter((goal) => isGoalDueOnDate(goal, activeDateDate, activeDate) || goal.currentValue >= goal.targetValue),
     [activeDate, activeDateDate, activeDateState.goals],
@@ -3147,11 +3200,23 @@ export default function App() {
                 onBackToCalendar={returnToCalendar}
                 onAdd={() => setAddSheetOpen(true)}
                 onDateSwipe={shiftActiveDateBySwipe}
+                showAdd={false}
               />
               <RhythmCard
                 daily={daily}
                 trend={rhythmTrend}
                 copy={activeUiCopy}
+              />
+              <TodayQuickMenu
+                language={settings.language}
+                searchOpen={todaySearchOpen}
+                searchQuery={todaySearchQuery}
+                sortActive={todaySortByName}
+                onAdd={() => setAddSheetOpen(true)}
+                onAiCreate={() => setAddSheetOpen(true)}
+                onSearchChange={setTodaySearchQuery}
+                onToggleSearch={() => setTodaySearchOpen((value) => !value)}
+                onToggleSort={() => setTodaySortByName((value) => !value)}
               />
               {carryOverCandidates.length > 0 && (
                 <CarryOverBanner
@@ -3162,7 +3227,7 @@ export default function App() {
               )}
               <section className="section-block unified-actions-section">
                 <div className="action-list">
-                  {groupedTodayActions.map((group) => (
+                  {displayedTodayActionGroups.map((group) => (
                     <div key={group.key || "ungrouped"} className={`action-group ${group.title ? "has-title" : "is-ungrouped"}`}>
                       {group.title && <div className="action-group-title">{group.title}</div>}
                       {group.items.map((item) => {
@@ -3216,10 +3281,10 @@ export default function App() {
                       })}
                     </div>
                   ))}
-                  {!hasActiveDateItems && (
+                  {!hasDisplayedTodayItems && (
                     <EmptySectionCard
-                      title={activeUiCopy.emptySelectedDayTitle}
-                      text={activeUiCopy.emptySelectedDayText}
+                      title={hasActiveDateItems ? (settings.language === "en" ? "Nothing found" : "Ничего не найдено") : activeUiCopy.emptySelectedDayTitle}
+                      text={hasActiveDateItems ? (settings.language === "en" ? "Try another search query." : "Попробуй другой запрос.") : activeUiCopy.emptySelectedDayText}
                       buttonLabel={activeUiCopy.add}
                       onAdd={() => setAddSheetOpen(true)}
                     />
@@ -3571,6 +3636,7 @@ function Header({
   onBackToCalendar,
   onAdd,
   onDateSwipe,
+  showAdd = true,
 }: {
   copy: UiCopy;
   dateLabel: string;
@@ -3579,6 +3645,7 @@ function Header({
   onBackToCalendar?: () => void;
   onAdd: () => void;
   onDateSwipe?: (dayDelta: number) => void;
+  showAdd?: boolean;
 }) {
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
 
@@ -3632,14 +3699,97 @@ function Header({
         {dateLabel}
       </div>
       <div className="header-actions">
-        <button className="icon-button primary-action" type="button" aria-label={copy.add} onClick={onAdd}>
-          <span className="header-plus-mark" aria-hidden="true">
-            <span />
-            <span />
-          </span>
-        </button>
+        {showAdd && (
+          <button className="icon-button primary-action" type="button" aria-label={copy.add} onClick={onAdd}>
+            <span className="header-plus-mark" aria-hidden="true">
+              <span />
+              <span />
+            </span>
+          </button>
+        )}
       </div>
     </header>
+  );
+}
+
+function TodayQuickMenu({
+  language,
+  searchOpen,
+  searchQuery,
+  sortActive,
+  onAdd,
+  onAiCreate,
+  onSearchChange,
+  onToggleSearch,
+  onToggleSort,
+}: {
+  language: AppSettings["language"];
+  searchOpen: boolean;
+  searchQuery: string;
+  sortActive: boolean;
+  onAdd: () => void;
+  onAiCreate: () => void;
+  onSearchChange: (value: string) => void;
+  onToggleSearch: () => void;
+  onToggleSort: () => void;
+}) {
+  const labels =
+    language === "en"
+      ? {
+          add: "Add action",
+          ai: "Create with AI",
+          sort: "Sort by title",
+          search: "Search",
+          placeholder: "Search actions",
+        }
+      : {
+          add: "Добавить действие",
+          ai: "Создать через ИИ",
+          sort: "Сортировать по названию",
+          search: "Поиск",
+          placeholder: "Поиск действий",
+        };
+
+  return (
+    <div className="today-quick-menu-wrap">
+      <div className="today-quick-menu" aria-label={language === "en" ? "Quick actions" : "Быстрое меню"}>
+        <button type="button" className="today-menu-button today-menu-add" onClick={onAdd} aria-label={labels.add}>
+          <span aria-hidden="true">+</span>
+        </button>
+        <button type="button" className="today-menu-button today-menu-ai" onClick={onAiCreate} aria-label={labels.ai}>
+          <span aria-hidden="true">🤖</span>
+        </button>
+        <span className="today-menu-spacer" aria-hidden="true" />
+        <button
+          type="button"
+          className={`today-menu-button ${sortActive ? "is-active" : ""}`}
+          onClick={onToggleSort}
+          aria-pressed={sortActive}
+          aria-label={labels.sort}
+        >
+          <ArrowUpDown size={16} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className={`today-menu-button ${searchOpen ? "is-active" : ""}`}
+          onClick={onToggleSearch}
+          aria-pressed={searchOpen}
+          aria-label={labels.search}
+        >
+          <Search size={17} aria-hidden="true" />
+        </button>
+      </div>
+      {searchOpen && (
+        <label className="today-search-field">
+          <Search size={15} aria-hidden="true" />
+          <input
+            value={searchQuery}
+            placeholder={labels.placeholder}
+            onChange={(event) => onSearchChange(event.target.value)}
+          />
+        </label>
+      )}
+    </div>
   );
 }
 
