@@ -1276,6 +1276,7 @@ html[data-resolved-theme="light"] .action-list .task-x-mark span:nth-child(2) {
 
 .today-screen {
   gap: 8px !important;
+  padding-top: calc(var(--screen-top-padding) + 18px) !important;
 }
 
 .hero-header {
@@ -1283,7 +1284,11 @@ html[data-resolved-theme="light"] .action-list .task-x-mark span:nth-child(2) {
 }
 
 .rhythm-card {
+  width: calc(100% + 10px) !important;
   margin-top: 2px !important;
+  margin-right: -5px !important;
+  margin-left: -5px !important;
+  margin-bottom: 8px !important;
 }
 
 .action-list,
@@ -1731,33 +1736,31 @@ html[data-resolved-theme="light"] .bottom-nav button.active {
 .today-quick-menu-wrap {
   display: grid !important;
   gap: 7px !important;
-  margin: -2px 0 4px !important;
+  margin: 14px 0 2px !important;
 }
 
 .today-quick-menu {
-  display: flex !important;
+  display: grid !important;
+  grid-template-columns: repeat(4, 34px) !important;
   align-items: center !important;
-  gap: 7px !important;
-  min-height: 38px !important;
-}
-
-.today-menu-spacer {
-  flex: 1 1 auto !important;
+  justify-content: end !important;
+  gap: 6px !important;
+  min-height: 27px !important;
 }
 
 .today-menu-button {
-  width: 36px !important;
-  height: 36px !important;
-  min-width: 36px !important;
-  min-height: 36px !important;
+  width: 34px !important;
+  height: 26px !important;
+  min-width: 34px !important;
+  min-height: 26px !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
   padding: 0 !important;
-  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent) !important;
-  border-radius: 11px !important;
+  border: 1px solid transparent !important;
+  border-radius: 7px !important;
   color: var(--text) !important;
-  background: color-mix(in srgb, var(--card) 58%, transparent) !important;
+  background: transparent !important;
   box-shadow: none !important;
   backdrop-filter: blur(12px) !important;
   -webkit-backdrop-filter: blur(12px) !important;
@@ -1769,20 +1772,320 @@ html[data-resolved-theme="light"] .bottom-nav button.active {
 }
 
 .today-menu-button.is-active {
-  border-color: color-mix(in srgb, var(--accent) 46%, transparent) !important;
-  background: color-mix(in srgb, var(--accent) 14%, var(--card) 56%) !important;
+  color: var(--text) !important;
+  border-color: transparent !important;
+  background: color-mix(in srgb, var(--text) 8%, transparent) !important;
+}
+
+.today-menu-add {
+  border-color: color-mix(in srgb, var(--text) 18%, transparent) !important;
+  background: linear-gradient(135deg, #7c5cff, #5e46d8) !important;
+  color: #fff !important;
+}
+
+html[data-resolved-theme="light"] .today-menu-add {
+  border-color: color-mix(in srgb, #0f172a 14%, transparent) !important;
+  background: linear-gradient(135deg, #38d996, #17b77b) !important;
+  color: #062216 !important;
 }
 
 .today-menu-add span {
-  font-size: 1.42rem !important;
+  font-size: 1.22rem !important;
   font-weight: 470 !important;
   line-height: 1 !important;
   transform: translateY(-1px) !important;
 }
 
 .today-menu-ai span {
-  font-size: 1.06rem !important;
+  font-size: 1.05rem !important;
   line-height: 1 !important;
+}
+
+.today-menu-button svg {
+  width: 16px !important;
+  height: 16px !important;
+  flex: 0 0 auto !important;
+}
+
+.ai-chat-sheet {
+  max-height: 78vh !important;
+}
+
+.ai-chat-body {
+  display: grid !important;
+  gap: 12px !important;
+}
+
+.ai-chat-message {
+  max-width: 88% !important;
+  padding: 10px 12px !important;
+  border-radius: 16px !important;
+  color: var(--text) !important;
+  background: color-mix(in srgb, var(--card-strong) 72%, transparent) !important;
+  font-size: 0.9rem !important;
+  line-height: 1.28 !important;
+}
+
+.ai-chat-message.assistant {
+  justify-self: start !important;
+}
+
+.ai-chat-message.secondary {
+  margin-top: -5px !important;
+  color: var(--muted) !important;
+  background: color-mix(in srgb, var(--card-strong) 58%, transparent) !important;
+}
+
+.ai-chat-questions,
+.ai-chat-samples {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 7px !important;
+}
+
+.ai-chat-questions span,
+.ai-chat-samples button {
+  min-height: 32px !important;
+  padding: 0 10px !important;
+  border-radius: 999px !important;
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent) !important;
+  color: var(--muted) !important;
+  background: transparent !important;
+  font-size: 0.78rem !important;
+  line-height: 1 !important;
+}
+
+.ai-chat-samples button {
+  color: var(--text) !important;
+  background: color-mix(in srgb, var(--card) 76%, transparent) !important;
+}
+
+.ai-chat-input textarea {
+  width: 100% !important;
+  min-height: 94px !important;
+  resize: vertical !important;
+  padding: 12px !important;
+  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent) !important;
+  border-radius: 16px !important;
+  color: var(--text) !important;
+  background: color-mix(in srgb, var(--card) 76%, transparent) !important;
+  font: inherit !important;
+  font-size: 0.92rem !important;
+  line-height: 1.35 !important;
+  outline: none !important;
+}
+
+.ai-chat-input textarea:focus {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--text) 12%) !important;
+}
+
+.ai-chat-actions {
+  display: grid !important;
+  grid-template-columns: 1.45fr 1fr !important;
+  gap: 8px !important;
+}
+
+.ai-chat-actions button,
+.ai-chat-create {
+  min-height: 42px !important;
+  border: 0 !important;
+  border-radius: 14px !important;
+  font-size: 0.9rem !important;
+  font-weight: 760 !important;
+}
+
+.ai-chat-actions button:first-child,
+.ai-chat-create {
+  color: var(--bg) !important;
+  background: var(--text) !important;
+}
+
+.ai-chat-actions button:nth-child(2) {
+  color: var(--text) !important;
+  background: color-mix(in srgb, var(--card-strong) 74%, transparent) !important;
+}
+
+.ai-chat-preview {
+  display: grid !important;
+  gap: 9px !important;
+  padding: 10px !important;
+  border-radius: 18px !important;
+  background: color-mix(in srgb, var(--card) 78%, transparent) !important;
+}
+
+.ai-chat-preview > strong {
+  font-size: 0.88rem !important;
+}
+
+.ai-chat-draft-list {
+  display: grid !important;
+  gap: 7px !important;
+}
+
+.ai-chat-draft {
+  display: grid !important;
+  grid-template-columns: 28px 1fr 30px !important;
+  align-items: center !important;
+  gap: 9px !important;
+  min-height: 46px !important;
+  padding: 8px !important;
+  border-radius: 14px !important;
+  background: color-mix(in srgb, var(--bg) 46%, transparent) !important;
+}
+
+.ai-chat-draft b {
+  font-size: 1.15rem !important;
+  line-height: 1 !important;
+  text-align: center !important;
+}
+
+.ai-chat-draft span,
+.ai-chat-draft small {
+  display: block !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.ai-chat-draft span {
+  color: var(--text) !important;
+  font-size: 0.9rem !important;
+  font-weight: 740 !important;
+}
+
+.ai-chat-draft small {
+  color: var(--muted) !important;
+  font-size: 0.76rem !important;
+}
+
+.ai-chat-draft button {
+  width: 30px !important;
+  height: 30px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 50% !important;
+  color: var(--muted) !important;
+  background: transparent !important;
+}
+
+.today-list-settings-sheet {
+  max-height: 76vh !important;
+}
+
+.sheet-overlay:not(:has(.progress-entry-bottom-sheet)) {
+  align-items: center !important;
+  place-items: center !important;
+  padding: 14px !important;
+  background: rgba(0, 0, 0, 0.72) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+}
+
+.bottom-sheet:not(.progress-entry-bottom-sheet) {
+  border-color: color-mix(in srgb, var(--text) 10%, transparent) !important;
+  border-radius: 24px !important;
+  background: var(--card) !important;
+  box-shadow: none !important;
+}
+
+html[data-resolved-theme="light"] .sheet-overlay:not(:has(.progress-entry-bottom-sheet)) {
+  background: rgba(248, 248, 248, 0.82) !important;
+}
+
+html[data-resolved-theme="light"] .bottom-sheet:not(.progress-entry-bottom-sheet) {
+  background: #ffffff !important;
+}
+
+.period-segment.segment-five {
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+}
+
+.period-segment button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.ai-chat-agent {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 2px 0 4px !important;
+}
+
+.ai-chat-agent-avatar {
+  width: 34px !important;
+  height: 34px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 11px !important;
+  color: var(--bg) !important;
+  background: var(--text) !important;
+  font-weight: 820 !important;
+}
+
+.ai-chat-agent strong,
+.ai-chat-agent small {
+  display: block !important;
+  line-height: 1.1 !important;
+}
+
+.ai-chat-agent strong {
+  color: var(--text) !important;
+  font-size: 0.96rem !important;
+}
+
+.ai-chat-agent small {
+  color: var(--muted) !important;
+  font-size: 0.76rem !important;
+  margin-top: 3px !important;
+}
+
+.today-settings-body {
+  display: grid !important;
+  gap: 14px !important;
+}
+
+.today-settings-group {
+  display: grid !important;
+  gap: 8px !important;
+}
+
+.today-settings-group > strong {
+  color: var(--text) !important;
+  font-size: 0.9rem !important;
+  line-height: 1.1 !important;
+}
+
+.today-settings-options {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 7px !important;
+}
+
+.today-settings-options button,
+.today-settings-reset {
+  min-height: 34px !important;
+  padding: 0 11px !important;
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent) !important;
+  border-radius: 12px !important;
+  color: var(--muted) !important;
+  background: transparent !important;
+  font-size: 0.82rem !important;
+  font-weight: 690 !important;
+}
+
+.today-settings-options button.is-active {
+  color: var(--bg) !important;
+  border-color: var(--text) !important;
+  background: var(--text) !important;
+}
+
+.today-settings-reset {
+  justify-self: start !important;
+  color: var(--text) !important;
+  background: color-mix(in srgb, var(--card-strong) 70%, transparent) !important;
 }
 
 .today-search-field {

@@ -1,5 +1,4 @@
 import {
-  ArrowUpDown,
   ArrowLeft,
   BarChart3,
   BookOpen,
@@ -17,6 +16,7 @@ import {
   GraduationCap,
   Globe2,
   Home,
+  Infinity as InfinityIcon,
   Info,
   Languages,
   Lightbulb,
@@ -29,6 +29,7 @@ import {
   Shield,
   ShoppingCart,
   Search,
+  SlidersHorizontal,
   Sun,
   Star,
   Target,
@@ -738,6 +739,10 @@ type TodayActionGroup = {
   items: TodayActionItem[];
   order: number;
 };
+
+type TodaySortMode = "manual" | "alphabet" | "top" | "antiTop" | "type";
+type TodayGroupMode = "group" | "none" | "type" | "status" | "subitems";
+type TodayFilterMode = "checkbox" | "quantity" | "subitems" | "active" | "done" | "behind";
 
 type CarryOverCandidate =
   | {
@@ -2227,9 +2232,13 @@ export default function App() {
     const [timerNow, setTimerNow] = useState(() => Date.now());
     const [expandedTaskIds, setExpandedTaskIds] = useState<Record<string, boolean>>({});
     const [addSheetOpen, setAddSheetOpen] = useState(false);
+  const [aiCreateOpen, setAiCreateOpen] = useState(false);
   const [todaySearchOpen, setTodaySearchOpen] = useState(false);
   const [todaySearchQuery, setTodaySearchQuery] = useState("");
-  const [todaySortByName, setTodaySortByName] = useState(false);
+  const [todayListSettingsOpen, setTodayListSettingsOpen] = useState(false);
+  const [todaySortMode, setTodaySortMode] = useState<TodaySortMode>("manual");
+  const [todayGroupMode, setTodayGroupMode] = useState<TodayGroupMode>("group");
+  const [todayFilterModes, setTodayFilterModes] = useState<TodayFilterMode[]>([]);
   const [carryOverOpen, setCarryOverOpen] = useState(false);
   const [viewAllSheet, setViewAllSheet] = useState<ViewAllState>(null);
   const [activeScreen, setActiveScreen] = useState<AppScreen>("today");
@@ -2282,7 +2291,86 @@ export default function App() {
   const normalizedTodaySearch = todaySearchQuery.trim().toLocaleLowerCase();
   const displayedTodayActionGroups = useMemo(() => {
     const getItemTitle = (item: TodayActionItem) => (item.type === "task" ? item.task.title : item.goal.title);
-    const matchesSearch = (item: TodayActionItem, groupTitle: string) => {
+    const getItemScore = (item: TodayActionItem) => {
+      if (item.type === "task") {
+        if (hasTaskSubitems(item.task)) {
+          const progress = getTaskSubitemProgress(item.task, activeDate);
+          return progress.total > 0 ? (progress.completed / progress.total) * 100 : item.completed ? 100 : 0;
+        }
+
+        return item.completed ? 100 : 0;
+      }
+
+      const required = getRequiredToday(item.goal, activeDate);
+      const logged = getTodayLoggedAmount(item.goal, activeDate);
+      return required > 0 ? clampPercent((logged / required) * 100) : getGoalProgressPercent(item.goal);
+    };
+    const getItemGroup = (item: TodayActionItem): Pick<TodayActionGroup, "key" | "title" | "order"> => {
+      if (todayGroupMode === "none") {
+        return { key: "all", title: undefined, order: 0 };
+      }
+
+      if (todayGroupMode === "type") {
+        return item.type === "task"
+          ? { key: "type:checkbox", title: settings.language === "en" ? "Checklist" : "Чек-бокс", order: 1 }
+          : { key: "type:quantity", title: settings.language === "en" ? "Quantity" : "С прогрессом", order: 2 };
+      }
+
+      if (todayGroupMode === "status") {
+        return item.completed
+          ? { key: "status:done", title: settings.language === "en" ? "Done" : "Выполнено", order: 2 }
+          : { key: "status:active", title: settings.language === "en" ? "Active" : "В работе", order: 1 };
+      }
+
+      if (todayGroupMode === "subitems") {
+        if (item.type === "task" && hasTaskSubitems(item.task)) {
+          return { key: "subitems:with", title: settings.language === "en" ? "With list" : "С доп. списком", order: 1 };
+        }
+
+        if (item.type === "task") {
+          return { key: "subitems:simple", title: settings.language === "en" ? "Simple checkbox" : "Обычные чек-боксы", order: 2 };
+        }
+
+        return { key: "subitems:quantity", title: settings.language === "en" ? "Quantity" : "С прогрессом", order: 3 };
+      }
+
+      const title = normalizeActionGroupName(item.groupName);
+      return {
+        key: `group:${title.toLocaleLowerCase()}`,
+        title: title || undefined,
+        order: item.sortOrder,
+      };
+    };
+    const matchesFilter = (item: TodayActionItem) => {
+      if (todayFilterModes.length === 0) {
+        return true;
+      }
+
+      return todayFilterModes.some((mode) => {
+        if (mode === "checkbox") {
+          return item.type === "task";
+        }
+
+        if (mode === "quantity") {
+          return item.type === "goal";
+        }
+
+        if (mode === "subitems") {
+          return item.type === "task" && hasTaskSubitems(item.task);
+        }
+
+        if (mode === "active") {
+          return !item.completed;
+        }
+
+        if (mode === "done") {
+          return item.completed;
+        }
+
+        return getItemScore(item) < 100;
+      });
+    };
+    const matchesSearch = (item: TodayActionItem, groupTitle?: string) => {
       if (!normalizedTodaySearch) {
         return true;
       }
@@ -2294,21 +2382,60 @@ export default function App() {
 
       return `${groupTitle} ${source}`.toLocaleLowerCase().includes(normalizedTodaySearch);
     };
+    const sortItems = (items: TodayActionItem[]) => {
+      return [...items].sort((left, right) => {
+        if (todaySortMode === "alphabet") {
+          return getItemTitle(left).localeCompare(getItemTitle(right)) || left.sortOrder - right.sortOrder;
+        }
 
-    return groupedTodayActions
-      .map((group) => {
-        const items = group.items.filter((item) => matchesSearch(item, group.title ?? ""));
-        const sortedItems = todaySortByName ? [...items].sort((left, right) => getItemTitle(left).localeCompare(getItemTitle(right))) : items;
+        if (todaySortMode === "top") {
+          return getItemScore(right) - getItemScore(left) || getItemTitle(left).localeCompare(getItemTitle(right));
+        }
 
-        return {
+        if (todaySortMode === "antiTop") {
+          return getItemScore(left) - getItemScore(right) || getItemTitle(left).localeCompare(getItemTitle(right));
+        }
+
+        if (todaySortMode === "type") {
+          return (left.type === "task" ? 0 : 1) - (right.type === "task" ? 0 : 1) || left.sortOrder - right.sortOrder;
+        }
+
+        if (left.completed !== right.completed) {
+          return left.completed ? 1 : -1;
+        }
+
+        return left.sortOrder - right.sortOrder || left.index - right.index;
+      });
+    };
+    const grouped = new Map<string, TodayActionGroup>();
+
+    groupedTodayActions
+      .flatMap((group) => group.items.map((item) => ({ item, groupTitle: group.title })))
+      .filter(({ item, groupTitle }) => matchesFilter(item) && matchesSearch(item, groupTitle))
+      .forEach(({ item }) => {
+        const group = getItemGroup(item);
+        const existing = grouped.get(group.key);
+
+        if (existing) {
+          existing.items.push(item);
+          existing.order = Math.min(existing.order, group.order);
+          return;
+        }
+
+        grouped.set(group.key, {
           ...group,
-          items: sortedItems,
-        };
-      })
+          items: [item],
+        });
+      });
+
+    return Array.from(grouped.values())
+      .map((group) => ({ ...group, items: sortItems(group.items) }))
+      .sort((first, second) => first.order - second.order || (first.title ?? "").localeCompare(second.title ?? ""))
       .filter((group) => group.items.length > 0);
-  }, [groupedTodayActions, normalizedTodaySearch, todaySortByName]);
+  }, [activeDate, groupedTodayActions, normalizedTodaySearch, settings.language, todayFilterModes, todayGroupMode, todaySortMode]);
   const hasActiveDateItems = sortedTodayGoals.length > 0 || visibleTodayTasks.length > 0;
   const hasDisplayedTodayItems = displayedTodayActionGroups.some((group) => group.items.length > 0);
+  const todayListSettingsActive = todaySortMode !== "manual" || todayGroupMode !== "group" || todayFilterModes.length > 0;
   const viewAllGoals = useMemo(
     () => activeDateState.goals.filter((goal) => isGoalDueOnDate(goal, activeDateDate, activeDate) || goal.currentValue >= goal.targetValue),
     [activeDate, activeDateDate, activeDateState.goals],
@@ -3106,6 +3233,59 @@ export default function App() {
     }));
   }
 
+  function createActionFromAiDraft(draft: AiActionDraft) {
+    const title = draft.title.trim();
+    if (!title) {
+      return;
+    }
+
+    const period: ActionPeriod = draft.period === "custom" ? "month" : draft.period;
+    const dates = getPeriodDates(activeDate, period, activeDate, addDays(activeDate, 29));
+    const repeatMode: GoalRepeatMode =
+      draft.repeat_mode === "weekdays" ? "weekdays" : draft.repeat_mode === "selected_days" ? "selectedDays" : "everyDay";
+    const taskRepeatMode: TaskRepeatMode = draft.tracking_type === "checkbox" && period === "today" ? "once" : repeatMode;
+    const emoji = normalizeEmojiChoice(draft.icon ?? "") ?? inferAiEmoji(`${draft.title} ${draft.unit ?? ""}`);
+
+    if (draft.tracking_type === "quantity") {
+      const unit = draft.unit?.trim() || (settings.language === "en" ? "times" : "раз");
+      const targetValue = Number(draft.target_value);
+
+      createGoal({
+        title,
+        emoji,
+        targetValue: Number.isFinite(targetValue) && targetValue > 0 ? targetValue : 50,
+        currentValue: 0,
+        unit,
+        startDate: dates.startDate,
+        endDate: dates.endDate,
+        repeatMode,
+        selectedDays: repeatMode === "selectedDays" ? defaultGoalSelectedDays : undefined,
+        dueTime: normalizeDueTimeInput(draft.due_time ?? ""),
+        quickAddValues: getDefaultQuickValues(unit),
+      });
+      return;
+    }
+
+    const subitems = normalizeAiSubitems({ subitems: draft.subitems ?? [] }, title).map((subitem, index) => ({
+      id: createId("subitem"),
+      title: subitem.title,
+      targetCount: subitem.target && subitem.target > 1 ? subitem.target : undefined,
+      sortOrder: index + 1,
+    }));
+
+    createTask({
+      title,
+      emoji,
+      startDate: dates.startDate,
+      endDate: dates.endDate,
+      repeatMode: taskRepeatMode,
+      selectedDays: taskRepeatMode === "selectedDays" ? defaultGoalSelectedDays : undefined,
+      dueTime: normalizeDueTimeInput(draft.due_time ?? ""),
+      subitems: subitems.length > 0 ? subitems : undefined,
+      priority: "medium",
+    });
+  }
+
   function moveCarryOverToToday(candidates: CarryOverCandidate[]) {
     if (candidates.length === 0) {
       return;
@@ -3211,12 +3391,12 @@ export default function App() {
                 language={settings.language}
                 searchOpen={todaySearchOpen}
                 searchQuery={todaySearchQuery}
-                sortActive={todaySortByName}
+                settingsActive={todayListSettingsActive}
                 onAdd={() => setAddSheetOpen(true)}
-                onAiCreate={() => setAddSheetOpen(true)}
+                onAiCreate={() => setAiCreateOpen(true)}
                 onSearchChange={setTodaySearchQuery}
                 onToggleSearch={() => setTodaySearchOpen((value) => !value)}
-                onToggleSort={() => setTodaySortByName((value) => !value)}
+                onOpenSettings={() => setTodayListSettingsOpen(true)}
               />
               {carryOverCandidates.length > 0 && (
                 <CarryOverBanner
@@ -3427,6 +3607,37 @@ export default function App() {
                 createTask(task);
                 setAddSheetOpen(false);
               }}
+            />
+          )}
+
+          {aiCreateOpen && (
+            <AiCreationSheet
+              language={settings.language}
+              onClose={() => setAiCreateOpen(false)}
+              onCreateDrafts={(drafts) => {
+                drafts.forEach(createActionFromAiDraft);
+                setAiCreateOpen(false);
+              }}
+            />
+          )}
+
+          {todayListSettingsOpen && (
+            <TodayListSettingsSheet
+              language={settings.language}
+              sortMode={todaySortMode}
+              groupMode={todayGroupMode}
+              filterModes={todayFilterModes}
+              onSortChange={setTodaySortMode}
+              onGroupChange={setTodayGroupMode}
+              onFilterToggle={(value) => {
+                setTodayFilterModes((current) => (current.includes(value) ? current.filter((item) => item !== value) : [...current, value]));
+              }}
+              onReset={() => {
+                setTodaySortMode("manual");
+                setTodayGroupMode("group");
+                setTodayFilterModes([]);
+              }}
+              onClose={() => setTodayListSettingsOpen(false)}
             />
           )}
 
@@ -3716,29 +3927,29 @@ function TodayQuickMenu({
   language,
   searchOpen,
   searchQuery,
-  sortActive,
+  settingsActive,
   onAdd,
   onAiCreate,
   onSearchChange,
   onToggleSearch,
-  onToggleSort,
+  onOpenSettings,
 }: {
   language: AppSettings["language"];
   searchOpen: boolean;
   searchQuery: string;
-  sortActive: boolean;
+  settingsActive: boolean;
   onAdd: () => void;
   onAiCreate: () => void;
   onSearchChange: (value: string) => void;
   onToggleSearch: () => void;
-  onToggleSort: () => void;
+  onOpenSettings: () => void;
 }) {
   const labels =
     language === "en"
       ? {
           add: "Add action",
           ai: "Create with AI",
-          sort: "Sort by title",
+          sort: "List settings",
           search: "Search",
           placeholder: "Search actions",
         }
@@ -3753,21 +3964,14 @@ function TodayQuickMenu({
   return (
     <div className="today-quick-menu-wrap">
       <div className="today-quick-menu" aria-label={language === "en" ? "Quick actions" : "Быстрое меню"}>
-        <button type="button" className="today-menu-button today-menu-add" onClick={onAdd} aria-label={labels.add}>
-          <span aria-hidden="true">+</span>
-        </button>
-        <button type="button" className="today-menu-button today-menu-ai" onClick={onAiCreate} aria-label={labels.ai}>
-          <span aria-hidden="true">🤖</span>
-        </button>
-        <span className="today-menu-spacer" aria-hidden="true" />
         <button
           type="button"
-          className={`today-menu-button ${sortActive ? "is-active" : ""}`}
-          onClick={onToggleSort}
-          aria-pressed={sortActive}
+          className={`today-menu-button ${settingsActive ? "is-active" : ""}`}
+          onClick={onOpenSettings}
+          aria-pressed={settingsActive}
           aria-label={labels.sort}
         >
-          <ArrowUpDown size={16} aria-hidden="true" />
+          <SlidersHorizontal size={16} aria-hidden="true" />
         </button>
         <button
           type="button"
@@ -3777,6 +3981,12 @@ function TodayQuickMenu({
           aria-label={labels.search}
         >
           <Search size={17} aria-hidden="true" />
+        </button>
+        <button type="button" className="today-menu-button today-menu-ai" onClick={onAiCreate} aria-label={labels.ai}>
+          <span aria-hidden="true">🤖</span>
+        </button>
+        <button type="button" className="today-menu-button today-menu-add" onClick={onAdd} aria-label={labels.add}>
+          <span aria-hidden="true">+</span>
         </button>
       </div>
       {searchOpen && (
@@ -3790,6 +4000,373 @@ function TodayQuickMenu({
         </label>
       )}
     </div>
+  );
+}
+
+function TodayListSettingsSheet({
+  language,
+  sortMode,
+  groupMode,
+  filterModes,
+  onSortChange,
+  onGroupChange,
+  onFilterToggle,
+  onReset,
+  onClose,
+}: {
+  language: AppSettings["language"];
+  sortMode: TodaySortMode;
+  groupMode: TodayGroupMode;
+  filterModes: TodayFilterMode[];
+  onSortChange: (value: TodaySortMode) => void;
+  onGroupChange: (value: TodayGroupMode) => void;
+  onFilterToggle: (value: TodayFilterMode) => void;
+  onReset: () => void;
+  onClose: () => void;
+}) {
+  const copy =
+    language === "en"
+      ? {
+          title: "List settings",
+          subtitle: "Sort, group and filter today's actions.",
+          sort: "Sort",
+          group: "Group",
+          filter: "Filter",
+          reset: "Reset",
+          sortOptions: [
+            ["manual", "Manual order"],
+            ["alphabet", "Alphabet"],
+            ["top", "Top completion"],
+            ["antiTop", "Anti-top"],
+            ["type", "By type"],
+          ] as Array<[TodaySortMode, string]>,
+          groupOptions: [
+            ["group", "By folders"],
+            ["none", "One list"],
+            ["type", "By type"],
+            ["status", "By status"],
+            ["subitems", "By sublist"],
+          ] as Array<[TodayGroupMode, string]>,
+          filterOptions: [
+            ["checkbox", "Checkbox"],
+            ["quantity", "Progress"],
+            ["subitems", "With sublist"],
+            ["active", "Active"],
+            ["done", "Done"],
+            ["behind", "Behind"],
+          ] as Array<[TodayFilterMode, string]>,
+        }
+      : {
+          title: "Настройки списка",
+          subtitle: "Сортировка, группы и фильтры для задач дня.",
+          sort: "Сортировка",
+          group: "Группировка",
+          filter: "Фильтр",
+          reset: "Сбросить",
+          sortOptions: [
+            ["manual", "Вручную"],
+            ["alphabet", "Алфавит"],
+            ["top", "Топ выполнения"],
+            ["antiTop", "Антитоп"],
+            ["type", "По виду"],
+          ] as Array<[TodaySortMode, string]>,
+          groupOptions: [
+            ["group", "По группам"],
+            ["none", "Один список"],
+            ["type", "По видам"],
+            ["status", "По статусу"],
+            ["subitems", "С доп. списком"],
+          ] as Array<[TodayGroupMode, string]>,
+          filterOptions: [
+            ["checkbox", "Чек-боксы"],
+            ["quantity", "Прогресс"],
+            ["subitems", "С доп. списком"],
+            ["active", "В работе"],
+            ["done", "Выполнено"],
+            ["behind", "Отстают"],
+          ] as Array<[TodayFilterMode, string]>,
+        };
+
+  return (
+    <BottomSheet title={copy.title} subtitle={copy.subtitle} closeLabel="Close" onClose={onClose} className="today-list-settings-sheet">
+      <div className="today-settings-body">
+        <TodaySettingsOptionGroup title={copy.sort} options={copy.sortOptions} value={sortMode} onChange={onSortChange} />
+        <TodaySettingsOptionGroup title={copy.group} options={copy.groupOptions} value={groupMode} onChange={onGroupChange} />
+        <TodaySettingsMultiOptionGroup title={copy.filter} options={copy.filterOptions} values={filterModes} onToggle={onFilterToggle} />
+        <button type="button" className="today-settings-reset" onClick={onReset}>
+          {copy.reset}
+        </button>
+      </div>
+    </BottomSheet>
+  );
+}
+
+function TodaySettingsMultiOptionGroup<TValue extends string>({
+  title,
+  options,
+  values,
+  onToggle,
+}: {
+  title: string;
+  options: Array<[TValue, string]>;
+  values: TValue[];
+  onToggle: (value: TValue) => void;
+}) {
+  return (
+    <section className="today-settings-group">
+      <strong>{title}</strong>
+      <div className="today-settings-options">
+        {options.map(([optionValue, label]) => (
+          <button
+            type="button"
+            key={optionValue}
+            className={values.includes(optionValue) ? "is-active" : ""}
+            aria-pressed={values.includes(optionValue)}
+            onClick={() => onToggle(optionValue)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function TodaySettingsOptionGroup<TValue extends string>({
+  title,
+  options,
+  value,
+  onChange,
+}: {
+  title: string;
+  options: Array<[TValue, string]>;
+  value: TValue;
+  onChange: (value: TValue) => void;
+}) {
+  return (
+    <section className="today-settings-group">
+      <strong>{title}</strong>
+      <div className="today-settings-options">
+        {options.map(([optionValue, label]) => (
+          <button
+            type="button"
+            key={optionValue}
+            className={value === optionValue ? "is-active" : ""}
+            onClick={() => onChange(optionValue)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function AiCreationSheet({
+  language,
+  onClose,
+  onCreateDrafts,
+}: {
+  language: AppSettings["language"];
+  onClose: () => void;
+  onCreateDrafts: (drafts: AiActionDraft[]) => void;
+}) {
+  const labels =
+    language === "en"
+      ? {
+          title: "AI creation",
+          subtitle: "Chat with Chexar. Nothing is saved without confirmation.",
+          assistant: "I am Chexar. Tell me what you want to track, and I will ask the right questions if details are missing.",
+          followup: "You can write one action or several actions, each on a new line.",
+          placeholder: "Example: English 50 lessons this month",
+          send: "Create draft",
+          loading: "Thinking...",
+          preview: "Preview",
+          create: (count: number) => `Create ${count}`,
+          clear: "Clear",
+          error: "AI could not parse this. Try simpler.",
+          empty: "Write what you want to track first.",
+          questions: ["What do you want to improve?", "For what period?", "How will you mark progress?"],
+          samples: ["English: 50 lessons this month", "Morning exercise every day before 11:00", "Read 1000 pages in a month"],
+          target: "target",
+          checkbox: "checkbox",
+          quantity: "quantity",
+        }
+      : {
+          title: "Создание с ИИ",
+          subtitle: "Чат с Chexar. Без подтверждения ничего не сохранится.",
+          assistant: "Я Chexar. Напиши, что хочешь отслеживать, а если деталей мало — я уточню.",
+          followup: "Можно написать одно действие или несколько, каждое с новой строки.",
+          placeholder: "Например: Английский 50 уроков за месяц",
+          send: "Создать черновик",
+          loading: "Думаю...",
+          preview: "Предпросмотр",
+          create: (count: number) => `Создать ${count}`,
+          clear: "Очистить",
+          error: "ИИ не смог разобрать действие. Попробуй проще.",
+          empty: "Сначала напиши, что хочешь отслеживать.",
+          questions: ["Что хочешь улучшить?", "На какой период?", "Как отмечать прогресс?"],
+          samples: ["Английский: 50 уроков за месяц", "Зарядка каждый день до 11:00", "Прочитать 1000 страниц за месяц"],
+          target: "цель",
+          checkbox: "галочка",
+          quantity: "число",
+        };
+  type AiChatMessage = {
+    id: string;
+    role: "assistant" | "user";
+    content: string;
+  };
+  type AiDraftItem = {
+    id: string;
+    draft: AiActionDraft;
+    selected: boolean;
+  };
+
+  const [text, setText] = useState("");
+  const [messages, setMessages] = useState<AiChatMessage[]>(() => [
+    { id: "assistant-welcome", role: "assistant", content: labels.assistant },
+    { id: "assistant-followup", role: "assistant", content: labels.followup },
+  ]);
+  const [draftItems, setDraftItems] = useState<AiDraftItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const selectedDrafts = draftItems.filter((item) => item.selected).map((item) => item.draft);
+
+  function splitActionRequests(value: string): string[] {
+    return value
+      .split(/\n|;|•/g)
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, 8);
+  }
+
+  async function requestDraft(prompt: string): Promise<AiActionDraft> {
+    const response = await fetch("/api/ai/parse-action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: prompt, language }),
+    });
+
+    if (!response.ok) {
+      throw new Error("AI request failed");
+    }
+
+    const payload = await response.json();
+    return normalizeAiActionDraft(payload, prompt);
+  }
+
+  async function parseDrafts() {
+    const prompts = splitActionRequests(text);
+    if (prompts.length === 0) {
+      setError(labels.empty);
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const parsed = await Promise.all(
+        prompts.map(async (prompt) => {
+          try {
+            return await requestDraft(prompt);
+          } catch {
+            return buildLocalAiDraft(prompt);
+          }
+        }),
+      );
+      setDrafts(parsed);
+    } catch {
+      setError(labels.error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function removeDraft(index: number) {
+    setDrafts((items) => items.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  return (
+    <BottomSheet title={labels.title} subtitle={labels.subtitle} closeLabel="Close" onClose={onClose} className="ai-chat-sheet">
+      <div className="ai-chat-body">
+        <div className="ai-chat-agent">
+          <span className="ai-chat-agent-avatar" aria-hidden="true">C</span>
+          <div>
+            <strong>Chexar</strong>
+            <small>{language === "en" ? "AI assistant" : "AI-помощник"}</small>
+          </div>
+        </div>
+        <div className="ai-chat-message assistant">
+          <span>{labels.assistant}</span>
+        </div>
+        <div className="ai-chat-message assistant secondary">
+          <span>{labels.followup}</span>
+        </div>
+        <div className="ai-chat-questions">
+          {labels.questions.map((question) => (
+            <span key={question}>{question}</span>
+          ))}
+        </div>
+        <div className="ai-chat-samples">
+          {labels.samples.map((sample) => (
+            <button
+              key={sample}
+              type="button"
+              onClick={() => {
+                setText((current) => (current.trim() ? `${current.trim()}\n${sample}` : sample));
+              }}
+            >
+              {sample}
+            </button>
+          ))}
+        </div>
+        <label className="ai-chat-input">
+          <textarea value={text} placeholder={labels.placeholder} rows={4} onChange={(event) => setText(event.target.value)} />
+        </label>
+        {error && <small className="ai-assist-error">{error}</small>}
+        <div className="ai-chat-actions">
+          <button type="button" onClick={parseDrafts} disabled={loading}>
+            {loading ? labels.loading : labels.send}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setText("");
+              setDrafts([]);
+              setError("");
+            }}
+          >
+            {labels.clear}
+          </button>
+        </div>
+        {drafts.length > 0 && (
+          <div className="ai-chat-preview">
+            <strong>{labels.preview}</strong>
+            <div className="ai-chat-draft-list">
+              {drafts.map((draft, index) => (
+                <div key={`${draft.title}-${index}`} className="ai-chat-draft">
+                  <b>{draft.icon ?? inferAiEmoji(draft.title)}</b>
+                  <div>
+                    <span>{draft.title}</span>
+                    <small>
+                      {draft.tracking_type === "quantity" ? labels.quantity : labels.checkbox}
+                      {draft.tracking_type === "quantity" ? ` · ${labels.target}: ${formatNumber(Number(draft.target_value ?? 0))} ${draft.unit ?? ""}` : ""}
+                    </small>
+                  </div>
+                  <button type="button" aria-label="Remove" onClick={() => removeDraft(index)}>
+                    <X size={14} aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button type="button" className="ai-chat-create" onClick={() => onCreateDrafts(drafts)}>
+              {labels.create(drafts.length)}
+            </button>
+          </div>
+        )}
+      </div>
+    </BottomSheet>
   );
 }
 
@@ -6202,7 +6779,7 @@ function ConfirmDialog({
 }
 
 type ActionTrackingMode = "done" | "amount";
-type ActionPeriod = "today" | "week" | "month" | "custom";
+type ActionPeriod = "today" | "week" | "month" | "forever" | "custom";
 type GoalPeriod = ActionPeriod;
 type TaskPeriod = ActionPeriod;
 
@@ -6773,30 +7350,6 @@ function AddSheet({
           </button>
         </div>
 
-        <div className="ai-assist-row">
-          <button type="button" className="ai-assist-button" disabled={aiLoading !== null || !title.trim()} onClick={parseActionWithAi}>
-            {aiLoading === "action" ? aiLabels.loading : aiLabels.parse}
-          </button>
-          {aiError && <small className="ai-assist-error">{aiError}</small>}
-        </div>
-
-        {aiPreview && (
-          <AiDraftPreview
-            state={aiPreview}
-            labels={aiLabels}
-            language={language}
-            onApply={() => {
-              if (aiPreview.type === "action") {
-                applyAiActionDraft(aiPreview.draft);
-              } else {
-                applyAiSubitems(aiPreview.subitems);
-              }
-            }}
-            onEdit={() => setAiPreview(null)}
-            onCancel={() => setAiPreview(null)}
-          />
-        )}
-
         <label className="compact-group-field">
           <span>{copy.group}</span>
           <input value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder={copy.groupPlaceholder} />
@@ -6856,9 +7409,6 @@ function AddSheet({
             </button>
             {subitemsEnabled && (
               <div className="subitems-draft-list">
-                <button type="button" className="ai-suggest-subitems-button" disabled={aiLoading !== null || !title.trim()} onClick={suggestSubitemsWithAi}>
-                  {aiLoading === "subitems" ? aiLabels.loading : aiLabels.suggestList}
-                </button>
                 {subitemDrafts.map((subitem) => (
                   <div key={subitem.id} className="subitem-draft-row">
                     <input
@@ -6910,7 +7460,7 @@ function AddSheet({
 
         <div className="field-group">
           <span>{copy.period}</span>
-          <div className="segmented-control compact-segment segment-four">
+          <div className="segmented-control compact-segment segment-five period-segment">
             <button type="button" className={period === "today" ? "active" : ""} onClick={() => setPeriod("today")}>
               {copy.today}
             </button>
@@ -6919,6 +7469,9 @@ function AddSheet({
             </button>
             <button type="button" className={period === "month" ? "active" : ""} onClick={() => setPeriod("month")}>
               {copy.monthOption}
+            </button>
+            <button type="button" className={period === "forever" ? "active" : ""} onClick={() => setPeriod("forever")} aria-label={language === "en" ? "Forever" : "Всегда"}>
+              <InfinityIcon size={17} aria-hidden="true" />
             </button>
             <button type="button" className={period === "custom" ? "active" : ""} onClick={() => setPeriod("custom")}>
               {copy.custom}
@@ -7371,6 +7924,10 @@ function getActionRepeatLabel(period: ActionPeriod, repeatMode: GoalRepeatMode, 
     return copy.today;
   }
 
+  if (period === "forever") {
+    return language === "en" ? "Always" : "Всегда";
+  }
+
   return getRepeatLabel(repeatMode, language);
 }
 
@@ -7397,6 +7954,10 @@ function getPeriodSummary(period: GoalPeriod | TaskPeriod, startDate: string, en
     return language === "en" ? "1 month" : "1 месяц";
   }
 
+  if (period === "forever") {
+    return language === "en" ? "Always" : "Всегда";
+  }
+
   return `${formatDateLabel(startDate)} — ${formatDateLabel(endDate)}`;
 }
 
@@ -7419,6 +7980,13 @@ function getPeriodDates(today: string, period: GoalPeriod, customStart: string, 
     return {
       startDate: today,
       endDate: addDays(today, 29),
+    };
+  }
+
+  if (period === "forever") {
+    return {
+      startDate: today,
+      endDate: "2099-12-31",
     };
   }
 
@@ -7447,6 +8015,13 @@ function getTaskPeriodDates(today: string, period: TaskPeriod, customStart: stri
     return {
       startDate: today,
       endDate: addDays(today, 29),
+    };
+  }
+
+  if (period === "forever") {
+    return {
+      startDate: today,
+      endDate: "2099-12-31",
     };
   }
 
