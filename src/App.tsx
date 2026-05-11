@@ -634,6 +634,37 @@ const uiCopy = {
 
 type UiCopy = (typeof uiCopy)[AppSettings["language"]];
 type SyncStatus = "local" | "missing-env" | "loading" | "ready" | "saving" | "query-error";
+type AiTrackingType = "checkbox" | "quantity";
+type AiRepeatMode = "once" | "daily" | "weekdays" | "selected_days";
+type AiPeriod = "today" | "week" | "month" | "custom";
+
+type AiSubitemDraft = {
+  title: string;
+  target?: number | null;
+};
+
+type AiActionDraft = {
+  title: string;
+  icon?: string;
+  tracking_type: AiTrackingType;
+  target_value?: number | null;
+  unit?: string | null;
+  repeat_mode: AiRepeatMode;
+  period: AiPeriod;
+  due_time?: string | null;
+  subitems?: AiSubitemDraft[];
+};
+
+type AiPreviewState =
+  | {
+      type: "action";
+      draft: AiActionDraft;
+    }
+  | {
+      type: "subitems";
+      subitems: AiSubitemDraft[];
+    }
+  | null;
 
 type ProgressSheetState = {
   goal: ProgressGoal;
@@ -747,6 +778,8 @@ type ProgressChartPoint = {
   hasData: boolean;
 };
 
+type ReorderPlacement = "before" | "after";
+
 type ProgressActionRank = {
   id: string;
   title: string;
@@ -765,7 +798,11 @@ function formatNumber(value: number): string {
   }).format(value);
 }
 
-function reorderById<T extends { id: string }>(items: T[], sourceId: string, targetId: string): T[] {
+function capitalizeLabel(value: string): string {
+  return value ? `${value.charAt(0).toLocaleUpperCase()}${value.slice(1)}` : value;
+}
+
+function reorderById<T extends { id: string }>(items: T[], sourceId: string, targetId: string, placement: ReorderPlacement = "before"): T[] {
   const ordered = [...items].sort((first, second) => {
     const firstOrder = Number((first as { sortOrder?: number }).sortOrder ?? items.indexOf(first) + 1);
     const secondOrder = Number((second as { sortOrder?: number }).sortOrder ?? items.indexOf(second) + 1);
@@ -780,7 +817,13 @@ function reorderById<T extends { id: string }>(items: T[], sourceId: string, tar
   }
 
   const [source] = ordered.splice(sourceIndex, 1);
-  ordered.splice(targetIndex, 0, source);
+  const nextTargetIndex = ordered.findIndex((item) => item.id === targetId);
+
+  if (nextTargetIndex === -1) {
+    return items;
+  }
+
+  ordered.splice(placement === "after" ? nextTargetIndex + 1 : nextTargetIndex, 0, source);
 
   return ordered;
 }
@@ -993,6 +1036,185 @@ function inferEmojiFromTitle(title: string): string | undefined {
 
 function getActionEmoji(action: Pick<ProgressGoal | TaskItem, "emoji" | "iconKey" | "title">, fallback = "✅"): string {
   return action.emoji?.trim() || getIconEmoji(action.iconKey) || inferEmojiFromTitle(action.title) || fallback;
+}
+
+const aiFallbackEmojiRules: Array<[string[], string]> = [
+  [["зарядка", "тренировка", "спорт"], "🏋️"],
+  [["прогулка", "ходьба"], "🚶"],
+  [["бег"], "🏃"],
+  [["английский", "язык"], "🇬🇧"],
+  [["чтение", "книга"], "📚"],
+  [["вода"], "💧"],
+  [["медитация"], "🧘"],
+  [["магазин", "покупки"], "🛒"],
+  [["уборка"], "🧹"],
+  [["сон"], "😴"],
+  [["работа", "проект"], "💻"],
+  [["учеба", "курс"], "🎓"],
+];
+
+function inferAiEmoji(text: string): string {
+  const normalized = text.toLocaleLowerCase("ru-RU");
+
+  return aiFallbackEmojiRules.find(([keywords]) => keywords.some((keyword) => normalized.includes(keyword)))?.[1] ?? "✨";
+}
+
+function buildLocalAiDraft(text: string): AiActionDraft {
+  const normalized = text.toLocaleLowerCase("ru-RU");
+  const targetMatch = normalized.match(/(\d+(?:[.,]\d+)?)/);
+  const targetValue = targetMatch ? Number(targetMatch[1].replace(",", ".")) : null;
+  const hasQuantity = Boolean(targetValue && Number.isFinite(targetValue));
+  const period: AiPeriod = /недел|week/.test(normalized) ? "week" : /сегодня|today/.test(normalized) ? "today" : "month";
+  const repeatMode: AiRepeatMode = /будн|weekday/.test(normalized) ? "weekdays" : !hasQuantity && period === "today" ? "once" : "daily";
+  const unitMatch = normalized.match(/\d+(?:[.,]\d+)?\s+([а-яёa-z]+)/i);
+  const dueTime = normalized.match(/(?:до|before)\s*(\d{1,2}:\d{2})/)?.[1] ?? null;
+  const knownTitle = [
+    "английский",
+    "немецкий",
+    "чтение",
+    "зарядка",
+    "тренировка",
+    "бег",
+    "ходьба",
+    "вода",
+    "медитация",
+    "магазин",
+    "уборка",
+    "сон",
+    "учеба",
+    "проект",
+  ].find((keyword) => normalized.includes(keyword));
+  const fallbackTitle = text
+    .replace(/\d+(?:[.,]\d+)?/g, "")
+    .replace(/\b(за|на|до|каждый|каждую|хочу|нужно|пройти|сделать|месяц|неделю|день)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const title = knownTitle ?? fallbackTitle ?? text.trim() ?? "Действие";
+  const normalizedTitle = title.charAt(0).toLocaleUpperCase("ru-RU") + title.slice(1, 42);
+
+  return {
+    title: normalizedTitle,
+    icon: inferAiEmoji(text),
+    tracking_type: hasQuantity ? "quantity" : "checkbox",
+    target_value: hasQuantity ? targetValue : null,
+    unit: hasQuantity ? unitMatch?.[1] ?? "раз" : null,
+    repeat_mode: repeatMode,
+    period,
+    due_time: dueTime,
+    subitems: [],
+  };
+}
+
+function buildLocalSubitems(title: string): AiSubitemDraft[] {
+  const normalized = title.toLocaleLowerCase("ru-RU");
+
+  if (/заряд|трениров|спорт/.test(normalized)) {
+    return [
+      { title: "Разминка", target: 1 },
+      { title: "Приседания", target: 3 },
+      { title: "Отжимания", target: 3 },
+      { title: "Пресс", target: 3 },
+      { title: "Растяжка", target: 1 },
+    ];
+  }
+
+  if (/магаз|покуп/.test(normalized)) {
+    return [{ title: "Молоко" }, { title: "Хлеб" }, { title: "Яйца" }, { title: "Овощи" }];
+  }
+
+  if (/уборк/.test(normalized)) {
+    return [{ title: "Пол" }, { title: "Пыль" }, { title: "Кухня" }, { title: "Вещи" }];
+  }
+
+  return [{ title: "Шаг 1" }, { title: "Шаг 2" }, { title: "Шаг 3" }];
+}
+
+function normalizeAiActionDraft(value: unknown, fallbackText: string): AiActionDraft {
+  const record = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+  const local = buildLocalAiDraft(fallbackText);
+  const target = Number(record.target_value);
+  const subitems = Array.isArray(record.subitems)
+    ? record.subitems
+        .map((item) => {
+          const subitem = typeof item === "object" && item !== null ? (item as Record<string, unknown>) : {};
+          const title = typeof subitem.title === "string" ? subitem.title.trim() : "";
+          const count = Number(subitem.target ?? subitem.targetCount);
+
+          return title ? { title, target: Number.isFinite(count) && count > 1 ? Math.floor(count) : undefined } : null;
+        })
+        .filter((item): item is AiSubitemDraft => Boolean(item))
+        .slice(0, 12)
+    : [];
+
+  return {
+    title: typeof record.title === "string" && record.title.trim() ? record.title.trim() : local.title,
+    icon: typeof record.icon === "string" && record.icon.trim() ? record.icon.trim() : local.icon,
+    tracking_type: record.tracking_type === "checkbox" || record.tracking_type === "quantity" ? record.tracking_type : local.tracking_type,
+    target_value: Number.isFinite(target) && target > 0 ? target : local.target_value,
+    unit: typeof record.unit === "string" && record.unit.trim() ? record.unit.trim() : local.unit,
+    repeat_mode: record.repeat_mode === "once" || record.repeat_mode === "daily" || record.repeat_mode === "weekdays" || record.repeat_mode === "selected_days" ? record.repeat_mode : local.repeat_mode,
+    period: record.period === "today" || record.period === "week" || record.period === "month" || record.period === "custom" ? record.period : local.period,
+    due_time: typeof record.due_time === "string" && record.due_time.trim() ? record.due_time.trim() : local.due_time,
+    subitems,
+  };
+}
+
+function normalizeAiSubitems(value: unknown, title: string): AiSubitemDraft[] {
+  const record = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+  const rawSubitems = Array.isArray(record.subitems) ? record.subitems : buildLocalSubitems(title);
+
+  return rawSubitems
+    .map((item) => {
+      const subitem = typeof item === "object" && item !== null ? (item as Record<string, unknown>) : {};
+      const subitemTitle = typeof subitem.title === "string" ? subitem.title.trim() : "";
+      const count = Number(subitem.target ?? subitem.targetCount);
+
+      return subitemTitle ? { title: subitemTitle, target: Number.isFinite(count) && count > 1 ? Math.floor(count) : undefined } : null;
+    })
+    .filter((item): item is AiSubitemDraft => Boolean(item))
+    .slice(0, 12);
+}
+
+function getAiLabels(language: AppSettings["language"]) {
+  return language === "en"
+    ? {
+        parse: "Parse with AI",
+        suggestList: "Suggest list",
+        loading: "Thinking...",
+        understood: "I understood it as:",
+        apply: "Apply",
+        edit: "Edit",
+        cancel: "Cancel",
+        failed: "AI could not parse the action. Try a simpler phrase.",
+        describeFirst: "Type a phrase first.",
+        tracking: "Tracking",
+        quantity: "Quantity",
+        checkbox: "Done / not done",
+        target: "Target",
+        period: "Period",
+        repeat: "Repeat",
+        due: "Do before",
+        subitems: "List",
+      }
+    : {
+        parse: "Разобрать через ИИ",
+        suggestList: "Предложить список",
+        loading: "Думаю...",
+        understood: "Я понял так:",
+        apply: "Применить",
+        edit: "Изменить",
+        cancel: "Отмена",
+        failed: "ИИ не смог разобрать действие. Попробуй проще.",
+        describeFirst: "Сначала введи описание.",
+        tracking: "Формат",
+        quantity: "Количество",
+        checkbox: "Готово / не готово",
+        target: "Цель",
+        period: "Период",
+        repeat: "Повтор",
+        due: "Сделать до",
+        subitems: "Список",
+      };
 }
 
 function EmojiPickerPanel({
@@ -1973,7 +2195,7 @@ function groupTodayActions(tasks: TaskItem[], goals: ProgressGoal[], dateKey: st
 }
 
 export default function App() {
-  const today = useMemo(() => todayKey(), []);
+  const [today, setToday] = useState(() => todayKey());
   const [appState, setAppState] = useState<AppState>(() => loadAppState());
   const [dayRecords, setDayRecords] = useState(() => loadDailyRecords());
     const [progressSheet, setProgressSheet] = useState<ProgressSheetState>(null);
@@ -2149,6 +2371,18 @@ export default function App() {
 
   useEffect(() => {
     const intervalId = window.setInterval(() => setTimerNow(Date.now()), 60000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setToday((currentToday) => {
+        const nextToday = todayKey();
+
+        return nextToday === currentToday ? currentToday : nextToday;
+      });
+    }, 60000);
 
     return () => window.clearInterval(intervalId);
   }, []);
@@ -2418,6 +2652,76 @@ export default function App() {
     });
   }
 
+  function setProgressForDate(goalId: string, nextAmount: number, note?: string) {
+    if (!Number.isFinite(nextAmount) || nextAmount < 0) {
+      return;
+    }
+
+    setAppState((state) => {
+      let completedCarryOver = false;
+      const goals = state.goals.map((goal) => {
+        if (goal.id !== goalId) {
+          return goal;
+        }
+
+        const normalizedAmount = Math.max(nextAmount, 0);
+        const previousLogged = getTodayLoggedAmount(goal, activeDate);
+        const delta = normalizedAmount - previousLogged;
+        const required = getRequiredToday(goal, activeDate);
+        const nextCurrentValue = Math.max(goal.currentValue + delta, 0);
+        const completedForDay = required > 0 ? normalizedAmount >= required : normalizedAmount > 0 || nextCurrentValue >= goal.targetValue;
+        const completedAtByDate = { ...(goal.completedAtByDate ?? {}) };
+        const lateDates = new Set(goal.lateDates ?? []);
+        const completedAt = completedForDay ? (completedAtByDate[activeDate] ?? new Date().toISOString()) : undefined;
+
+        if (completedAt) {
+          completedAtByDate[activeDate] = completedAt;
+
+          if (isLateForDueTime(activeDate, goal.dueTime, completedAt)) {
+            lateDates.add(activeDate);
+          } else {
+            lateDates.delete(activeDate);
+          }
+        } else {
+          delete completedAtByDate[activeDate];
+          lateDates.delete(activeDate);
+        }
+
+        completedCarryOver = completedForDay;
+
+        return {
+          ...goal,
+          currentValue: nextCurrentValue,
+          progressEntries: [
+            ...goal.progressEntries.filter((entry) => entry.date !== activeDate),
+            ...(normalizedAmount > 0
+              ? [
+                  {
+                    id: createId("entry"),
+                    date: activeDate,
+                    amount: normalizedAmount,
+                    note: note?.trim() || undefined,
+                  },
+                ]
+              : []),
+          ].sort((first, second) => first.date.localeCompare(second.date)),
+          completedAtByDate: Object.keys(completedAtByDate).length > 0 ? completedAtByDate : undefined,
+          lateDates: Array.from(lateDates).sort(),
+        };
+      });
+
+      return {
+        ...state,
+        goals,
+        occurrences: (state.occurrences ?? []).map((occurrence) =>
+          occurrence.itemId === goalId && occurrence.date === activeDate
+            ? { ...occurrence, status: completedCarryOver ? "completed" : "active" }
+            : occurrence,
+        ),
+      };
+    });
+  }
+
   function setTaskCompleted(taskId: string, completed: boolean) {
     setAppState((state) => ({
       ...state,
@@ -2565,35 +2869,71 @@ export default function App() {
     updateTaskSubitem(taskId, subitemId, { completed: true });
   }
 
-  function reorderTasks(sourceId: string, targetId: string) {
+  function reorderTasks(sourceId: string, targetId: string, placement: ReorderPlacement = "before") {
     if (sourceId === targetId) {
       return;
     }
 
     setAppState((state) => ({
       ...state,
-      tasks: reorderById(state.tasks, sourceId, targetId).map((task, index) => ({
+      tasks: reorderById(state.tasks, sourceId, targetId, placement).map((task, index) => ({
         ...task,
         sortOrder: index + 1,
       })),
     }));
   }
 
-  function reorderGoals(sourceId: string, targetId: string) {
+  function reorderGoals(sourceId: string, targetId: string, placement: ReorderPlacement = "before") {
     if (sourceId === targetId) {
       return;
     }
 
     setAppState((state) => ({
       ...state,
-      goals: reorderById(state.goals, sourceId, targetId).map((goal, index) => ({
+      goals: reorderById(state.goals, sourceId, targetId, placement).map((goal, index) => ({
         ...goal,
         sortOrder: index + 1,
       })),
     }));
   }
 
-  function reorderTaskSubitems(taskId: string, sourceId: string, targetId: string) {
+  function reorderTodayActions(sourceId: string, targetId: string, placement: ReorderPlacement = "before") {
+    if (sourceId === targetId) {
+      return;
+    }
+
+    setAppState((state) => {
+      const actionRefs = [
+        ...state.tasks.map((task, index) => ({
+          id: `task:${task.id}`,
+          itemId: task.id,
+          type: "task" as const,
+          sortOrder: task.sortOrder ?? index + 1,
+        })),
+        ...state.goals.map((goal, index) => ({
+          id: `goal:${goal.id}`,
+          itemId: goal.id,
+          type: "goal" as const,
+          sortOrder: goal.sortOrder ?? index + 1,
+        })),
+      ].sort((first, second) => first.sortOrder - second.sortOrder);
+      const orderMap = new Map(reorderById(actionRefs, sourceId, targetId, placement).map((item, index) => [item.id, index + 1]));
+
+      return {
+        ...state,
+        tasks: state.tasks.map((task) => ({
+          ...task,
+          sortOrder: orderMap.get(`task:${task.id}`) ?? task.sortOrder,
+        })),
+        goals: state.goals.map((goal) => ({
+          ...goal,
+          sortOrder: orderMap.get(`goal:${goal.id}`) ?? goal.sortOrder,
+        })),
+      };
+    });
+  }
+
+  function reorderTaskSubitems(taskId: string, sourceId: string, targetId: string, placement: ReorderPlacement = "before") {
     if (sourceId === targetId) {
       return;
     }
@@ -2604,7 +2944,7 @@ export default function App() {
         task.id === taskId
           ? {
               ...task,
-              subitems: reorderById(task.subitems ?? [], sourceId, targetId).map((subitem, index) => ({
+              subitems: reorderById(task.subitems ?? [], sourceId, targetId, placement).map((subitem, index) => ({
                 ...subitem,
                 sortOrder: index + 1,
               })),
@@ -2832,7 +3172,7 @@ export default function App() {
                           const taskHasSubitems = hasTaskSubitems(task);
 
                           return (
-                            <ReorderableItem key={`task-${task.id}`} id={task.id} scope="today-tasks" onMove={reorderTasks}>
+                            <ReorderableItem key={`task-${task.id}`} id={`task:${task.id}`} scope="today-actions" onMove={reorderTodayActions}>
                               <TaskRow
                                 task={task}
                                 completed={completedToday}
@@ -2843,7 +3183,7 @@ export default function App() {
                                 copy={activeUiCopy}
                                 editLabel={activeUiCopy.editAction}
                                 toggleLabel={completedToday ? activeUiCopy.undoDoneTitle : activeUiCopy.markDoneTitle}
-                                onClick={() => setActionSheet({ type: "task", task })}
+                                onClick={() => undefined}
                                 onToggle={() => {
                                   setConfirmState({
                                     task,
@@ -2861,7 +3201,7 @@ export default function App() {
                         const goal = item.goal;
 
                         return (
-                          <ReorderableItem key={`goal-${goal.id}`} id={goal.id} scope="today-goals" onMove={reorderGoals}>
+                          <ReorderableItem key={`goal-${goal.id}`} id={`goal:${goal.id}`} scope="today-actions" onMove={reorderTodayActions}>
                             <GoalCard
                               goal={goal}
                               today={activeDate}
@@ -2909,12 +3249,8 @@ export default function App() {
               today={activeDate}
               copy={activeUiCopy}
               onClose={() => setProgressSheet(null)}
-              onEdit={() => {
-                setEditState({ type: "goal", goal: progressSheet.goal });
-                setProgressSheet(null);
-              }}
               onSave={(amount, note) => {
-                addProgress(progressSheet.goal.id, amount, note);
+                setProgressForDate(progressSheet.goal.id, amount, note);
                 setProgressSheet(null);
               }}
             />
@@ -3438,7 +3774,7 @@ function GoalCard({
   const dueMeta = formatDueMeta(goal.dueTime, today, isTodayDone, goal.completedAtByDate?.[today], goal.lateDates?.includes(today) ?? false, nowMs, copy);
   const progressStyle = { "--goal-progress": `${progressPercent}%`, ...getFillToneStyle(progressPercent) } as CSSProperties;
   const requiredLine = requiredToday > 0 ? `${formatNumber(requiredToday)} ${goal.unit} ${copy.perDay}` : "";
-  const titleLine = !isGoalCompleted && requiredLine ? `${goal.title} (${copy.recommendedToFinish(requiredLine)})` : goal.title;
+  const titleLine = !isTodayDone && requiredLine ? `${goal.title} (${copy.recommendedToFinish(requiredLine)})` : goal.title;
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (event.key === "Enter" || event.key === " ") {
@@ -3448,7 +3784,7 @@ function GoalCard({
   }
 
   return (
-    <SwipeDeleteShell deleteLabel={copy.markDoneTitle} editLabel={copy.editAction} deleteTone="complete" onEdit={onEdit} onTap={onOpenManual}>
+    <SwipeDeleteShell deleteLabel={copy.enter} editLabel={copy.editAction} deleteTone="complete" onDelete={onOpenManual} onEdit={onEdit} onTap={onOpenManual}>
       <article
         className={`goal-card ${isTodayDone ? "is-done" : ""} ${isGoalCompleted ? "is-complete" : ""}`}
         style={progressStyle}
@@ -3507,7 +3843,7 @@ function TaskRow({
   onClick: () => void;
   onToggle?: () => void;
   onSubitemAdvance?: (subitemId: string) => void;
-  onSubitemMove?: (sourceId: string, targetId: string) => void;
+  onSubitemMove?: (sourceId: string, targetId: string, placement?: ReorderPlacement) => void;
   onEdit?: () => void;
 }) {
   const subitemProgress = hasTaskSubitems(task) ? getTaskSubitemProgress(task, dateKey) : null;
@@ -3519,20 +3855,8 @@ function TaskRow({
     <SwipeDeleteShell deleteLabel={toggleLabel} editLabel={editLabel} deleteTone={completed ? "undo" : "complete"} onDelete={onToggle ?? onClick} onEdit={onEdit}>
       <div className={`task-card-inline ${expanded ? "expanded" : ""}`}>
       <div className={`task-row ${completed ? "completed" : ""} ${subitemProgress ? "with-subitems" : ""} priority-${task.priority ?? "medium"}`}>
-        <button
-          type="button"
+        <div
           className="task-row-main"
-          onClick={(event) => {
-            if (event.detail > 1) {
-              return;
-            }
-
-            onClick();
-          }}
-          onDoubleClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-          }}
         >
           <span className="action-emoji" aria-hidden="true">{getActionEmoji(task)}</span>
           <span className="task-title">
@@ -3541,7 +3865,7 @@ function TaskRow({
             {dueMeta && <small className="due-meta">{dueMeta}</small>}
             {!isToday && <small>{task.date}</small>}
           </span>
-        </button>
+        </div>
         <button
           type="button"
           className="task-check-button"
@@ -3581,7 +3905,7 @@ function TaskRow({
             const isComplete = current >= target;
 
             return (
-              <ReorderableItem key={subitem.id} id={subitem.id} scope={`subitems-${task.id}`} onMove={(sourceId, targetId) => onSubitemMove?.(sourceId, targetId)}>
+              <ReorderableItem key={subitem.id} id={subitem.id} scope={`subitems-${task.id}`} onMove={(sourceId, targetId, placement) => onSubitemMove?.(sourceId, targetId, placement)}>
                 <SwipeAdvanceShell onAdvance={() => onSubitemAdvance?.(subitem.id)}>
                   <div className={`inline-subitem-row ${isComplete ? "completed" : ""}`}>
                     <div className="inline-subitem-head">
@@ -3698,14 +4022,17 @@ function ReorderableItem({
 }: {
   id: string;
   scope: string;
-  onMove: (sourceId: string, targetId: string) => void;
+  onMove: (sourceId: string, targetId: string, placement?: ReorderPlacement) => void;
   children: ReactNode;
 }) {
   const [dragging, setDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const startPoint = useRef<{ x: number; y: number } | null>(null);
   const longPressTimer = useRef<number | null>(null);
   const activeRef = useRef(false);
   const suppressClick = useRef(false);
+  const lastMoveRef = useRef<string | null>(null);
+  const previousBodyOverflow = useRef<string | null>(null);
 
   function clearLongPress() {
     if (longPressTimer.current !== null) {
@@ -3718,6 +4045,12 @@ function ReorderableItem({
     clearLongPress();
     activeRef.current = false;
     startPoint.current = null;
+    lastMoveRef.current = null;
+    if (previousBodyOverflow.current !== null) {
+      document.body.style.overflow = previousBodyOverflow.current;
+      previousBodyOverflow.current = null;
+    }
+    setDragOffset({ x: 0, y: 0 });
     setDragging(false);
   }
 
@@ -3733,7 +4066,13 @@ function ReorderableItem({
       activeRef.current = true;
       suppressClick.current = true;
       setDragging(true);
-      target?.setPointerCapture?.(event.pointerId);
+      previousBodyOverflow.current = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      try {
+        target?.setPointerCapture?.(event.pointerId);
+      } catch {
+        // Pointer capture can fail if the WebView has already released the pointer.
+      }
     }, 420);
   }
 
@@ -3754,22 +4093,46 @@ function ReorderableItem({
     }
 
     event.preventDefault();
-    const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>(
-      `[data-reorder-scope="${scope}"][data-reorder-id]`,
-    );
+    event.stopPropagation();
+    setDragOffset({
+      x: event.clientX - start.x,
+      y: event.clientY - start.y,
+    });
+
+    const draggedElement = event.currentTarget;
+    const previousPointerEvents = draggedElement.style.pointerEvents;
+    draggedElement.style.pointerEvents = "none";
+    const target = document
+      .elementFromPoint(event.clientX, event.clientY)
+      ?.closest<HTMLElement>(`[data-reorder-scope="${scope}"][data-reorder-id]`);
+    draggedElement.style.pointerEvents = previousPointerEvents;
     const targetId = target?.dataset.reorderId;
 
     if (targetId && targetId !== id) {
-      onMove(id, targetId);
+      const targetRect = target.getBoundingClientRect();
+      const placement: ReorderPlacement = event.clientY > targetRect.top + targetRect.height / 2 ? "after" : "before";
+      const moveKey = `${targetId}:${placement}`;
+
+      if (lastMoveRef.current !== moveKey) {
+        lastMoveRef.current = moveKey;
+        onMove(id, targetId, placement);
+      }
     }
   }
 
   function handlePointerEnd(event: ReactPointerEvent<HTMLDivElement>) {
+    const wasDragging = activeRef.current;
+
     if (event.currentTarget?.hasPointerCapture?.(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
 
     endDrag();
+
+    if (wasDragging) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
   }
 
   return (
@@ -3777,6 +4140,12 @@ function ReorderableItem({
       className={`reorderable-item ${dragging ? "is-dragging" : ""}`}
       data-reorder-id={id}
       data-reorder-scope={scope}
+      style={
+        {
+          "--reorder-x": `${dragOffset.x}px`,
+          "--reorder-y": `${dragOffset.y}px`,
+        } as CSSProperties
+      }
       onPointerDownCapture={handlePointerDown}
       onPointerMoveCapture={handlePointerMove}
       onPointerUpCapture={handlePointerEnd}
@@ -5383,26 +5752,42 @@ function ProgressSheet({
   today,
   copy,
   onClose,
-  onEdit,
   onSave,
 }: {
   goal: ProgressGoal;
   today: string;
   copy: UiCopy;
   onClose: () => void;
-  onEdit?: () => void;
   onSave: (amount: number, note?: string) => void;
 }) {
   const requiredToday = getRequiredToday(goal, today);
-  const [amount, setAmount] = useState(requiredToday > 0 ? String(requiredToday) : "");
+  const loggedToday = getTodayLoggedAmount(goal, today);
+  const [amount, setAmount] = useState(String(loggedToday || 0));
   const [note, setNote] = useState("");
-  const amountTemplates = [1, 5, 10];
+  const numericDraftAmount = Number(amount);
+  const previewAmount = Number.isFinite(numericDraftAmount) && numericDraftAmount >= 0 ? numericDraftAmount : loggedToday;
+  const todayPercent = requiredToday > 0 ? clampPercent((previewAmount / requiredToday) * 100) : getGoalProgressPercent(goal);
+  const progressTitle = capitalizeLabel(copy.progress);
+  const targetLabel = copy.save === "Save" ? "target" : "цель";
+  const todayNeedLabel = copy.save === "Save" ? copy.requiredToday : "Сегодня нужно";
+  const progressStyle = {
+    "--entry-progress": `${todayPercent}%`,
+  } as CSSProperties;
+
+  function adjustAmount(delta: number) {
+    setAmount((current) => {
+      const numeric = Number(current);
+      const next = Math.max((Number.isFinite(numeric) ? numeric : 0) + delta, 0);
+
+      return String(next);
+    });
+  }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const numericAmount = Number(amount);
 
-    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+    if (!Number.isFinite(numericAmount) || numericAmount < 0) {
       return;
     }
 
@@ -5410,26 +5795,29 @@ function ProgressSheet({
   }
 
   return (
-    <BottomSheet title={copy.addProgress} closeLabel={copy.close} onClose={onClose}>
-      <form className="sheet-form" onSubmit={handleSubmit}>
-        <div className="sheet-summary">
-          <span>{goal.title}</span>
-          <strong>{copy.requiredToday}: {formatNumber(requiredToday)} {goal.unit}</strong>
-          {goal.note && <p className="action-comment">{goal.note}</p>}
+    <BottomSheet title={progressTitle} closeLabel={copy.close} onClose={onClose} className="progress-entry-bottom-sheet">
+      <form className="progress-entry-form" onSubmit={handleSubmit}>
+        <section className="progress-entry-task">
+          <div className="progress-entry-task-head">
+            <span className="progress-entry-emoji" aria-hidden="true">{getActionEmoji(goal, "📈")}</span>
+            <div>
+              <h3>{goal.title}</h3>
+              <p>{goal.note ? `${goal.note} · ` : ""}{targetLabel} {formatNumber(goal.targetValue)} {goal.unit}</p>
+            </div>
+          </div>
+          <strong>{todayNeedLabel}: {formatNumber(requiredToday)} {goal.unit}</strong>
+        </section>
+
+        <div className="progress-entry-fill" style={progressStyle}>
+          <span />
+          <strong>{formatNumber(previewAmount)} / {formatNumber(requiredToday)} {goal.unit}</strong>
+          <em>{formatNumber(todayPercent)}%</em>
         </div>
-        <div className="progress-template-buttons" aria-label={copy.completedInput}>
-          {amountTemplates.map((value) => (
-            <button key={value} type="button" onClick={() => onSave(value)}>
-              <span className="quick-plus-mark" aria-hidden="true">
-                <span />
-                <span />
-              </span>
-              <span>{formatNumber(value)}</span>
-            </button>
-          ))}
-        </div>
-        <label>
-          <span>{copy.completedInput}</span>
+
+        <div className="progress-entry-stepper">
+          <button type="button" aria-label="minus" onClick={() => adjustAmount(-1)}>
+            −
+          </button>
           <input
             autoFocus
             type="number"
@@ -5439,24 +5827,19 @@ function ProgressSheet({
             onChange={(event) => setAmount(event.target.value)}
             placeholder="0"
           />
-        </label>
-        <label>
+          <button type="button" aria-label="plus" onClick={() => adjustAmount(1)}>
+            +
+          </button>
+        </div>
+
+        <label className="progress-entry-note">
           <span>{copy.note}</span>
           <input value={note} onChange={(event) => setNote(event.target.value)} placeholder={copy.optional} />
         </label>
-        <div className="sheet-actions">
-          <button type="submit" className="primary-sheet-button">
-            {copy.save}
-          </button>
-          {onEdit && (
-            <button type="button" className="ghost-sheet-button" onClick={onEdit}>
-              {copy.editAction}
-            </button>
-          )}
-          <button type="button" className="ghost-sheet-button" onClick={onClose}>
-            {copy.cancel}
-          </button>
-        </div>
+
+        <button type="submit" className="progress-entry-save">
+          {copy.save}
+        </button>
       </form>
     </BottomSheet>
   );
@@ -5791,6 +6174,70 @@ function getTemplateUnit(template: ActionTemplate, language: AppSettings["langua
   return language === "en" ? (templateEnglishCopy[template.title]?.unit ?? template.unit) : template.unit;
 }
 
+function AiDraftPreview({
+  state,
+  labels,
+  language,
+  onApply,
+  onEdit,
+  onCancel,
+}: {
+  state: Exclude<AiPreviewState, null>;
+  labels: ReturnType<typeof getAiLabels>;
+  language: AppSettings["language"];
+  onApply: () => void;
+  onEdit: () => void;
+  onCancel: () => void;
+}) {
+  const periodLabel = (period: AiPeriod) => {
+    if (period === "today") return language === "en" ? "Today" : "Сегодня";
+    if (period === "week") return language === "en" ? "Week" : "Неделя";
+    if (period === "month") return language === "en" ? "Month" : "Месяц";
+    return language === "en" ? "Custom" : "Свой";
+  };
+  const repeatLabel = (repeat: AiRepeatMode) => {
+    if (repeat === "once") return language === "en" ? "Once" : "Один раз";
+    if (repeat === "weekdays") return language === "en" ? "Weekdays" : "Будни";
+    if (repeat === "selected_days") return language === "en" ? "Selected days" : "Выбранные дни";
+    return language === "en" ? "Every day" : "Каждый день";
+  };
+
+  return (
+    <div className="ai-preview-card">
+      <strong>{labels.understood}</strong>
+      {state.type === "action" ? (
+        <div className="ai-preview-fields">
+          <span>
+            <b>{state.draft.icon ?? inferAiEmoji(state.draft.title)}</b>
+            {state.draft.title}
+          </span>
+          <small>{labels.tracking}: {state.draft.tracking_type === "quantity" ? labels.quantity : labels.checkbox}</small>
+          {state.draft.tracking_type === "quantity" && (
+            <small>{labels.target}: {formatNumber(Number(state.draft.target_value ?? 0))} {state.draft.unit}</small>
+          )}
+          <small>{labels.period}: {periodLabel(state.draft.period)} · {labels.repeat}: {repeatLabel(state.draft.repeat_mode)}</small>
+          {state.draft.due_time && <small>{labels.due}: {state.draft.due_time}</small>}
+          {state.draft.subitems && state.draft.subitems.length > 0 && <small>{labels.subitems}: {state.draft.subitems.length}</small>}
+        </div>
+      ) : (
+        <div className="ai-preview-fields">
+          {state.subitems.map((subitem) => (
+            <span key={`${subitem.title}-${subitem.target ?? ""}`}>
+              {subitem.title}
+              {subitem.target && subitem.target > 1 ? <small>{subitem.target}</small> : null}
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="ai-preview-actions">
+        <button type="button" onClick={onApply}>{labels.apply}</button>
+        <button type="button" onClick={onEdit}>{labels.edit}</button>
+        <button type="button" onClick={onCancel}>{labels.cancel}</button>
+      </div>
+    </div>
+  );
+}
+
 function AddSheet({
   today,
   language,
@@ -5857,10 +6304,14 @@ function AddSheet({
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
+  const [aiLoading, setAiLoading] = useState<"action" | "subitems" | null>(null);
+  const [aiPreview, setAiPreview] = useState<AiPreviewState>(null);
+  const [aiError, setAiError] = useState("");
   const emojiInputRef = useRef<HTMLInputElement>(null);
 
   const selectedEmoji = emoji ?? getIconEmoji(iconKey) ?? inferEmojiFromTitle(title);
   const subitemCopy = getSubitemCopy(language);
+  const aiLabels = getAiLabels(language);
   const dates = getPeriodDates(today, period, startDate, endDate);
   const numericTarget = Number(targetValue);
   const numericCurrent = Number(currentValue) || 0;
@@ -6002,6 +6453,111 @@ function AddSheet({
     setSelectedDays((days) => toggleWeekday(days, day));
   }
 
+  async function requestAiJson(body: Record<string, unknown>): Promise<unknown> {
+    const response = await fetch("/api/ai/parse-action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...body, language }),
+    });
+
+    if (!response.ok) {
+      throw new Error("AI request failed");
+    }
+
+    return response.json();
+  }
+
+  async function parseActionWithAi() {
+    const text = title.trim();
+
+    if (!text) {
+      setAiError(aiLabels.describeFirst);
+      return;
+    }
+
+    setAiLoading("action");
+    setAiError("");
+
+    try {
+      const payload = await requestAiJson({ text });
+      setAiPreview({ type: "action", draft: normalizeAiActionDraft(payload, text) });
+    } catch {
+      setAiPreview({ type: "action", draft: buildLocalAiDraft(text) });
+    } finally {
+      setAiLoading(null);
+    }
+  }
+
+  async function suggestSubitemsWithAi() {
+    const sourceTitle = title.trim();
+
+    if (!sourceTitle) {
+      setAiError(aiLabels.describeFirst);
+      return;
+    }
+
+    setAiLoading("subitems");
+    setAiError("");
+
+    try {
+      const payload = await requestAiJson({ title: sourceTitle });
+      setAiPreview({ type: "subitems", subitems: normalizeAiSubitems(payload, sourceTitle) });
+    } catch {
+      setAiPreview({ type: "subitems", subitems: buildLocalSubitems(sourceTitle) });
+    } finally {
+      setAiLoading(null);
+    }
+  }
+
+  function applyAiActionDraft(draft: AiActionDraft) {
+    const nextTrackingMode: ActionTrackingMode = draft.tracking_type === "quantity" ? "amount" : "done";
+    const nextPeriod: ActionPeriod = draft.period === "custom" ? "month" : draft.period;
+    const nextRepeatMode: GoalRepeatMode =
+      draft.repeat_mode === "weekdays" ? "weekdays" : draft.repeat_mode === "selected_days" ? "selectedDays" : "everyDay";
+    const nextUnit = draft.unit?.trim() || unit || (language === "en" ? "times" : "раз");
+    const normalizedEmoji = normalizeEmojiChoice(draft.icon ?? "") ?? inferAiEmoji(`${draft.title} ${draft.unit ?? ""}`);
+    const nextSubitems = normalizeAiSubitems({ subitems: draft.subitems ?? [] }, draft.title).map((subitem, index) => ({
+      id: createId("subitem"),
+      title: subitem.title,
+      targetCount: subitem.target && subitem.target > 1 ? subitem.target : undefined,
+      sortOrder: index + 1,
+    }));
+
+    setTitle(draft.title);
+    setEmoji(normalizedEmoji);
+    setIconKey(undefined);
+    setTrackingMode(nextTrackingMode);
+    setPeriod(nextPeriod);
+    setRepeatMode(nextRepeatMode);
+    setSelectedDays(defaultGoalSelectedDays);
+    setTargetValue(nextTrackingMode === "amount" ? String(draft.target_value && draft.target_value > 0 ? draft.target_value : 50) : "");
+    setUnit(nextTrackingMode === "amount" ? nextUnit : "");
+    setCurrentValue("0");
+    setQuickValues(nextTrackingMode === "amount" ? getDefaultQuickValues(nextUnit).join(", ") : "");
+    setDueTimeEnabled(Boolean(draft.due_time));
+    setDueTime(draft.due_time ?? "11:00");
+    setSubitemsEnabled(nextTrackingMode === "done" && nextSubitems.length > 0);
+    setSubitemDrafts(nextTrackingMode === "done" ? nextSubitems : []);
+    setAdvancedOpen(false);
+    setTemplatePickerOpen(false);
+    setIconPickerOpen(false);
+    setAiPreview(null);
+  }
+
+  function applyAiSubitems(subitems: AiSubitemDraft[]) {
+    setTrackingMode("done");
+    setSubitemsEnabled(true);
+    setSubitemDrafts(
+      subitems.map((subitem, index) => ({
+        id: createId("subitem"),
+        title: subitem.title,
+        targetCount: subitem.target && subitem.target > 1 ? subitem.target : undefined,
+        sortOrder: index + 1,
+      })),
+    );
+    setAiPreview(null);
+  }
+
   function submitAction(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -6067,6 +6623,30 @@ function AddSheet({
           </button>
         </div>
 
+        <div className="ai-assist-row">
+          <button type="button" className="ai-assist-button" disabled={aiLoading !== null || !title.trim()} onClick={parseActionWithAi}>
+            {aiLoading === "action" ? aiLabels.loading : aiLabels.parse}
+          </button>
+          {aiError && <small className="ai-assist-error">{aiError}</small>}
+        </div>
+
+        {aiPreview && (
+          <AiDraftPreview
+            state={aiPreview}
+            labels={aiLabels}
+            language={language}
+            onApply={() => {
+              if (aiPreview.type === "action") {
+                applyAiActionDraft(aiPreview.draft);
+              } else {
+                applyAiSubitems(aiPreview.subitems);
+              }
+            }}
+            onEdit={() => setAiPreview(null)}
+            onCancel={() => setAiPreview(null)}
+          />
+        )}
+
         <label className="compact-group-field">
           <span>{copy.group}</span>
           <input value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder={copy.groupPlaceholder} />
@@ -6126,6 +6706,9 @@ function AddSheet({
             </button>
             {subitemsEnabled && (
               <div className="subitems-draft-list">
+                <button type="button" className="ai-suggest-subitems-button" disabled={aiLoading !== null || !title.trim()} onClick={suggestSubitemsWithAi}>
+                  {aiLoading === "subitems" ? aiLabels.loading : aiLabels.suggestList}
+                </button>
                 {subitemDrafts.map((subitem) => (
                   <div key={subitem.id} className="subitem-draft-row">
                     <input
@@ -6730,6 +7313,7 @@ function BottomSheet({
   onClose,
   closeLabel = "Close",
   closeOnOverlay = true,
+  className,
 }: {
   title: string;
   subtitle?: string;
@@ -6737,10 +7321,11 @@ function BottomSheet({
   onClose: () => void;
   closeLabel?: string;
   closeOnOverlay?: boolean;
+  className?: string;
 }) {
   return (
     <div className="modal-overlay sheet-overlay" role="presentation" onClick={closeOnOverlay ? onClose : undefined}>
-      <div className="bottom-sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" onClick={(event) => event.stopPropagation()}>
+      <div className={`bottom-sheet ${className ?? ""}`} role="dialog" aria-modal="true" aria-labelledby="sheet-title" onClick={(event) => event.stopPropagation()}>
         <div className="sheet-handle" />
         <div className="sheet-header">
           <div>

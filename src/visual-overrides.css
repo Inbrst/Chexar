@@ -1265,3 +1265,465 @@ html[data-resolved-theme="light"] .action-list .task-x-mark span:nth-child(2) {
   position: relative !important;
   z-index: 1 !important;
 }
+
+/* Final geometry layer: more top air, thinner rows, unchanged content scale. */
+.today-screen,
+.calendar-screen,
+.progress-screen,
+.profile-screen {
+  padding-top: calc(var(--screen-top-padding) + 28px) !important;
+}
+
+.today-screen {
+  gap: 8px !important;
+}
+
+.hero-header {
+  margin-bottom: 8px !important;
+}
+
+.rhythm-card {
+  margin-top: 2px !important;
+}
+
+.action-list,
+.action-group {
+  gap: 3px !important;
+}
+
+.action-group + .action-group {
+  margin-top: 1px !important;
+}
+
+.action-list .task-row,
+.action-list .goal-card {
+  min-height: 34px !important;
+  padding: 1px 7px 1px 8px !important;
+  border-radius: 10px !important;
+}
+
+.action-list .task-row {
+  grid-template-columns: minmax(0, 1fr) 29px !important;
+}
+
+.action-list .task-row-main,
+.action-list .goal-top {
+  min-height: 31px !important;
+  gap: 7px !important;
+}
+
+.action-list .goal-card {
+  align-items: center !important;
+}
+
+.action-list .goal-title-progress {
+  grid-template-columns: minmax(0, 1fr) max-content !important;
+  gap: 7px !important;
+}
+
+.action-list .goal-main-line {
+  gap: 1px !important;
+}
+
+.action-list .goal-progress-stack {
+  min-width: 84px !important;
+}
+
+.action-list .task-check-button {
+  width: 29px !important;
+  height: 29px !important;
+  min-height: 29px !important;
+}
+
+.swipe-delete-content,
+.swipe-advance-content {
+  border-radius: 10px !important;
+}
+
+/* Progress input sheet redesign. */
+.sheet-overlay:has(.progress-entry-bottom-sheet) {
+  align-items: end !important;
+  place-items: end center !important;
+  padding: 0 0 max(8px, env(safe-area-inset-bottom)) !important;
+  background: rgba(0, 0, 0, 0.62) !important;
+  backdrop-filter: blur(10px) !important;
+}
+
+.progress-entry-bottom-sheet {
+  width: min(100%, 430px) !important;
+  min-height: 45dvh !important;
+  max-height: min(58dvh, 540px) !important;
+  padding: 8px 18px max(12px, env(safe-area-inset-bottom)) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 32px 32px 24px 24px !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012)),
+    #121315 !important;
+  box-shadow: none !important;
+}
+
+.progress-entry-bottom-sheet .sheet-handle {
+  width: 46px !important;
+  height: 5px !important;
+  margin-bottom: 10px !important;
+  background: rgba(255, 255, 255, 0.2) !important;
+}
+
+.progress-entry-bottom-sheet .sheet-header {
+  position: static !important;
+  margin-bottom: 10px !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+.progress-entry-bottom-sheet .sheet-header h2 {
+  font-size: 1.28rem !important;
+  font-weight: 820 !important;
+}
+
+.progress-entry-bottom-sheet .sheet-close {
+  width: 36px !important;
+  height: 36px !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  background: rgba(255, 255, 255, 0.065) !important;
+  color: #fff !important;
+}
+
+.progress-entry-form {
+  display: grid !important;
+  gap: 9px !important;
+}
+
+.progress-entry-task {
+  display: grid !important;
+  gap: 7px !important;
+  padding: 10px 12px !important;
+  border: 0 !important;
+  border-radius: 22px !important;
+  background: rgba(255, 255, 255, 0.035) !important;
+}
+
+.progress-entry-task-head {
+  display: grid !important;
+  grid-template-columns: 38px minmax(0, 1fr) !important;
+  gap: 10px !important;
+  align-items: center !important;
+}
+
+.progress-entry-emoji {
+  display: grid !important;
+  width: 38px !important;
+  height: 38px !important;
+  place-items: center !important;
+  border-radius: 18px !important;
+  background: rgba(255, 255, 255, 0.045) !important;
+  font-size: 1.42rem !important;
+  line-height: 1 !important;
+}
+
+.progress-entry-task h3 {
+  margin: 0 !important;
+  overflow: hidden !important;
+  color: #fff !important;
+  font-size: 1.08rem !important;
+  font-weight: 820 !important;
+  line-height: 1.08 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.progress-entry-task p {
+  margin: 2px 0 0 !important;
+  overflow: hidden !important;
+  color: rgba(255, 255, 255, 0.62) !important;
+  font-size: 0.78rem !important;
+  line-height: 1.15 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.progress-entry-task > strong {
+  color: rgba(255, 255, 255, 0.82) !important;
+  font-size: 0.8rem !important;
+  font-weight: 660 !important;
+  line-height: 1.1 !important;
+}
+
+.progress-entry-fill {
+  position: relative !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  min-height: 54px !important;
+  overflow: hidden !important;
+  padding: 0 16px !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  border-radius: 19px !important;
+  background: rgba(255, 255, 255, 0.035) !important;
+}
+
+.progress-entry-fill > span {
+  position: absolute !important;
+  inset: 0 auto 0 0 !important;
+  width: var(--entry-progress, 0%) !important;
+  max-width: 100% !important;
+  border-radius: inherit !important;
+  background:
+    radial-gradient(circle at 72% 26%, rgba(255, 255, 255, 0.22), transparent 26%),
+    linear-gradient(110deg, rgba(76, 220, 134, 0.88), rgba(42, 203, 179, 0.82)) !important;
+}
+
+.progress-entry-fill > strong,
+.progress-entry-fill > em {
+  position: relative !important;
+  z-index: 1 !important;
+  color: #fff !important;
+  font-style: normal !important;
+  font-weight: 840 !important;
+  line-height: 1 !important;
+}
+
+.progress-entry-fill > strong {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  font-size: 1.16rem !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.progress-entry-fill > em {
+  font-size: 1.18rem !important;
+}
+
+.progress-entry-stepper {
+  display: grid !important;
+  grid-template-columns: 58px minmax(0, 1fr) 58px !important;
+  gap: 10px !important;
+  align-items: center !important;
+}
+
+.progress-entry-stepper button,
+.progress-entry-stepper input {
+  height: 48px !important;
+  border-radius: 17px !important;
+  color: #fff !important;
+}
+
+.progress-entry-stepper button {
+  border: 1px solid rgba(92, 255, 177, 0.34) !important;
+  background: rgba(255, 255, 255, 0.035) !important;
+  font-size: 1.72rem !important;
+  font-weight: 400 !important;
+  line-height: 1 !important;
+}
+
+.progress-entry-stepper input {
+  width: 100% !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  background: rgba(255, 255, 255, 0.035) !important;
+  font-size: 1.42rem !important;
+  font-weight: 820 !important;
+  text-align: center !important;
+  outline: none !important;
+}
+
+.progress-entry-stepper input:focus {
+  border-color: rgba(92, 255, 177, 0.58) !important;
+  box-shadow: 0 0 0 3px rgba(92, 255, 177, 0.12) !important;
+}
+
+.progress-entry-note {
+  display: grid !important;
+  gap: 4px !important;
+}
+
+.progress-entry-note span {
+  color: rgba(255, 255, 255, 0.62) !important;
+  font-size: 0.72rem !important;
+  font-weight: 620 !important;
+}
+
+.progress-entry-note input {
+  min-height: 43px !important;
+  border: 1px solid rgba(255, 255, 255, 0.13) !important;
+  border-radius: 15px !important;
+  background: rgba(255, 255, 255, 0.025) !important;
+  color: #fff !important;
+}
+
+.progress-entry-save {
+  width: 100% !important;
+  height: 50px !important;
+  border: 0 !important;
+  border-radius: 16px !important;
+  background: linear-gradient(100deg, #63d979, #35c8b8) !important;
+  color: #fff !important;
+  font-size: 1rem !important;
+  font-weight: 820 !important;
+}
+
+/* Bottom navigation: clearer buttons over a more transparent monochrome glass base. */
+.bottom-nav {
+  border-color: rgba(255, 255, 255, 0.045) !important;
+  background: rgba(18, 18, 20, 0.11) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  backdrop-filter: blur(28px) saturate(1.05) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(1.05) !important;
+}
+
+.bottom-nav button {
+  color: rgba(255, 255, 255, 0.76) !important;
+  background: rgba(255, 255, 255, 0.025) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.bottom-nav button.active {
+  color: #ffffff !important;
+  border-color: transparent !important;
+  background: rgba(255, 255, 255, 0.14) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.bottom-nav button.active svg,
+.bottom-nav button svg {
+  color: currentColor !important;
+  filter: none !important;
+}
+
+html[data-resolved-theme="light"] .bottom-nav {
+  border-color: rgba(15, 23, 42, 0.045) !important;
+  background: rgba(255, 255, 255, 0.22) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+html[data-resolved-theme="light"] .bottom-nav button {
+  color: rgba(17, 24, 39, 0.72) !important;
+  background: rgba(255, 255, 255, 0.18) !important;
+  background-image: none !important;
+}
+
+html[data-resolved-theme="light"] .bottom-nav button.active {
+  color: rgba(17, 24, 39, 0.96) !important;
+  background: rgba(255, 255, 255, 0.48) !important;
+  background-image: none !important;
+}
+
+/* Long-press reorder feedback. */
+.reorderable-item {
+  --reorder-x: 0px;
+  --reorder-y: 0px;
+}
+
+.reorderable-item.is-dragging {
+  position: relative !important;
+  z-index: 40 !important;
+  opacity: 0.96 !important;
+  transform: translate3d(var(--reorder-x), var(--reorder-y), 0) scale(1.018) !important;
+}
+
+.reorderable-item.is-dragging .swipe-delete-content,
+.reorderable-item.is-dragging .task-row,
+.reorderable-item.is-dragging .goal-card {
+  border-color: rgba(255, 255, 255, 0.16) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* AI draft helper inside creation sheet. */
+.ai-assist-row {
+  display: grid !important;
+  gap: 6px !important;
+}
+
+.ai-assist-button,
+.ai-suggest-subitems-button {
+  min-height: 38px !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 14px !important;
+  color: var(--text) !important;
+  background: var(--card-strong) !important;
+  font-size: 0.84rem !important;
+  font-weight: 720 !important;
+}
+
+.ai-assist-button:disabled,
+.ai-suggest-subitems-button:disabled {
+  cursor: default !important;
+  opacity: 0.46 !important;
+}
+
+.ai-assist-error {
+  color: #ef8f8f !important;
+  font-size: 0.78rem !important;
+}
+
+.ai-preview-card {
+  display: grid !important;
+  gap: 10px !important;
+  padding: 12px !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 16px !important;
+  color: var(--text) !important;
+  background: var(--card) !important;
+}
+
+.ai-preview-card > strong {
+  font-size: 0.9rem !important;
+  line-height: 1.1 !important;
+}
+
+.ai-preview-fields {
+  display: grid !important;
+  gap: 5px !important;
+}
+
+.ai-preview-fields span,
+.ai-preview-fields small {
+  display: flex !important;
+  min-width: 0 !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  color: var(--muted) !important;
+  font-size: 0.8rem !important;
+  line-height: 1.2 !important;
+}
+
+.ai-preview-fields span {
+  color: var(--text) !important;
+  font-weight: 720 !important;
+}
+
+.ai-preview-fields b {
+  font-size: 1.1rem !important;
+  font-weight: 500 !important;
+}
+
+.ai-preview-actions {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr 1fr !important;
+  gap: 7px !important;
+}
+
+.ai-preview-actions button {
+  min-height: 36px !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 12px !important;
+  color: var(--text) !important;
+  background: var(--card-strong) !important;
+  font-size: 0.78rem !important;
+  font-weight: 720 !important;
+}
+
+.ai-preview-actions button:first-child {
+  color: var(--bg) !important;
+  border-color: var(--text) !important;
+  background: var(--text) !important;
+}
+
+.ai-suggest-subitems-button {
+  width: 100% !important;
+}
