@@ -19,8 +19,10 @@ const onboardingSteps: OnboardingQuestStep[] = [
   "swipeLeftTriggered",
   "taskCreated",
   "taskCompleted",
+  "subitemListCreated",
   "quantitativeGoalCreated",
   "numericProgressEntered",
+  "dueTimeActionCreated",
   "calendarOpened",
   "statsOpened",
 ];

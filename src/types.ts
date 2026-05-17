@@ -112,8 +112,10 @@ export type OnboardingQuestStep =
   | "swipeLeftTriggered"
   | "taskCreated"
   | "taskCompleted"
+  | "subitemListCreated"
   | "quantitativeGoalCreated"
   | "numericProgressEntered"
+  | "dueTimeActionCreated"
   | "calendarOpened"
   | "statsOpened";
 

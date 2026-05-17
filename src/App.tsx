@@ -158,8 +158,10 @@ const onboardingQuestSteps: OnboardingQuestStep[] = [
   "swipeLeftTriggered",
   "taskCreated",
   "taskCompleted",
+  "subitemListCreated",
   "quantitativeGoalCreated",
   "numericProgressEntered",
+  "dueTimeActionCreated",
   "calendarOpened",
   "statsOpened",
 ];
@@ -170,6 +172,13 @@ const onboardingQuestCopy: Record<AppSettings["language"], {
   hide: string;
   mastered: string;
   steps: Record<OnboardingQuestStep, string>;
+  scenarios: {
+    gestures: { title: string; meta: string };
+    subitems: { title: string; meta: string; rows: string[] };
+    quantity: { title: string; meta: string };
+    dueTime: { title: string; meta: string };
+    navigation: { title: string; meta: string };
+  };
 }> = {
   en: {
     title: "Start Quest",
@@ -181,14 +190,23 @@ const onboardingQuestCopy: Record<AppSettings["language"], {
       swipeLeftTriggered: "Try swipe left",
       taskCreated: "Create first action",
       taskCompleted: "Complete an action",
+      subitemListCreated: "Create a mini list",
       quantitativeGoalCreated: "Create a quantity action",
       numericProgressEntered: "Enter progress number",
+      dueTimeActionCreated: "Add a daily due time",
       calendarOpened: "Open Calendar",
       statsOpened: "Open Statistics",
     },
+    scenarios: {
+      gestures: { title: "Gestures", meta: "Swipe right to edit, left to mark." },
+      subitems: { title: "Mini list", meta: "Create a checklist action with inner steps.", rows: ["Warm-up", "Squats", "Stretch"] },
+      quantity: { title: "Quantity", meta: "Create a numeric action and enter progress." },
+      dueTime: { title: "Due time", meta: "Add an action due by the end of day." },
+      navigation: { title: "Overview", meta: "Open Calendar and Progress." },
+    },
   },
   ru: {
-    title: "Start Quest",
+    title: "Старт-квест",
     subtitle: "Проверь основные жесты и экраны.",
     hide: "Скрыть подсказки",
     mastered: "Chexar освоен",
@@ -197,10 +215,19 @@ const onboardingQuestCopy: Record<AppSettings["language"], {
       swipeLeftTriggered: "Проверить свайп влево",
       taskCreated: "Создать первую задачу",
       taskCompleted: "Отметить задачу выполненной",
-      quantitativeGoalCreated: "Создать количественную цель",
+      subitemListCreated: "Создать действие с мини-списком",
+      quantitativeGoalCreated: "Создать действие с числом",
       numericProgressEntered: "Ввести число прогресса",
+      dueTimeActionCreated: "Добавить действие до времени",
       calendarOpened: "Открыть календарь",
       statsOpened: "Открыть статистику",
+    },
+    scenarios: {
+      gestures: { title: "Жесты", meta: "Свайп вправо — редактирование, влево — отметка." },
+      subitems: { title: "Мини-список", meta: "Создай чек-бокс с внутренними пунктами.", rows: ["Разминка", "Приседания", "Растяжка"] },
+      quantity: { title: "Количество", meta: "Создай действие с числом и введи прогресс." },
+      dueTime: { title: "До времени", meta: "Добавь действие, которое нужно сделать до конца дня." },
+      navigation: { title: "Обзор", meta: "Открой календарь и статистику." },
     },
   },
 };
@@ -297,7 +324,7 @@ const profileCopy = {
     hintsOn: "Подсказки включены",
     hintsOff: "Подсказки выключены",
     hintsText: "Мы покажем полезные советы в нужный момент.",
-    restartQuest: "Открыть Start Quest",
+    restartQuest: "Открыть старт-квест",
     restartQuestText: "Показать обучающий чек-лист ещё раз.",
     resetTitle: "Сбросить данные?",
     resetText: "Это удалит цели, задачи и прогресс на этом устройстве.",
@@ -3631,6 +3658,9 @@ export default function App() {
     telegramNotification("success");
     completeOnboardingQuestStep("taskCreated");
     completeOnboardingQuestStep("quantitativeGoalCreated");
+    if (goal.dueTime) {
+      completeOnboardingQuestStep("dueTimeActionCreated");
+    }
   }
 
   function createTask(task: {
@@ -3677,6 +3707,12 @@ export default function App() {
     }));
     telegramNotification("success");
     completeOnboardingQuestStep("taskCreated");
+    if (task.subitems && task.subitems.length > 0) {
+      completeOnboardingQuestStep("subitemListCreated");
+    }
+    if (task.dueTime) {
+      completeOnboardingQuestStep("dueTimeActionCreated");
+    }
   }
 
   function createActionFromAiDraft(draft: AiActionDraft) {
@@ -4175,102 +4211,104 @@ function OnboardingScreen({
   onComplete: (showQuest: boolean) => void;
 }) {
   const copy = onboardingCopy[settings.language];
-  const learningIcons: Array<LucideIcon | null> = [CirclePlus, null, BarChart3];
   const [showQuest, setShowQuest] = useState(true);
+  const learningSprites: StartMenuSpriteType[] = ["plus", "check", "chart"];
 
   return (
-    <main className="onboarding-screen">
-      <header className="onboarding-header">
-        <p className="brand">{copy.appLabel}</p>
-        <h1>{copy.title}</h1>
-        <p>{copy.subtitle}</p>
-      </header>
+    <main className="onboarding-screen start-menu-screen">
+      <section className="start-menu-shell" aria-labelledby="start-menu-title">
+        <header className="start-menu-hero">
+          <span className="start-menu-brand">{copy.appLabel}</span>
+          <h1 id="start-menu-title">{copy.title}</h1>
+          <p>{copy.subtitle}</p>
+        </header>
 
-      <section className="onboarding-card" aria-labelledby="onboarding-settings-title">
-        <h2 id="onboarding-settings-title" className="sr-only">
-          {copy.title}
-        </h2>
-
-        <div className="onboarding-setting-row">
-          <span className="onboarding-setting-label">
-            <Languages size={23} aria-hidden="true" />
-            {copy.language}
-          </span>
-          <div className="onboarding-segmented" role="group" aria-label={copy.language}>
-            <button
-              type="button"
-              className={settings.language === "ru" ? "active" : ""}
-              aria-pressed={settings.language === "ru"}
-              onClick={() => onSettingsChange({ language: "ru" })}
-            >
-              {copy.russian}
-            </button>
-            <button
-              type="button"
-              className={settings.language === "en" ? "active" : ""}
-              aria-pressed={settings.language === "en"}
-              onClick={() => onSettingsChange({ language: "en" })}
-            >
-              {copy.english}
-            </button>
+        <div className="start-menu-panel" aria-label={copy.title}>
+          <div className="start-menu-row">
+            <div className="start-menu-row-title">
+              <span className="start-menu-row-emoji" aria-hidden="true">🌐</span>
+              <span>{copy.language}</span>
+            </div>
+            <div className="start-menu-segmented" role="group" aria-label={copy.language}>
+              <button
+                type="button"
+                className={settings.language === "en" ? "active" : ""}
+                aria-pressed={settings.language === "en"}
+                aria-label={copy.english}
+                onClick={() => onSettingsChange({ language: "en" })}
+              >
+                <span className="start-menu-flag start-menu-flag-en" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className={settings.language === "ru" ? "active" : ""}
+                aria-pressed={settings.language === "ru"}
+                aria-label={copy.russian}
+                onClick={() => onSettingsChange({ language: "ru" })}
+              >
+                <span className="start-menu-flag start-menu-flag-ru" aria-hidden="true" />
+              </button>
+            </div>
           </div>
-        </div>
 
-        <div className="onboarding-setting-row">
-          <span className="onboarding-setting-label">
-            <Monitor size={23} aria-hidden="true" />
-            {copy.theme}
-          </span>
-          <ThemeIconSelector
-            value={settings.theme}
-            labels={{
-              light: copy.lightTheme,
-              dark: copy.darkTheme,
-              system: copy.systemTheme,
-            }}
-            includeSystem
-            onChange={(theme) => onSettingsChange({ theme })}
-          />
-        </div>
+          <div className="start-menu-row">
+            <div className="start-menu-row-title">
+              <span className="start-menu-row-emoji" aria-hidden="true">🌓</span>
+              <span>{copy.theme}</span>
+            </div>
+            <ThemeIconSelector
+              value={settings.theme}
+              labels={{
+                light: copy.lightTheme,
+                dark: copy.darkTheme,
+                system: copy.systemTheme,
+              }}
+              includeSystem
+              onChange={(theme) => onSettingsChange({ theme })}
+            />
+          </div>
 
-        <button
-          type="button"
-          className={`onboarding-toggle ${settings.hintsEnabled ? "enabled" : ""}`}
-          aria-pressed={settings.hintsEnabled}
-          onClick={() => onSettingsChange({ hintsEnabled: !settings.hintsEnabled })}
-        >
-          <span className="onboarding-toggle-copy">
-            <strong>{copy.hints}</strong>
-            <small>{copy.hintsText}</small>
-          </span>
-          <span className="toggle-switch" aria-hidden="true">
-            <span>
-              <Check size={15} />
+          <button
+            type="button"
+            className={`start-menu-toggle ${settings.hintsEnabled ? "enabled" : ""}`}
+            aria-pressed={settings.hintsEnabled}
+            onClick={() => onSettingsChange({ hintsEnabled: !settings.hintsEnabled })}
+          >
+            <span className="start-menu-toggle-icon" aria-hidden="true">💡</span>
+            <span className="start-menu-toggle-copy">
+              <strong>{copy.hints}</strong>
+              <small>{copy.hintsText}</small>
             </span>
-          </span>
-        </button>
+            <span className="start-menu-switch" aria-hidden="true">
+              <span />
+            </span>
+          </button>
+        </div>
 
-        <div className="onboarding-learn-card">
-          <h2>{copy.howItWorks}</h2>
-            <div className="onboarding-learn-list">
-              {copy.learningPoints.map((point, index) => {
-                const Icon = learningIcons[index];
+        <section className="start-menu-guide" aria-labelledby="start-menu-guide-title">
+          <h2 id="start-menu-guide-title">{copy.howItWorks}</h2>
+          <div className="start-menu-guide-list">
+            {copy.learningPoints.map((point, index) => {
+              const spriteType = learningSprites[index] ?? "plus";
 
-                return (
-                  <div className="onboarding-learn-row" key={point}>
-                    <span className="onboarding-learn-icon" aria-hidden="true">
-                      {Icon === null ? <ChexarCheckboxMark /> : <Icon size={21} />}
-                    </span>
-                    <p>{point}</p>
-                  </div>
-                );
+              return (
+                <div className="start-menu-guide-row" key={point}>
+                  <span className="start-menu-guide-icon" aria-hidden={spriteType === "check" ? undefined : true}>
+                    <StartMenuSprite type={spriteType} />
+                  </span>
+                  <p>{point}</p>
+                </div>
+              );
             })}
           </div>
-        </div>
+        </section>
 
-        <div className="onboarding-quest-choice">
-          <span>{copy.questQuestion}</span>
-          <div className="onboarding-segmented compact" role="group" aria-label={copy.questQuestion}>
+        <section className="start-menu-quest" aria-label={copy.questQuestion}>
+          <div>
+            <strong>{copy.questQuestion}</strong>
+            <small>{onboardingQuestCopy[settings.language].title}</small>
+          </div>
+          <div className="start-menu-segmented compact" role="group" aria-label={copy.questQuestion}>
             <button type="button" className={showQuest ? "active" : ""} aria-pressed={showQuest} onClick={() => setShowQuest(true)}>
               {copy.questYes}
             </button>
@@ -4278,9 +4316,9 @@ function OnboardingScreen({
               {copy.questNo}
             </button>
           </div>
-        </div>
+        </section>
 
-        <button type="button" className="onboarding-continue" onClick={() => onComplete(showQuest)}>
+        <button type="button" className="start-menu-continue" onClick={() => onComplete(showQuest)}>
           {copy.continue}
         </button>
       </section>
@@ -4288,15 +4326,40 @@ function OnboardingScreen({
   );
 }
 
-function ChexarCheckboxMark() {
-  return (
-    <span className="onboarding-chexar-checkbox">
-      <span className="task-x-mark">
-        <span />
-        <span />
-      </span>
-    </span>
-  );
+type StartMenuSpriteType = "plus" | "check" | "chart";
+
+function StartMenuSprite({ type }: { type: StartMenuSpriteType }) {
+  const [checked, setChecked] = useState(true);
+
+  if (type === "check") {
+    return (
+      <button
+        type="button"
+        className={`task-check-button start-menu-demo-check-button ${checked ? "checked" : ""}`}
+        aria-label="Demo checkbox"
+        aria-pressed={checked}
+        onClick={(event) => {
+          event.stopPropagation();
+          setChecked((value) => !value);
+        }}
+      >
+        <span className="task-check" aria-hidden="true">
+          {checked && (
+            <span className="task-x-mark">
+              <span />
+              <span />
+            </span>
+          )}
+        </span>
+      </button>
+    );
+  }
+
+  if (type === "chart") {
+    return <span className="start-menu-sprite start-menu-sprite-emoji">📊</span>;
+  }
+
+  return <span className="start-menu-sprite start-menu-sprite-emoji">➕</span>;
 }
 
 function BrandLogo({ size = "compact", ariaLabel = "Chexar" }: { size?: "compact" | "hero"; ariaLabel?: string }) {
@@ -5045,16 +5108,74 @@ function StartQuestBlock({
   const copy = onboardingQuestCopy[language];
   const completed = new Set(state.completedSteps);
   const completedCount = onboardingQuestSteps.filter((step) => completed.has(step)).length;
-  const stepIcon: Record<OnboardingQuestStep, string> = {
-    swipeRightTriggered: "→",
-    swipeLeftTriggered: "←",
-    taskCreated: "+",
-    taskCompleted: "×",
-    quantitativeGoalCreated: "#",
-    numericProgressEntered: "123",
-    calendarOpened: "◷",
-    statsOpened: "▥",
-  };
+  const scenarios = [
+    {
+      id: "gestures",
+      icon: "↔️",
+      title: copy.scenarios.gestures.title,
+      meta: copy.scenarios.gestures.meta,
+      steps: ["swipeRightTriggered", "swipeLeftTriggered"] satisfies OnboardingQuestStep[],
+      detail: (
+        <div className="start-quest-mini-chips">
+          <span className={completed.has("swipeRightTriggered") ? "done" : ""}>→</span>
+          <span className={completed.has("swipeLeftTriggered") ? "done" : ""}>←</span>
+        </div>
+      ),
+    },
+    {
+      id: "subitems",
+      icon: "🧩",
+      title: copy.scenarios.subitems.title,
+      meta: copy.scenarios.subitems.meta,
+      steps: ["taskCreated", "subitemListCreated", "taskCompleted"] satisfies OnboardingQuestStep[],
+      detail: (
+        <div className="start-quest-mini-list">
+          {copy.scenarios.subitems.rows.map((row, index) => (
+            <span
+              key={row}
+              className={completed.has((["taskCreated", "subitemListCreated", "taskCompleted"] satisfies OnboardingQuestStep[])[index]) ? "done" : ""}
+            >
+              {row}
+            </span>
+          ))}
+        </div>
+      ),
+    },
+    {
+      id: "quantity",
+      icon: "🔢",
+      title: copy.scenarios.quantity.title,
+      meta: copy.scenarios.quantity.meta,
+      steps: ["quantitativeGoalCreated", "numericProgressEntered"] satisfies OnboardingQuestStep[],
+      detail: (
+        <div className="start-quest-progress" style={{ "--quest-progress": `${Math.min((completedCount / 5) * 100, 100)}%` } as CSSProperties}>
+          <span />
+          <small>{Math.min(completedCount, 5)}/5</small>
+        </div>
+      ),
+    },
+    {
+      id: "due-time",
+      icon: "⏰",
+      title: copy.scenarios.dueTime.title,
+      meta: copy.scenarios.dueTime.meta,
+      steps: ["dueTimeActionCreated"] satisfies OnboardingQuestStep[],
+      detail: <span className="start-quest-time">23:59</span>,
+    },
+    {
+      id: "navigation",
+      icon: "📅",
+      title: copy.scenarios.navigation.title,
+      meta: copy.scenarios.navigation.meta,
+      steps: ["calendarOpened", "statsOpened"] satisfies OnboardingQuestStep[],
+      detail: (
+        <div className="start-quest-mini-chips">
+          <span className={completed.has("calendarOpened") ? "done" : ""}>{language === "en" ? "Cal" : "Кал"}</span>
+          <span className={completed.has("statsOpened") ? "done" : ""}>%</span>
+        </div>
+      ),
+    },
+  ];
 
   return (
     <div className="action-group start-quest-group has-title" aria-label={copy.title}>
@@ -5066,18 +5187,24 @@ function StartQuestBlock({
         </button>
       </div>
       <div className="start-quest-list">
-        {onboardingQuestSteps.map((step) => {
-          const isDone = completed.has(step);
+        {scenarios.map((scenario) => {
+          const doneSteps = scenario.steps.filter((step) => completed.has(step)).length;
+          const isDone = doneSteps === scenario.steps.length;
 
           return (
-            <div key={step} className="task-card-inline start-quest-item">
+            <div key={scenario.id} className="task-card-inline start-quest-item">
               <div className={`task-row start-quest-row ${isDone ? "completed" : ""}`}>
                 <div className="task-row-main">
                   <span className="action-emoji start-quest-symbol" aria-hidden="true">
-                    {stepIcon[step]}
+                    {scenario.icon}
                   </span>
-                  <span className="task-title">{copy.steps[step]}</span>
+                  <span className="task-title start-quest-title">
+                    <strong>{scenario.title}</strong>
+                    <small>{scenario.meta}</small>
+                    {scenario.detail}
+                  </span>
                 </div>
+                <span className="start-quest-count">{doneSteps}/{scenario.steps.length}</span>
                 <span className="task-check-button start-quest-check-button" aria-hidden="true">
                   <span className="task-check">
                     {isDone && (
