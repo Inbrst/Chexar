@@ -1,16 +1,35 @@
-import type { ActionSubitem, ActionSubitemStateByDate, AppSettings, AppState, DailyRecord, TaskOccurrence } from "./types";
+import type { ActionSubitem, ActionSubitemStateByDate, AppSettings, AppState, DailyRecord, OnboardingQuestState, OnboardingQuestStep, TaskOccurrence } from "./types";
 import { addDays, todayKey } from "./dateUtils";
 import { mergeDuplicateActions } from "./actionMerge";
 
 export const PERDAY_APP_STATE_KEY = "perday:today-app-state:v1";
 export const PERDAY_DAILY_RECORDS_KEY = "perday:daily-records:v1";
 export const PERDAY_SETTINGS_KEY = "perday:settings:v1";
+export const CHEXAR_ONBOARDING_KEY = "chexar:onboarding:v1";
 
 const defaultSettings: AppSettings = {
   language: "ru",
   theme: "dark",
   hintsEnabled: true,
   onboardingCompleted: false,
+};
+
+const onboardingSteps: OnboardingQuestStep[] = [
+  "swipeRightTriggered",
+  "swipeLeftTriggered",
+  "taskCreated",
+  "taskCompleted",
+  "quantitativeGoalCreated",
+  "numericProgressEntered",
+  "calendarOpened",
+  "statsOpened",
+];
+
+const defaultOnboardingState: OnboardingQuestState = {
+  enabled: false,
+  completedSteps: [],
+  hidden: false,
+  finished: false,
 };
 
 function id(prefix: string): string {
@@ -440,7 +459,45 @@ export function saveSettings(settings: AppSettings): void {
   localStorage.setItem(PERDAY_SETTINGS_KEY, JSON.stringify(settings));
 }
 
+export function createOnboardingQuestState(enabled: boolean): OnboardingQuestState {
+  return {
+    enabled,
+    completedSteps: [],
+    hidden: !enabled,
+    finished: false,
+  };
+}
+
+export function loadOnboardingQuestState(): OnboardingQuestState {
+  const stored = localStorage.getItem(CHEXAR_ONBOARDING_KEY);
+
+  if (!stored) {
+    return defaultOnboardingState;
+  }
+
+  try {
+    const parsed = JSON.parse(stored) as Partial<OnboardingQuestState>;
+    const completedSteps = Array.isArray(parsed.completedSteps)
+      ? parsed.completedSteps.filter((step): step is OnboardingQuestStep => onboardingSteps.includes(step as OnboardingQuestStep))
+      : [];
+
+    return {
+      enabled: typeof parsed.enabled === "boolean" ? parsed.enabled : defaultOnboardingState.enabled,
+      completedSteps: Array.from(new Set(completedSteps)),
+      hidden: typeof parsed.hidden === "boolean" ? parsed.hidden : defaultOnboardingState.hidden,
+      finished: typeof parsed.finished === "boolean" ? parsed.finished : defaultOnboardingState.finished,
+    };
+  } catch {
+    return defaultOnboardingState;
+  }
+}
+
+export function saveOnboardingQuestState(state: OnboardingQuestState): void {
+  localStorage.setItem(CHEXAR_ONBOARDING_KEY, JSON.stringify(state));
+}
+
 export function resetChexarStorage(): void {
   localStorage.removeItem(PERDAY_APP_STATE_KEY);
   localStorage.removeItem(PERDAY_DAILY_RECORDS_KEY);
+  localStorage.removeItem(CHEXAR_ONBOARDING_KEY);
 }

@@ -68,16 +68,30 @@ import {
   createEmptyState,
   loadAppState,
   loadDailyRecords,
+  loadOnboardingQuestState,
   loadSettings,
+  createOnboardingQuestState,
   resetChexarStorage,
   saveAppState,
   saveDailyRecords,
+  saveOnboardingQuestState,
   saveSettings,
 } from "./storage";
-import type { ActionSubitem, ActionSubitemState, AppScreen, AppSettings, AppState, GoalRepeatMode, Priority, ProgressEntry, ProgressGoal, TaskItem, TaskOccurrence, TaskRepeatMode } from "./types";
+import type { ActionSubitem, ActionSubitemState, AppScreen, AppSettings, AppState, GoalRepeatMode, OnboardingQuestState, OnboardingQuestStep, Priority, ProgressEntry, ProgressGoal, TaskItem, TaskOccurrence, TaskRepeatMode } from "./types";
 import { mergeDuplicateActions, normalizeActionTitle } from "./actionMerge";
 import { hasRemotePersistence, loadRemoteData, saveRemoteSnapshot } from "./supabaseData";
-import { getTelegramConnectionStatus, getTelegramUser, initTelegramWebApp } from "./lib/telegram";
+import {
+  getTelegramConnectionStatus,
+  getTelegramUser,
+  hasTelegramMainButton,
+  initTelegramWebApp,
+  setupTelegramBackButton,
+  setupTelegramMainButton,
+  showTelegramConfirm,
+  telegramImpact,
+  telegramNotification,
+  telegramSelectionChanged,
+} from "./lib/telegram";
 import type { TelegramConnectionStatus, TelegramUser } from "./lib/telegram";
 
 declare global {
@@ -108,6 +122,9 @@ const onboardingCopy = {
       "Track progress.",
       "Follow your daily rhythm, calendar, and statistics.",
     ],
+    questQuestion: "Want to see quick function tips?",
+    questYes: "Yes",
+    questNo: "No",
     continue: "Continue",
   },
   ru: {
@@ -129,9 +146,72 @@ const onboardingCopy = {
       "Отмечай прогресс.",
       "Следи за ритмом дня, календарём и статистикой.",
     ],
+    questQuestion: "Хочешь посмотреть подсказки по функциям?",
+    questYes: "Да",
+    questNo: "Нет",
     continue: "Продолжить",
   },
 } as const;
+
+const onboardingQuestSteps: OnboardingQuestStep[] = [
+  "swipeRightTriggered",
+  "swipeLeftTriggered",
+  "taskCreated",
+  "taskCompleted",
+  "quantitativeGoalCreated",
+  "numericProgressEntered",
+  "calendarOpened",
+  "statsOpened",
+];
+
+const onboardingQuestCopy: Record<AppSettings["language"], {
+  title: string;
+  subtitle: string;
+  hide: string;
+  mastered: string;
+  steps: Record<OnboardingQuestStep, string>;
+}> = {
+  en: {
+    title: "Start Quest",
+    subtitle: "Try the core gestures and screens.",
+    hide: "Hide tips",
+    mastered: "Chexar mastered",
+    steps: {
+      swipeRightTriggered: "Try swipe right",
+      swipeLeftTriggered: "Try swipe left",
+      taskCreated: "Create first action",
+      taskCompleted: "Complete an action",
+      quantitativeGoalCreated: "Create a quantity action",
+      numericProgressEntered: "Enter progress number",
+      calendarOpened: "Open Calendar",
+      statsOpened: "Open Statistics",
+    },
+  },
+  ru: {
+    title: "Start Quest",
+    subtitle: "Проверь основные жесты и экраны.",
+    hide: "Скрыть подсказки",
+    mastered: "Chexar освоен",
+    steps: {
+      swipeRightTriggered: "Проверить свайп вправо",
+      swipeLeftTriggered: "Проверить свайп влево",
+      taskCreated: "Создать первую задачу",
+      taskCompleted: "Отметить задачу выполненной",
+      quantitativeGoalCreated: "Создать количественную цель",
+      numericProgressEntered: "Ввести число прогресса",
+      calendarOpened: "Открыть календарь",
+      statsOpened: "Открыть статистику",
+    },
+  },
+};
+
+function isOnboardingQuestStep(value: unknown): value is OnboardingQuestStep {
+  return typeof value === "string" && onboardingQuestSteps.includes(value as OnboardingQuestStep);
+}
+
+function emitOnboardingQuestEvent(type: OnboardingQuestStep) {
+  window.dispatchEvent(new CustomEvent("chexar:onboarding-event", { detail: { type } }));
+}
 
 const profileCopy = {
   en: {
@@ -172,6 +252,8 @@ const profileCopy = {
     hintsOn: "Hints enabled",
     hintsOff: "Hints disabled",
     hintsText: "We will show useful tips at the right moment.",
+    restartQuest: "Open Start Quest",
+    restartQuestText: "Show the onboarding checklist again.",
     resetTitle: "Reset data?",
     resetText: "This will delete actions and progress on this device.",
     resetConfirm: "Reset",
@@ -215,6 +297,8 @@ const profileCopy = {
     hintsOn: "Подсказки включены",
     hintsOff: "Подсказки выключены",
     hintsText: "Мы покажем полезные советы в нужный момент.",
+    restartQuest: "Открыть Start Quest",
+    restartQuestText: "Показать обучающий чек-лист ещё раз.",
     resetTitle: "Сбросить данные?",
     resetText: "Это удалит цели, задачи и прогресс на этом устройстве.",
     resetConfirm: "Сбросить",
@@ -650,10 +734,12 @@ type AiActionDraft = {
   title: string;
   icon?: string;
   tracking_type: AiTrackingType;
-  target_value?: number | null;
-  unit?: string | null;
+  target_value?: number;
+  unit?: string;
   repeat_mode: AiRepeatMode;
   period: AiPeriod;
+  start_date: string;
+  end_date?: string | null;
   due_time?: string | null;
   subitems?: AiSubitemDraft[];
 };
@@ -1062,20 +1148,91 @@ const aiFallbackEmojiRules: Array<[string[], string]> = [
 
 function inferAiEmoji(text: string): string {
   const normalized = text.toLocaleLowerCase("ru-RU");
+  const readableRules: Array<[string[], string]> = [
+    [["заряд", "трениров", "спорт"], "🏋️"],
+    [["прогул", "ходьб"], "🚶"],
+    [["бег"], "🏃"],
+    [["англий", "немец", "язык"], "🌐"],
+    [["чтен", "книг", "прочита", "страниц"], "📚"],
+    [["вода"], "💧"],
+    [["медит"], "🧘"],
+    [["магаз", "покуп"], "🛒"],
+    [["уборк"], "🧹"],
+    [["сон"], "😴"],
+    [["работ", "проект"], "💻"],
+    [["учеб", "курс"], "🎓"],
+  ];
+  const readableMatch = readableRules.find(([keywords]) => keywords.some((keyword) => normalized.includes(keyword)))?.[1];
+  if (readableMatch) {
+    return readableMatch;
+  }
 
   return aiFallbackEmojiRules.find(([keywords]) => keywords.some((keyword) => normalized.includes(keyword)))?.[1] ?? "✨";
 }
 
+function normalizeAiDateKey(value: unknown): string | undefined {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return undefined;
+  }
+
+  const date = parseDateKey(value);
+  return toDateKey(date) === value ? value : undefined;
+}
+
+function parseAiDueTimeFromText(normalized: string): string | null {
+  const match = normalized.match(/(?:до|before)\s*(\d{1,2})(?::(\d{2}))?\s*(утра|дня|вечера|ночи|am|pm)?/i);
+  if (!match) {
+    return null;
+  }
+
+  let hours = Number(match[1]);
+  const minutes = Number(match[2] ?? "0");
+  const suffix = match[3]?.toLocaleLowerCase("ru-RU") ?? "";
+
+  if ((suffix === "вечера" || suffix === "pm") && hours < 12) {
+    hours += 12;
+  }
+
+  if (suffix === "ночи" && hours === 12) {
+    hours = 0;
+  }
+
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+    return null;
+  }
+
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
 function buildLocalAiDraft(text: string): AiActionDraft {
   const normalized = text.toLocaleLowerCase("ru-RU");
-  const targetMatch = normalized.match(/(\d+(?:[.,]\d+)?)/);
-  const targetValue = targetMatch ? Number(targetMatch[1].replace(",", ".")) : null;
+  const dueTime = parseAiDueTimeFromText(normalized);
+  const targetSource = normalized.replace(/(?:до|before)\s*\d{1,2}(?::\d{2})?\s*(утра|дня|вечера|ночи|am|pm)?/gi, " ");
+  const targetMatch = targetSource.match(/(\d+(?:[.,]\d+)?)/);
+  const targetValue = targetMatch ? Number(targetMatch[1].replace(",", ".")) : undefined;
   const hasQuantity = Boolean(targetValue && Number.isFinite(targetValue));
-  const period: AiPeriod = /недел|week/.test(normalized) ? "week" : /сегодня|today/.test(normalized) ? "today" : "month";
-  const repeatMode: AiRepeatMode = /будн|weekday/.test(normalized) ? "weekdays" : !hasQuantity && period === "today" ? "once" : "daily";
-  const unitMatch = normalized.match(/\d+(?:[.,]\d+)?\s+([а-яёa-z]+)/i);
-  const dueTime = normalized.match(/(?:до|before)\s*(\d{1,2}:\d{2})/)?.[1] ?? null;
-  const knownTitle = [
+  const hasTomorrow = /завтра|tomorrow/.test(normalized);
+  const isOneDay = /сегодня|today/.test(normalized) || hasTomorrow;
+  const period: AiPeriod = /недел|week/.test(normalized) ? "week" : isOneDay ? "today" : "month";
+  const repeatMode: AiRepeatMode = /будн|weekday/.test(normalized) ? "weekdays" : !hasQuantity && isOneDay ? "once" : "daily";
+  const unitMatch = targetSource.match(/\d+(?:[.,]\d+)?\s+([а-яёa-z]+)/i);
+  const canonicalTitle = ([
+    [/англий/i, "английский"],
+    [/немец/i, "немецкий"],
+    [/чтен|книг|прочита|страниц/i, "чтение"],
+    [/зарядк/i, "зарядка"],
+    [/трениров/i, "тренировка"],
+    [/бег/i, "бег"],
+    [/ходьб|прогул/i, "ходьба"],
+    [/вод/i, "вода"],
+    [/медит/i, "медитация"],
+    [/магаз|покуп/i, "магазин"],
+    [/уборк/i, "уборка"],
+    [/сон/i, "сон"],
+    [/учеб|курс/i, "учеба"],
+    [/проект|работ/i, "проект"],
+  ] satisfies Array<[RegExp, string]>).find(([pattern]) => pattern.test(normalized))?.[1];
+  const knownTitle = canonicalTitle ?? [
     "английский",
     "немецкий",
     "чтение",
@@ -1093,20 +1250,23 @@ function buildLocalAiDraft(text: string): AiActionDraft {
   ].find((keyword) => normalized.includes(keyword));
   const fallbackTitle = text
     .replace(/\d+(?:[.,]\d+)?/g, "")
-    .replace(/\b(за|на|до|каждый|каждую|хочу|нужно|пройти|сделать|месяц|неделю|день)\b/gi, " ")
+    .replace(/\b(создай|создать|за|на|до|каждый|каждую|хочу|нужно|пройти|прочитать|сделать|месяц|неделю|день|завтра|сегодня|утра|дня|вечера|ночи)\b/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
   const title = knownTitle ?? fallbackTitle ?? text.trim() ?? "Действие";
   const normalizedTitle = title.charAt(0).toLocaleUpperCase("ru-RU") + title.slice(1, 42);
+  const scheduledDate = hasTomorrow ? addDays(todayKey(), 1) : todayKey();
 
   return {
     title: normalizedTitle,
     icon: inferAiEmoji(text),
     tracking_type: hasQuantity ? "quantity" : "checkbox",
-    target_value: hasQuantity ? targetValue : null,
-    unit: hasQuantity ? unitMatch?.[1] ?? "раз" : null,
+    target_value: hasQuantity ? targetValue : undefined,
+    unit: hasQuantity ? unitMatch?.[1] ?? "раз" : undefined,
     repeat_mode: repeatMode,
     period,
+    start_date: scheduledDate,
+    end_date: hasTomorrow ? scheduledDate : null,
     due_time: dueTime,
     subitems: [],
   };
@@ -1171,6 +1331,8 @@ function normalizeAiActionDraft(value: unknown, fallbackText: string): AiActionD
     unit: typeof record.unit === "string" && record.unit.trim() ? record.unit.trim() : local.unit,
     repeat_mode: record.repeat_mode === "once" || record.repeat_mode === "daily" || record.repeat_mode === "weekdays" || record.repeat_mode === "selected_days" ? record.repeat_mode : local.repeat_mode,
     period: record.period === "today" || record.period === "week" || record.period === "month" || record.period === "custom" ? record.period : local.period,
+    start_date: normalizeAiDateKey(record.start_date) ?? local.start_date,
+    end_date: normalizeAiDateKey(record.end_date) ?? local.end_date,
     due_time: typeof record.due_time === "string" && record.due_time.trim() ? record.due_time.trim() : local.due_time,
     subitems,
   };
@@ -2220,6 +2382,38 @@ function groupTodayActions(tasks: TaskItem[], goals: ProgressGoal[], dateKey: st
   });
 }
 
+function useTelegramNativeMainButton({
+  active,
+  text,
+  disabled,
+  loading = false,
+  onClick,
+}: {
+  active: boolean;
+  text: string;
+  disabled: boolean;
+  loading?: boolean;
+  onClick: () => void;
+}): boolean {
+  const available = hasTelegramMainButton();
+
+  useEffect(() => {
+    if (!active || !available) {
+      return undefined;
+    }
+
+    return setupTelegramMainButton({
+      visible: true,
+      text,
+      disabled,
+      loading,
+      onClick,
+    });
+  }, [active, available, disabled, loading, onClick, text]);
+
+  return active && available;
+}
+
 export default function App() {
   const [today, setToday] = useState(() => todayKey());
   const [appState, setAppState] = useState<AppState>(() => loadAppState());
@@ -2242,8 +2436,11 @@ export default function App() {
   const [carryOverOpen, setCarryOverOpen] = useState(false);
   const [viewAllSheet, setViewAllSheet] = useState<ViewAllState>(null);
   const [activeScreen, setActiveScreen] = useState<AppScreen>("today");
+  const previousScreenRef = useRef<AppScreen>("today");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
+  const [onboardingQuest, setOnboardingQuest] = useState<OnboardingQuestState>(() => loadOnboardingQuestState());
+  const [questMasteredVisible, setQuestMasteredVisible] = useState(false);
   const [remoteUserId, setRemoteUserId] = useState<string | null>(null);
   const [remoteReady, setRemoteReady] = useState(false);
   const [telegramUser, setTelegramUser] = useState<TelegramUser | null>(() => getTelegramUser());
@@ -2448,6 +2645,22 @@ export default function App() {
     () => getLastNDaysCompletionTrend(7, dayRecords, daily.percent, activeDate),
     [activeDate, daily.percent, dayRecords],
   );
+  const telegramBackVisible =
+    settings.onboardingCompleted &&
+    Boolean(
+      resetConfirmOpen ||
+        progressSheet ||
+        confirmState ||
+        actionSheet ||
+        deleteState ||
+        editState ||
+        addSheetOpen ||
+        aiCreateOpen ||
+        todayListSettingsOpen ||
+        carryOverOpen ||
+        viewAllSheet ||
+        isSelectedDateMode,
+    );
   useEffect(() => {
     setAppState((state) => mergeDuplicateActions(state));
   }, []);
@@ -2457,6 +2670,39 @@ export default function App() {
     setTelegramUser(getTelegramUser());
     setTelegramStatus(getTelegramConnectionStatus());
   }, []);
+
+  useEffect(() => {
+    return setupTelegramBackButton(telegramBackVisible, () => {
+      if (closeTelegramBackTarget()) {
+        return;
+      }
+
+      if (isSelectedDateMode) {
+        returnToCalendar();
+        return;
+      }
+
+      if (previousScreenRef.current !== activeScreen) {
+        setActiveScreen(previousScreenRef.current);
+      }
+    });
+  }, [
+    actionSheet,
+    activeScreen,
+    addSheetOpen,
+    aiCreateOpen,
+    carryOverOpen,
+    confirmState,
+    deleteState,
+    editState,
+    isSelectedDateMode,
+    progressSheet,
+    resetConfirmOpen,
+    settings.language,
+    telegramBackVisible,
+    todayListSettingsOpen,
+    viewAllSheet,
+  ]);
 
   useEffect(() => {
     if (!hasRemotePersistence()) {
@@ -2508,6 +2754,7 @@ export default function App() {
         .then(() => setSyncStatus("ready"))
         .catch((error) => {
           console.error("Failed to save Supabase data", error);
+          telegramNotification("error");
           setSyncStatus("query-error");
         });
     }, 350);
@@ -2550,10 +2797,82 @@ export default function App() {
   }, [settings]);
 
   useEffect(() => {
+    saveOnboardingQuestState(onboardingQuest);
+  }, [onboardingQuest]);
+
+  useEffect(() => {
+    if (!onboardingQuest.enabled || onboardingQuest.hidden || !onboardingQuest.finished) {
+      return;
+    }
+
+    setQuestMasteredVisible(true);
+    const toastTimeout = window.setTimeout(() => setQuestMasteredVisible(false), 1800);
+    const hideTimeout = window.setTimeout(() => {
+      setOnboardingQuest((current) => ({
+        ...current,
+        enabled: false,
+        hidden: true,
+      }));
+    }, 1500);
+
+    return () => {
+      window.clearTimeout(toastTimeout);
+      window.clearTimeout(hideTimeout);
+    };
+  }, [onboardingQuest.enabled, onboardingQuest.finished, onboardingQuest.hidden]);
+
+  useEffect(() => {
+    function handleQuestEvent(event: Event) {
+      const detail = (event as CustomEvent<{ type?: unknown }>).detail;
+
+      if (isOnboardingQuestStep(detail?.type)) {
+        completeOnboardingQuestStep(detail.type);
+      }
+    }
+
+    window.addEventListener("chexar:onboarding-event", handleQuestEvent);
+
+    return () => window.removeEventListener("chexar:onboarding-event", handleQuestEvent);
+  }, []);
+
+  useEffect(() => {
     const intervalId = window.setInterval(() => setTimerNow(Date.now()), 60000);
 
     return () => window.clearInterval(intervalId);
   }, []);
+
+  function startOnboardingQuest(enabled: boolean) {
+    setOnboardingQuest(createOnboardingQuestState(enabled));
+  }
+
+  function hideOnboardingQuest() {
+    setOnboardingQuest((current) => ({
+      ...current,
+      enabled: false,
+      hidden: true,
+    }));
+  }
+
+  function restartOnboardingQuest() {
+    setOnboardingQuest(createOnboardingQuestState(true));
+    setActiveScreen("today");
+  }
+
+  function completeOnboardingQuestStep(step: OnboardingQuestStep) {
+    setOnboardingQuest((current) => {
+      if (!current.enabled || current.hidden || current.finished || current.completedSteps.includes(step)) {
+        return current;
+      }
+
+      const completedSteps = [...current.completedSteps, step];
+
+      return {
+        ...current,
+        completedSteps,
+        finished: onboardingQuestSteps.every((questStep) => completedSteps.includes(questStep)),
+      };
+    });
+  }
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -2576,6 +2895,73 @@ export default function App() {
     }
   }, []);
 
+  function closeTelegramBackTarget(): boolean {
+    if (viewAllSheet) {
+      setViewAllSheet(null);
+      return true;
+    }
+
+    if (carryOverOpen) {
+      setCarryOverOpen(false);
+      return true;
+    }
+
+    if (todayListSettingsOpen) {
+      setTodayListSettingsOpen(false);
+      return true;
+    }
+
+    if (aiCreateOpen) {
+      setAiCreateOpen(false);
+      return true;
+    }
+
+    if (addSheetOpen) {
+      void showTelegramConfirm(settings.language === "en" ? "Discard unsaved changes?" : "Закрыть без сохранения?").then((confirmed) => {
+        if (confirmed) {
+          setAddSheetOpen(false);
+        }
+      });
+      return true;
+    }
+
+    if (editState) {
+      void showTelegramConfirm(settings.language === "en" ? "Discard unsaved changes?" : "Закрыть без сохранения?").then((confirmed) => {
+        if (confirmed) {
+          setEditState(null);
+        }
+      });
+      return true;
+    }
+
+    if (deleteState) {
+      setDeleteState(null);
+      return true;
+    }
+
+    if (actionSheet) {
+      setActionSheet(null);
+      return true;
+    }
+
+    if (confirmState) {
+      setConfirmState(null);
+      return true;
+    }
+
+    if (progressSheet) {
+      setProgressSheet(null);
+      return true;
+    }
+
+    if (resetConfirmOpen) {
+      setResetConfirmOpen(false);
+      return true;
+    }
+
+    return false;
+  }
+
   function resetDemoData() {
     const emptyState = createEmptyState();
     const emptyRecords = createEmptyDailyRecords();
@@ -2589,6 +2975,8 @@ export default function App() {
       ...current,
       onboardingCompleted: false,
     }));
+    setOnboardingQuest(createOnboardingQuestState(false));
+    setQuestMasteredVisible(false);
     setResetConfirmOpen(false);
     setAddSheetOpen(false);
     setProgressSheet(null);
@@ -2603,8 +2991,18 @@ export default function App() {
     setActiveScreen("today");
   }
 
-    function deleteActionForPeriod() {
+    async function deleteActionForPeriod() {
       if (!deleteState) {
+        return;
+      }
+
+      const confirmed = await showTelegramConfirm(
+        settings.language === "en"
+          ? "Delete action? This will delete the action and its progress."
+          : "Удалить действие? Это удалит действие и его прогресс.",
+      );
+
+      if (!confirmed) {
         return;
       }
 
@@ -2626,8 +3024,16 @@ export default function App() {
       setActionSheet(null);
     }
 
-    function deleteActionForActiveDate() {
+    async function deleteActionForActiveDate() {
       if (!deleteState) {
+        return;
+      }
+
+      const confirmed = await showTelegramConfirm(
+        settings.language === "en" ? "Remove action only from this day?" : "Удалить действие только на этот день?",
+      );
+
+      if (!confirmed) {
         return;
       }
 
@@ -2747,6 +3153,7 @@ export default function App() {
           ),
         }),
       );
+      telegramNotification("success");
     }
 
     function updateTask(taskId: string, update: { title: string; groupName?: string; note?: string; emoji?: string; iconKey?: string; repeatMode: TaskRepeatMode; selectedDays?: number[]; dueTime?: string }) {
@@ -2771,6 +3178,7 @@ export default function App() {
           ),
         }),
       );
+      telegramNotification("success");
     }
 
   function addProgress(goalId: string, amount: number, note?: string) {
@@ -2778,6 +3186,7 @@ export default function App() {
       return;
     }
 
+    telegramImpact("light");
     setAppState((state) => {
       let completedCarryOver = false;
       const goals = state.goals.map((goal) => {
@@ -2830,6 +3239,7 @@ export default function App() {
         ),
       };
     });
+    completeOnboardingQuestStep("numericProgressEntered");
   }
 
   function setProgressForDate(goalId: string, nextAmount: number, note?: string) {
@@ -2837,6 +3247,7 @@ export default function App() {
       return;
     }
 
+    telegramImpact("light");
     setAppState((state) => {
       let completedCarryOver = false;
       const goals = state.goals.map((goal) => {
@@ -2900,9 +3311,13 @@ export default function App() {
         ),
       };
     });
+    if (nextAmount > 0) {
+      completeOnboardingQuestStep("numericProgressEntered");
+    }
   }
 
   function setTaskCompleted(taskId: string, completed: boolean) {
+    telegramImpact("light");
     setAppState((state) => ({
       ...state,
       tasks: state.tasks.map((task) => {
@@ -2949,6 +3364,9 @@ export default function App() {
           : occurrence,
       ),
     }));
+    if (completed) {
+      completeOnboardingQuestStep("taskCompleted");
+    }
   }
 
   function updateTaskSubitem(taskId: string, subitemId: string, nextState: ActionSubitemState) {
@@ -3036,17 +3454,40 @@ export default function App() {
     }
 
     const currentState = task.subitemStateByDate?.[activeDate]?.[subitemId] ?? {};
+    const dayState = task.subitemStateByDate?.[activeDate] ?? {};
+    const willCompleteAll =
+      (task.subitems ?? []).length > 0 &&
+      (task.subitems ?? []).every((item) => {
+        if (item.id === subitemId) {
+          if (item.targetCount && item.targetCount > 1) {
+            return Math.min(Number(currentState.count ?? 0) + 1, item.targetCount) >= item.targetCount;
+          }
+
+          return true;
+        }
+
+        const state = dayState[item.id];
+        return item.targetCount && item.targetCount > 1 ? Number(state?.count ?? 0) >= item.targetCount : state?.completed === true;
+      });
 
     if (subitem.targetCount && subitem.targetCount > 1) {
       const nextCount = Math.min(Number(currentState.count ?? 0) + 1, subitem.targetCount);
+      telegramImpact("light");
       updateTaskSubitem(taskId, subitemId, {
         count: nextCount,
         completed: nextCount >= subitem.targetCount,
       });
+      if (willCompleteAll) {
+        completeOnboardingQuestStep("taskCompleted");
+      }
       return;
     }
 
+    telegramImpact("light");
     updateTaskSubitem(taskId, subitemId, { completed: true });
+    if (willCompleteAll) {
+      completeOnboardingQuestStep("taskCompleted");
+    }
   }
 
   function reorderTasks(sourceId: string, targetId: string, placement: ReorderPlacement = "before") {
@@ -3187,6 +3628,9 @@ export default function App() {
         },
       ],
     }));
+    telegramNotification("success");
+    completeOnboardingQuestStep("taskCreated");
+    completeOnboardingQuestStep("quantitativeGoalCreated");
   }
 
   function createTask(task: {
@@ -3231,6 +3675,8 @@ export default function App() {
         },
       ],
     }));
+    telegramNotification("success");
+    completeOnboardingQuestStep("taskCreated");
   }
 
   function createActionFromAiDraft(draft: AiActionDraft) {
@@ -3240,7 +3686,13 @@ export default function App() {
     }
 
     const period: ActionPeriod = draft.period === "custom" ? "month" : draft.period;
-    const dates = getPeriodDates(activeDate, period, activeDate, addDays(activeDate, 29));
+    const generatedDates = getPeriodDates(activeDate, period, activeDate, addDays(activeDate, 29));
+    const draftStartDate = normalizeAiDateKey(draft.start_date);
+    const draftEndDate = normalizeAiDateKey(draft.end_date);
+    const dates = {
+      startDate: draftStartDate ?? generatedDates.startDate,
+      endDate: draftEndDate ?? draftStartDate ?? generatedDates.endDate,
+    };
     const repeatMode: GoalRepeatMode =
       draft.repeat_mode === "weekdays" ? "weekdays" : draft.repeat_mode === "selected_days" ? "selectedDays" : "everyDay";
     const taskRepeatMode: TaskRepeatMode = draft.tracking_type === "checkbox" && period === "today" ? "once" : repeatMode;
@@ -3305,19 +3757,34 @@ export default function App() {
   }
 
   function selectScreen(screen: AppScreen) {
+    if (screen !== activeScreen) {
+      previousScreenRef.current = activeScreen;
+    }
+    telegramSelectionChanged();
     setSelectedDate(null);
     setActiveScreen(screen);
+    if (screen === "calendar") {
+      completeOnboardingQuestStep("calendarOpened");
+    }
+    if (screen === "progress") {
+      completeOnboardingQuestStep("statsOpened");
+    }
   }
 
   function openSelectedDate(dateKey: string) {
+    previousScreenRef.current = activeScreen;
+    telegramSelectionChanged();
     setSelectedDate(dateKey);
     setActiveScreen("today");
     setViewAllSheet(null);
   }
 
   function returnToCalendar() {
+    previousScreenRef.current = activeScreen;
+    telegramSelectionChanged();
     setSelectedDate(null);
     setActiveScreen("calendar");
+    completeOnboardingQuestStep("calendarOpened");
   }
 
   function shiftActiveDateBySwipe(dayDelta: number) {
@@ -3335,7 +3802,8 @@ export default function App() {
         <OnboardingScreen
           settings={settings}
           onSettingsChange={(nextSettings) => setSettings((current) => ({ ...current, ...nextSettings }))}
-          onComplete={() => {
+          onComplete={(showQuest) => {
+            startOnboardingQuest(showQuest);
             setSettings((current) => ({
               ...current,
               onboardingCompleted: true,
@@ -3351,6 +3819,7 @@ export default function App() {
               telegramUser={telegramUser}
               telegramStatus={telegramStatus}
               onSettingsChange={(nextSettings) => setSettings((current) => ({ ...current, ...nextSettings }))}
+              onRestartOnboarding={restartOnboardingQuest}
               onResetRequest={() => setResetConfirmOpen(true)}
             />
           ) : activeScreen === "calendar" ? (
@@ -3407,6 +3876,13 @@ export default function App() {
               )}
               <section className="section-block unified-actions-section">
                 <div className="action-list">
+                  {onboardingQuest.enabled && !onboardingQuest.hidden && (
+                    <StartQuestBlock
+                      state={onboardingQuest}
+                      language={settings.language}
+                      onHide={hideOnboardingQuest}
+                    />
+                  )}
                   {displayedTodayActionGroups.map((group) => (
                     <div key={group.key || "ungrouped"} className={`action-group ${group.title ? "has-title" : "is-ungrouped"}`}>
                       {group.title && <div className="action-group-title">{group.title}</div>}
@@ -3471,6 +3947,11 @@ export default function App() {
                   )}
                 </div>
               </section>
+              {questMasteredVisible && (
+                <div className="start-quest-toast" role="status">
+                  {onboardingQuestCopy[settings.language].mastered}
+                </div>
+              )}
             </main>
           )}
 
@@ -3691,10 +4172,11 @@ function OnboardingScreen({
 }: {
   settings: AppSettings;
   onSettingsChange: (settings: Partial<AppSettings>) => void;
-  onComplete: () => void;
+  onComplete: (showQuest: boolean) => void;
 }) {
   const copy = onboardingCopy[settings.language];
   const learningIcons: Array<LucideIcon | null> = [CirclePlus, null, BarChart3];
+  const [showQuest, setShowQuest] = useState(true);
 
   return (
     <main className="onboarding-screen">
@@ -3786,7 +4268,19 @@ function OnboardingScreen({
           </div>
         </div>
 
-        <button type="button" className="onboarding-continue" onClick={onComplete}>
+        <div className="onboarding-quest-choice">
+          <span>{copy.questQuestion}</span>
+          <div className="onboarding-segmented compact" role="group" aria-label={copy.questQuestion}>
+            <button type="button" className={showQuest ? "active" : ""} aria-pressed={showQuest} onClick={() => setShowQuest(true)}>
+              {copy.questYes}
+            </button>
+            <button type="button" className={!showQuest ? "active" : ""} aria-pressed={!showQuest} onClick={() => setShowQuest(false)}>
+              {copy.questNo}
+            </button>
+          </div>
+        </div>
+
+        <button type="button" className="onboarding-continue" onClick={() => onComplete(showQuest)}>
           {copy.continue}
         </button>
       </section>
@@ -4179,10 +4673,11 @@ function AiCreationSheet({
           assistant: "I am Chexar. Tell me what you want to track, and I will ask the right questions if details are missing.",
           followup: "You can write one action or several actions, each on a new line.",
           placeholder: "Example: English 50 lessons this month",
-          send: "Create draft",
+          send: "Preview",
+          sendAria: "Send message",
           loading: "Thinking...",
           preview: "Preview",
-          create: (count: number) => `Create ${count}`,
+          create: (count: number) => `Create selected (${count})`,
           clear: "Clear",
           error: "AI could not parse this. Try simpler.",
           empty: "Write what you want to track first.",
@@ -4198,10 +4693,11 @@ function AiCreationSheet({
           assistant: "Я Chexar. Напиши, что хочешь отслеживать, а если деталей мало — я уточню.",
           followup: "Можно написать одно действие или несколько, каждое с новой строки.",
           placeholder: "Например: Английский 50 уроков за месяц",
-          send: "Создать черновик",
+          send: "Предпросмотр",
+          sendAria: "Отправить сообщение",
           loading: "Думаю...",
           preview: "Предпросмотр",
-          create: (count: number) => `Создать ${count}`,
+          create: (count: number) => `Создать выбранные (${count})`,
           clear: "Очистить",
           error: "ИИ не смог разобрать действие. Попробуй проще.",
           empty: "Сначала напиши, что хочешь отслеживать.",
@@ -4216,21 +4712,17 @@ function AiCreationSheet({
     role: "assistant" | "user";
     content: string;
   };
-  type AiDraftItem = {
-    id: string;
-    draft: AiActionDraft;
-    selected: boolean;
-  };
 
   const [text, setText] = useState("");
   const [messages, setMessages] = useState<AiChatMessage[]>(() => [
     { id: "assistant-welcome", role: "assistant", content: labels.assistant },
     { id: "assistant-followup", role: "assistant", content: labels.followup },
   ]);
-  const [draftItems, setDraftItems] = useState<AiDraftItem[]>([]);
+  const [drafts, setDrafts] = useState<AiActionDraft[]>([]);
+  const [selectedDraftIndexes, setSelectedDraftIndexes] = useState<Set<number>>(() => new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const selectedDrafts = draftItems.filter((item) => item.selected).map((item) => item.draft);
+  const selectedDrafts = drafts.filter((_: AiActionDraft, index: number) => selectedDraftIndexes.has(index));
 
   function splitActionRequests(value: string): string[] {
     return value
@@ -4240,22 +4732,36 @@ function AiCreationSheet({
       .slice(0, 8);
   }
 
-  async function requestDraft(prompt: string): Promise<AiActionDraft> {
-    const response = await fetch("/api/ai/parse-action", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: prompt, language }),
-    });
-
-    if (!response.ok) {
+  async function requestDraft(prompt: string): Promise<AiActionDraft[]> {
+    let response: Response;
+    try {
+      response = await fetch("/api/ai/chat-create-actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: prompt, language }),
+      });
+    } catch {
+      if (import.meta.env.DEV) {
+        return [buildLocalAiDraft(prompt)];
+      }
       throw new Error("AI request failed");
     }
 
+    if (!response.ok) {
+      if (response.status === 404 && import.meta.env.DEV) {
+        return [buildLocalAiDraft(prompt)];
+      }
+      const payload = await response.json().catch(() => null);
+      throw new Error(typeof payload?.error === "string" ? payload.error : "AI request failed");
+    }
+
     const payload = await response.json();
-    return normalizeAiActionDraft(payload, prompt);
+    const rawDrafts = Array.isArray(payload?.actions) ? payload.actions : [payload];
+    return rawDrafts.map((draft: unknown) => normalizeAiActionDraft(draft, prompt));
   }
 
   async function parseDrafts() {
+    const message = text.trim();
     const prompts = splitActionRequests(text);
     if (prompts.length === 0) {
       setError(labels.empty);
@@ -4264,78 +4770,122 @@ function AiCreationSheet({
 
     setLoading(true);
     setError("");
+    setText("");
+    setMessages((items: AiChatMessage[]) => [...items, { id: `user-${Date.now()}`, role: "user", content: message }]);
 
     try {
-      const parsed = await Promise.all(
-        prompts.map(async (prompt) => {
-          try {
-            return await requestDraft(prompt);
-          } catch {
-            return buildLocalAiDraft(prompt);
-          }
-        }),
+      const parsedGroups = await Promise.all(
+        prompts.map(async (prompt: string) => requestDraft(prompt)),
       );
-      setDrafts(parsed);
-    } catch {
-      setError(labels.error);
+      const parsed = parsedGroups.flat();
+      const now = Date.now();
+      const startIndex = drafts.length;
+      setDrafts((items: AiActionDraft[]) => [...items, ...parsed]);
+      setSelectedDraftIndexes((items: Set<number>) => {
+        const next = new Set(items);
+        parsed.forEach((_: AiActionDraft, index: number) => next.add(startIndex + index));
+        return next;
+      });
+      setMessages((items: AiChatMessage[]) => [
+        ...items,
+        {
+          id: `assistant-${now}`,
+          role: "assistant",
+          content: language === "en"
+            ? `I prepared ${parsed.length} preview${parsed.length === 1 ? "" : "s"}. Check below.`
+            : `Я подготовил ${parsed.length} предпросмотр${parsed.length === 1 ? "" : "а"}. Проверь ниже.`,
+        },
+      ]);
+    } catch (requestError) {
+      const message = requestError instanceof Error && requestError.message ? requestError.message : labels.error;
+      setError(message);
+      setMessages((items: AiChatMessage[]) => [...items, { id: `assistant-error-${Date.now()}`, role: "assistant", content: message }]);
     } finally {
       setLoading(false);
     }
   }
 
   function removeDraft(index: number) {
-    setDrafts((items) => items.filter((_, itemIndex) => itemIndex !== index));
+    setDrafts((items: AiActionDraft[]) => items.filter((_: AiActionDraft, itemIndex: number) => itemIndex !== index));
+    setSelectedDraftIndexes((items: Set<number>) => {
+      const next = new Set<number>();
+      items.forEach((itemIndex: number) => {
+        if (itemIndex < index) {
+          next.add(itemIndex);
+        } else if (itemIndex > index) {
+          next.add(itemIndex - 1);
+        }
+      });
+      return next;
+    });
+  }
+
+  function toggleDraft(index: number) {
+    setSelectedDraftIndexes((items: Set<number>) => {
+      const next = new Set(items);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+  }
+
+  function resetAiChat() {
+    setText("");
+    setDrafts([]);
+    setSelectedDraftIndexes(new Set());
+    setError("");
+    setMessages([
+      { id: "assistant-welcome", role: "assistant", content: labels.assistant },
+      { id: "assistant-followup", role: "assistant", content: labels.followup },
+    ]);
   }
 
   return (
     <BottomSheet title={labels.title} subtitle={labels.subtitle} closeLabel="Close" onClose={onClose} className="ai-chat-sheet">
       <div className="ai-chat-body">
         <div className="ai-chat-agent">
-          <span className="ai-chat-agent-avatar" aria-hidden="true">C</span>
+          <span className="ai-chat-agent-avatar" aria-hidden="true">🤖</span>
           <div>
             <strong>Chexar</strong>
             <small>{language === "en" ? "AI assistant" : "AI-помощник"}</small>
           </div>
         </div>
-        <div className="ai-chat-message assistant">
-          <span>{labels.assistant}</span>
-        </div>
-        <div className="ai-chat-message assistant secondary">
-          <span>{labels.followup}</span>
-        </div>
-        <div className="ai-chat-questions">
-          {labels.questions.map((question) => (
-            <span key={question}>{question}</span>
+        <div className="ai-chat-thread" aria-live="polite">
+          {messages.map((message: AiChatMessage) => (
+            <div key={message.id} className={`ai-chat-message ${message.role}`}>
+              <span>{message.content}</span>
+            </div>
           ))}
         </div>
-        <div className="ai-chat-samples">
-          {labels.samples.map((sample) => (
-            <button
-              key={sample}
-              type="button"
-              onClick={() => {
-                setText((current) => (current.trim() ? `${current.trim()}\n${sample}` : sample));
+        <div className="ai-chat-composer">
+          <label className="ai-chat-input">
+            <textarea
+              value={text}
+              placeholder={labels.placeholder}
+              rows={3}
+              onChange={(event) => setText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  if (!loading) {
+                    void parseDrafts();
+                  }
+                }
               }}
-            >
-              {sample}
-            </button>
-          ))}
+            />
+          </label>
+          <button type="button" className="ai-chat-enter" aria-label={labels.sendAria} onClick={parseDrafts} disabled={loading}>
+            ↵
+          </button>
         </div>
-        <label className="ai-chat-input">
-          <textarea value={text} placeholder={labels.placeholder} rows={4} onChange={(event) => setText(event.target.value)} />
-        </label>
         {error && <small className="ai-assist-error">{error}</small>}
         <div className="ai-chat-actions">
-          <button type="button" onClick={parseDrafts} disabled={loading}>
-            {loading ? labels.loading : labels.send}
-          </button>
           <button
             type="button"
-            onClick={() => {
-              setText("");
-              setDrafts([]);
-              setError("");
-            }}
+            onClick={resetAiChat}
           >
             {labels.clear}
           </button>
@@ -4344,8 +4894,13 @@ function AiCreationSheet({
           <div className="ai-chat-preview">
             <strong>{labels.preview}</strong>
             <div className="ai-chat-draft-list">
-              {drafts.map((draft, index) => (
-                <div key={`${draft.title}-${index}`} className="ai-chat-draft">
+              {drafts.map((draft: AiActionDraft, index: number) => {
+                const selected = selectedDraftIndexes.has(index);
+                return (
+                <div key={`${draft.title}-${draft.start_date}-${index}`} className={`ai-chat-draft ${selected ? "selected" : ""}`}>
+                  <button type="button" className="ai-chat-draft-check" aria-label="Select draft" aria-pressed={selected} onClick={() => toggleDraft(index)}>
+                    <span aria-hidden="true" />
+                  </button>
                   <b>{draft.icon ?? inferAiEmoji(draft.title)}</b>
                   <div>
                     <span>{draft.title}</span>
@@ -4358,10 +4913,11 @@ function AiCreationSheet({
                     <X size={14} aria-hidden="true" />
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
-            <button type="button" className="ai-chat-create" onClick={() => onCreateDrafts(drafts)}>
-              {labels.create(drafts.length)}
+            <button type="button" className="ai-chat-create" disabled={selectedDrafts.length === 0} onClick={() => onCreateDrafts(selectedDrafts)}>
+              {labels.create(selectedDrafts.length)}
             </button>
           </div>
         )}
@@ -4473,6 +5029,70 @@ function EmptySectionCard({
         <Plus size={17} aria-hidden="true" />
         {buttonLabel}
       </button>
+    </div>
+  );
+}
+
+function StartQuestBlock({
+  state,
+  language,
+  onHide,
+}: {
+  state: OnboardingQuestState;
+  language: AppSettings["language"];
+  onHide: () => void;
+}) {
+  const copy = onboardingQuestCopy[language];
+  const completed = new Set(state.completedSteps);
+  const completedCount = onboardingQuestSteps.filter((step) => completed.has(step)).length;
+  const stepIcon: Record<OnboardingQuestStep, string> = {
+    swipeRightTriggered: "→",
+    swipeLeftTriggered: "←",
+    taskCreated: "+",
+    taskCompleted: "×",
+    quantitativeGoalCreated: "#",
+    numericProgressEntered: "123",
+    calendarOpened: "◷",
+    statsOpened: "▥",
+  };
+
+  return (
+    <div className="action-group start-quest-group has-title" aria-label={copy.title}>
+      <div className="action-group-title start-quest-group-title">
+        <span>{copy.title}</span>
+        <small>{completedCount}/{onboardingQuestSteps.length}</small>
+        <button type="button" onClick={onHide}>
+          {copy.hide}
+        </button>
+      </div>
+      <div className="start-quest-list">
+        {onboardingQuestSteps.map((step) => {
+          const isDone = completed.has(step);
+
+          return (
+            <div key={step} className="task-card-inline start-quest-item">
+              <div className={`task-row start-quest-row ${isDone ? "completed" : ""}`}>
+                <div className="task-row-main">
+                  <span className="action-emoji start-quest-symbol" aria-hidden="true">
+                    {stepIcon[step]}
+                  </span>
+                  <span className="task-title">{copy.steps[step]}</span>
+                </div>
+                <span className="task-check-button start-quest-check-button" aria-hidden="true">
+                  <span className="task-check">
+                    {isDone && (
+                      <span className="task-x-mark">
+                        <span />
+                        <span />
+                      </span>
+                    )}
+                  </span>
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -5065,9 +5685,11 @@ function SwipeDeleteShell({
 
     if (shouldDelete && onDelete) {
       suppressClick.current = true;
+      emitOnboardingQuestEvent("swipeLeftTriggered");
       onDelete();
     } else if (shouldEdit && onEdit) {
       suppressClick.current = true;
+      emitOnboardingQuestEvent("swipeRightTriggered");
       onEdit();
     } else {
       suppressClick.current = shouldSuppressClick;
@@ -5205,6 +5827,28 @@ function EditActionSheet({
       Number.isFinite(numericCurrent) &&
       numericCurrent >= 0 &&
       unit.trim().length > 0);
+  const editDisabled = !titleIsValid || !progressSettingsValid || (repeatMode === "selectedDays" && selectedDays.length === 0);
+  const hasUnsavedChanges =
+    title !== action.title ||
+    groupName !== (action.groupName ?? "") ||
+    note !== (action.note ?? "") ||
+    iconKey !== action.iconKey ||
+    emoji !== action.emoji ||
+    repeatMode !== initialRepeatMode ||
+    selectedDays.join(",") !== (action.selectedDays ?? defaultGoalSelectedDays).join(",") ||
+    dueTimeEnabled !== Boolean(action.dueTime) ||
+    dueTime !== (action.dueTime ?? "11:00") ||
+    (isGoal &&
+      (targetValue !== String(state.goal.targetValue) ||
+        currentValue !== String(state.goal.currentValue) ||
+        unit !== state.goal.unit ||
+        quickValues !== state.goal.quickAddValues.join(", ")));
+  const nativeMainButton = useTelegramNativeMainButton({
+    active: true,
+    text: copy.save,
+    disabled: editDisabled,
+    onClick: handleSubmit,
+  });
 
   function handleRepeatChange(nextRepeatMode: TaskRepeatMode) {
     setRepeatMode(nextRepeatMode);
@@ -5214,10 +5858,11 @@ function EditActionSheet({
     setSelectedDays((days) => toggleWeekday(days, day));
   }
 
-  function handleSubmit(event: FormEvent) {
-    event.preventDefault();
+  function handleSubmit(event?: FormEvent) {
+    event?.preventDefault();
 
-    if (!titleIsValid || !progressSettingsValid) {
+    if (editDisabled) {
+      telegramNotification("error");
       return;
     }
 
@@ -5245,13 +5890,26 @@ function EditActionSheet({
     );
   }
 
+  function requestClose() {
+    if (!hasUnsavedChanges) {
+      onClose();
+      return;
+    }
+
+    void showTelegramConfirm(language === "en" ? "Discard unsaved changes?" : "Закрыть без сохранения?").then((confirmed) => {
+      if (confirmed) {
+        onClose();
+      }
+    });
+  }
+
   function openEmojiInput() {
     setIconPickerOpen(true);
     window.setTimeout(() => emojiInputRef.current?.focus(), 0);
   }
 
   return (
-    <BottomSheet title={copy.editAction} closeLabel={copy.close} onClose={onClose}>
+    <BottomSheet title={copy.editAction} closeLabel={copy.close} onClose={requestClose}>
       <form className="sheet-form edit-action-form" onSubmit={handleSubmit}>
         <label>
           <span>{copy.name}</span>
@@ -5349,19 +6007,17 @@ function EditActionSheet({
         </label>
 
         <div className="sheet-actions">
-          <button
-            type="submit"
-            className="primary-sheet-button"
-            disabled={!titleIsValid || !progressSettingsValid || (repeatMode === "selectedDays" && selectedDays.length === 0)}
-          >
-            {copy.save}
-          </button>
+          {!nativeMainButton && (
+            <button type="submit" className="primary-sheet-button" disabled={editDisabled}>
+              {copy.save}
+            </button>
+          )}
           {onDelete && (
             <button type="button" className="primary-sheet-button danger-action" onClick={onDelete}>
               {copy.deleteConfirm}
             </button>
           )}
-          <button type="button" className="ghost-sheet-button" onClick={onClose}>
+          <button type="button" className="ghost-sheet-button" onClick={requestClose}>
             {copy.cancel}
           </button>
         </div>
@@ -6220,12 +6876,14 @@ function ProfileScreen({
   telegramUser,
   telegramStatus,
   onSettingsChange,
+  onRestartOnboarding,
   onResetRequest,
 }: {
   settings: AppSettings;
   telegramUser: TelegramUser | null;
   telegramStatus: TelegramConnectionStatus;
   onSettingsChange: (settings: Partial<AppSettings>) => void;
+  onRestartOnboarding: () => void;
   onResetRequest: () => void;
 }) {
   const copy = profileCopy[settings.language];
@@ -6306,6 +6964,17 @@ function ProfileScreen({
         <span className="toggle-switch" aria-hidden="true">
           <span>{settings.hintsEnabled && <Check size={18} />}</span>
         </span>
+      </button>
+
+      <button type="button" className="hints-card start-quest-reopen-card" onClick={onRestartOnboarding}>
+        <span className="profile-row-icon accent-violet" aria-hidden="true">
+          <CirclePlus size={21} />
+        </span>
+        <span>
+          <strong>{copy.restartQuest}</strong>
+          <small>{copy.restartQuestText}</small>
+        </span>
+        <ChevronRight size={18} aria-hidden="true" />
       </button>
     </main>
   );
@@ -7116,6 +7785,12 @@ function AddSheet({
     dueTimeEnabled ||
     iconKey !== undefined ||
     emoji !== undefined;
+  const nativeMainButton = useTelegramNativeMainButton({
+    active: true,
+    text: language === "en" ? "Create" : "Создать",
+    disabled: errors.length > 0,
+    onClick: submitAction,
+  });
 
   function applyTemplate(template: ActionTemplate) {
     setTitle(getTemplateTitle(template, language));
@@ -7285,10 +7960,11 @@ function AddSheet({
     setAiPreview(null);
   }
 
-  function submitAction(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function submitAction(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
 
     if (errors.length > 0) {
+      telegramNotification("error");
       return;
     }
 
@@ -7335,8 +8011,21 @@ function AddSheet({
     });
   }
 
+  function requestClose() {
+    if (!hasUnsavedChanges) {
+      onClose();
+      return;
+    }
+
+    void showTelegramConfirm(language === "en" ? "Discard unsaved changes?" : "Закрыть без сохранения?").then((confirmed) => {
+      if (confirmed) {
+        onClose();
+      }
+    });
+  }
+
   return (
-    <BottomSheet title={copy.addSheetTitle} subtitle={copy.addSheetSubtitle} closeLabel={copy.close} onClose={onClose} closeOnOverlay={!hasUnsavedChanges}>
+    <BottomSheet title={copy.addSheetTitle} subtitle={copy.addSheetSubtitle} closeLabel={copy.close} onClose={requestClose} closeOnOverlay={!hasUnsavedChanges}>
       {templatePickerOpen && <TemplatePicker templates={actionTemplates} copy={copy} language={language} onSelect={applyTemplate} />}
 
       <form className="sheet-form creation-form unified-action-form" onSubmit={submitAction}>
@@ -7551,11 +8240,13 @@ function AddSheet({
         </div>
 
         <ValidationMessages errors={errors} />
-        <div className="sheet-actions creation-actions single-action">
-          <button type="submit" className="primary-sheet-button" disabled={errors.length > 0}>
-            {copy.save}
-          </button>
-        </div>
+        {!nativeMainButton && (
+          <div className="sheet-actions creation-actions single-action">
+            <button type="submit" className="primary-sheet-button" disabled={errors.length > 0}>
+              {copy.save}
+            </button>
+          </div>
+        )}
       </form>
     </BottomSheet>
   );

@@ -23,10 +23,16 @@
   --amber: #ffb85c;
   --shadow: 0 18px 58px rgba(0, 0, 0, 0.46);
   --bottom-nav-height: 58px;
-  --bottom-nav-offset: max(8px, env(safe-area-inset-bottom));
+  --telegram-safe-area-bottom: 0px;
+  --bottom-nav-offset: max(8px, env(safe-area-inset-bottom), var(--telegram-safe-area-bottom));
   --bottom-stack-padding: calc(var(--bottom-nav-height) + var(--bottom-nav-offset) + 52px);
   --bottom-safe-padding: var(--bottom-stack-padding);
   --telegram-safe-area-top: 0px;
+  --telegram-bg-color: #050509;
+  --telegram-text-color: #f7f4ff;
+  --telegram-hint-color: #aaa6b8;
+  --telegram-button-color: #7c5cff;
+  --telegram-button-text-color: #ffffff;
   --app-safe-area-top: max(env(safe-area-inset-top), var(--telegram-safe-area-top));
   --screen-top-padding: calc(var(--app-safe-area-top) + 56px);
 }

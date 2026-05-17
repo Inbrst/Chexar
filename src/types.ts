@@ -106,3 +106,20 @@ export type AppSettings = {
   hintsEnabled: boolean;
   onboardingCompleted: boolean;
 };
+
+export type OnboardingQuestStep =
+  | "swipeRightTriggered"
+  | "swipeLeftTriggered"
+  | "taskCreated"
+  | "taskCompleted"
+  | "quantitativeGoalCreated"
+  | "numericProgressEntered"
+  | "calendarOpened"
+  | "statsOpened";
+
+export type OnboardingQuestState = {
+  enabled: boolean;
+  completedSteps: OnboardingQuestStep[];
+  hidden: boolean;
+  finished: boolean;
+};
