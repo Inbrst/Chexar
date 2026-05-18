@@ -12,19 +12,19 @@ const defaultSettings: AppSettings = {
   theme: "dark",
   hintsEnabled: true,
   onboardingCompleted: false,
+  telegramBotEnabled: false,
 };
 
 const onboardingSteps: OnboardingQuestStep[] = [
-  "swipeRightTriggered",
-  "swipeLeftTriggered",
-  "taskCreated",
-  "taskCompleted",
-  "subitemListCreated",
-  "quantitativeGoalCreated",
-  "numericProgressEntered",
-  "dueTimeActionCreated",
-  "calendarOpened",
-  "statsOpened",
+  "questTaskCompleted",
+  "questTaskDeleted",
+  "questPairTimerSet",
+  "questPairEmojiChanged",
+  "questPairReordered",
+  "questMiniListOpened",
+  "questMiniListCompleted",
+  "questProgressEntered",
+  "questTaskCreated",
 ];
 
 const defaultOnboardingState: OnboardingQuestState = {
@@ -451,6 +451,10 @@ export function loadSettings(): AppSettings {
         typeof parsed.onboardingCompleted === "boolean"
           ? parsed.onboardingCompleted
           : defaultSettings.onboardingCompleted,
+      telegramBotEnabled:
+        typeof parsed.telegramBotEnabled === "boolean"
+          ? parsed.telegramBotEnabled
+          : defaultSettings.telegramBotEnabled,
     };
   } catch {
     return defaultSettings;

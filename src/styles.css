@@ -55,6 +55,7 @@ html[data-resolved-theme="dark"] .app-shell {
 }
 
 .reorderable-item {
+  --reorder-y: 0px;
   touch-action: pan-y;
   transition:
     transform 0.16s ease,
@@ -66,7 +67,11 @@ html[data-resolved-theme="dark"] .app-shell {
   z-index: 6;
   opacity: 0.92;
   filter: drop-shadow(0 16px 26px rgba(0, 0, 0, 0.38));
-  transform: scale(1.018);
+  touch-action: none;
+  transform: translate3d(0, var(--reorder-y), 0) scale(1.018);
+  transition:
+    opacity 0.16s ease,
+    filter 0.16s ease;
 }
 
 .goal-card {
@@ -6679,6 +6684,631 @@ html[data-resolved-theme="light"] .bottom-nav button.active {
   overscroll-behavior: contain;
   padding: 8px 17px max(20px, env(safe-area-inset-bottom));
   border-radius: 24px 24px 17px 17px;
+  animation: sheet-slide-up 0.2s ease-out;
+}
+
+.start-quest-row-button {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+}
+
+.start-quest-row-button .task-card-inline {
+  pointer-events: none;
+}
+
+.start-quest-editor-sheet,
+.start-quest-progress-form {
+  padding-bottom: 4px;
+}
+
+.start-quest-pair {
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.start-quest-pair .reorderable-item:not(:last-child) .task-row {
+  border-bottom: 1px solid rgba(17, 19, 24, 0.075) !important;
+}
+
+.start-quest-pair-hint {
+  padding: 8px 11px 10px;
+  color: #717783;
+  font-size: 0.7rem;
+  font-weight: 620;
+}
+
+.goal-period-pace {
+  display: block;
+  min-width: 0;
+  margin-top: 2px;
+  overflow: hidden;
+  color: #717783;
+  font-size: 0.62rem;
+  font-weight: 620;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.today-quick-menu-wrap {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 10px;
+}
+
+.today-quick-menu {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  justify-content: flex-end;
+  overflow-x: auto;
+  padding: 0 2px 2px;
+  scrollbar-width: none;
+}
+
+.today-quick-menu::-webkit-scrollbar {
+  display: none;
+}
+
+.today-menu-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  min-width: 32px;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 8px;
+  border: 1px solid rgba(17, 19, 24, 0.1);
+  border-radius: 13px;
+  color: #242832;
+  background: #fff;
+  font-size: 0.74rem;
+  font-weight: 760;
+  box-shadow: 0 7px 18px rgba(12, 13, 18, 0.06);
+}
+
+.today-menu-button.is-active {
+  color: #fff;
+  border-color: rgba(17, 19, 24, 0.08);
+  background: #111318;
+}
+
+.today-menu-period {
+  min-width: 48px;
+}
+
+.today-menu-add {
+  min-width: 66px;
+  border-radius: 8px 8px 4px 4px;
+  background: #6f5cff;
+}
+
+.today-menu-add span {
+  display: inline-block;
+  transform: scaleX(1.35);
+}
+
+.today-search-field {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: #fff;
+  color: #717783;
+}
+
+.today-search-field input {
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  color: #111318;
+  background: transparent;
+  font: inherit;
+}
+
+.today-period-overview {
+  display: grid;
+  gap: 9px;
+  margin: 0 0 10px;
+  padding: 10px;
+  border-radius: 17px;
+  background: #fff;
+  box-shadow: 0 9px 22px rgba(12, 13, 18, 0.055);
+}
+
+.today-period-overview-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.today-period-overview-head strong {
+  color: #111318;
+  font-size: 0.86rem;
+}
+
+.today-period-overview-head span {
+  color: #717783;
+  font-size: 0.7rem;
+  font-weight: 680;
+}
+
+.today-period-weeks {
+  display: grid;
+  gap: 9px;
+}
+
+.today-period-week {
+  display: grid;
+  gap: 5px;
+}
+
+.today-period-week-label {
+  color: #717783;
+  font-size: 0.68rem;
+  font-weight: 760;
+}
+
+.today-period-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(38px, 1fr));
+  gap: 5px;
+}
+
+.today-period-overview.mode-day .today-period-days {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.today-period-day {
+  display: grid;
+  min-width: 0;
+  min-height: 72px;
+  align-content: center;
+  justify-items: center;
+  gap: 2px;
+  padding: 5px 3px;
+  border: 1px solid rgba(17, 19, 24, 0.08);
+  border-radius: 11px;
+  color: #111318;
+  background: #f7f8fa;
+}
+
+.period-day-check {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border: 1px solid rgba(17, 19, 24, 0.18);
+  border-radius: 6px;
+  color: #fff;
+  background: transparent;
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.today-period-day strong {
+  font-size: 0.82rem;
+  line-height: 1;
+}
+
+.today-period-day small {
+  color: #717783;
+  font-size: 0.58rem;
+  font-weight: 700;
+}
+
+.period-action-checks {
+  display: flex;
+  max-width: 100%;
+  min-height: 12px;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  margin-top: 2px;
+  overflow: hidden;
+}
+
+.period-action-check {
+  display: block;
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(17, 19, 24, 0.22);
+  border-radius: 3px;
+  background: transparent;
+}
+
+.period-action-check.checked {
+  border-color: #34d399;
+  background: #34d399;
+}
+
+.period-action-check.empty {
+  opacity: 0.34;
+}
+
+.period-action-checks em {
+  color: #717783;
+  font-size: 0.54rem;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.period-matrix {
+  overflow: hidden;
+  padding: 9px;
+}
+
+.period-matrix-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.period-matrix-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.period-matrix-grid {
+  --period-days: 1;
+  display: grid;
+  grid-template-columns: minmax(132px, 1fr) repeat(var(--period-days), 34px);
+  min-width: max(100%, calc(132px + var(--period-days) * 34px));
+  border: 1px solid rgba(17, 19, 24, 0.08);
+  border-radius: 14px;
+  overflow: hidden;
+  background: #f2f4f7;
+}
+
+.period-matrix.mode-day .period-matrix-grid {
+  grid-template-columns: minmax(132px, 1fr) minmax(72px, 0.45fr);
+  min-width: 100%;
+}
+
+.period-matrix-corner,
+.period-matrix-day-head,
+.period-matrix-task-cell,
+.period-matrix-check-cell {
+  min-width: 0;
+  min-height: 34px;
+  border: 0;
+  border-right: 1px solid rgba(17, 19, 24, 0.08);
+  border-bottom: 1px solid rgba(17, 19, 24, 0.08);
+  background: #fff;
+}
+
+.period-matrix-corner {
+  display: grid;
+  align-items: center;
+  padding: 0 9px;
+  color: #717783;
+  font-size: 0.68rem;
+  font-weight: 820;
+}
+
+.period-matrix-day-head {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 1px;
+  padding: 3px 1px;
+  color: #111318;
+}
+
+.period-matrix-day-head.active {
+  background: #eef2ff;
+}
+
+.period-matrix-day-head.future {
+  opacity: 0.62;
+}
+
+.period-matrix-day-head span,
+.period-matrix-day-head small {
+  color: #717783;
+  font-size: 0.48rem;
+  font-weight: 780;
+  line-height: 1;
+}
+
+.period-matrix-day-head strong {
+  font-size: 0.74rem;
+  line-height: 1;
+}
+
+.period-matrix-task-cell {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+}
+
+.period-matrix-task-cell span {
+  font-size: 0.86rem;
+}
+
+.period-matrix-task-cell strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #111318;
+  font-size: 0.7rem;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.period-matrix-check-cell {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: #fff;
+}
+
+.period-matrix-check-cell span {
+  display: grid;
+  width: 17px;
+  height: 17px;
+  place-items: center;
+  border: 1.5px solid rgba(17, 19, 24, 0.2);
+  border-radius: 5px;
+  color: #fff;
+  background: transparent;
+  font-size: 0.68rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.period-matrix-check-cell.checked span {
+  border-color: #34d399;
+  background: #34d399;
+}
+
+.period-matrix-check-cell.off {
+  background: #f7f8fa;
+}
+
+.period-matrix-check-cell.off::before {
+  content: "";
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(17, 19, 24, 0.12);
+}
+
+.period-matrix-check-cell.future {
+  opacity: 0.62;
+}
+
+.period-matrix-check-cell.readonly span {
+  border-style: dashed;
+}
+
+.period-matrix-empty {
+  grid-column: 1 / -1;
+  padding: 13px;
+  color: #717783;
+  background: #fff;
+  font-size: 0.76rem;
+  font-weight: 680;
+  text-align: center;
+}
+
+.action-list.with-period {
+  --period-cell: 29px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.action-list.with-period::-webkit-scrollbar {
+  display: none;
+}
+
+.action-list.with-period .action-group,
+.period-inline-header {
+  min-width: max(100%, calc(156px + var(--period-days) * var(--period-cell)));
+}
+
+.period-inline-header {
+  display: grid;
+  grid-template-columns: minmax(148px, 1fr) auto;
+  align-items: end;
+  gap: 6px;
+  padding: 0 8px 1px 10px;
+}
+
+.period-inline-left-label {
+  min-width: 0;
+  overflow: hidden;
+  color: #717783;
+  font-size: 0.66rem;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.period-inline-cells {
+  display: grid;
+  grid-template-columns: repeat(var(--period-days), var(--period-cell));
+  gap: 2px;
+  justify-content: end;
+}
+
+.period-inline-day-head,
+.period-inline-check {
+  display: grid;
+  width: var(--period-cell);
+  min-width: var(--period-cell);
+  place-items: center;
+  border: 0;
+  color: #111318;
+  background: transparent;
+}
+
+.period-inline-day-head {
+  min-height: 34px;
+  align-content: center;
+  gap: 1px;
+  padding: 2px 0;
+  border-radius: 8px;
+}
+
+.period-inline-day-head.active {
+  background: #eef2ff;
+}
+
+.period-inline-day-head.future,
+.period-inline-check.future {
+  opacity: 0.62;
+}
+
+.period-inline-day-head span,
+.period-inline-day-head small {
+  color: #717783;
+  font-size: 0.48rem;
+  font-weight: 780;
+  line-height: 1;
+}
+
+.period-inline-day-head strong {
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+.period-inline-check {
+  min-height: 32px;
+}
+
+.period-inline-check span {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border: 1.4px solid rgba(17, 19, 24, 0.2);
+  border-radius: 6px;
+  color: #fff;
+  background: transparent;
+  font-size: 0.68rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.period-inline-check.checked span {
+  border-color: #34d399;
+  background: #34d399;
+}
+
+.period-inline-check.off::before {
+  content: "";
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(17, 19, 24, 0.14);
+}
+
+.period-inline-check.readonly span {
+  border-style: dashed;
+}
+
+.task-row.period-expanded,
+.goal-card.period-expanded {
+  grid-template-columns: minmax(148px, 1fr) auto;
+  min-width: max(100%, calc(156px + var(--period-days) * var(--period-cell)));
+}
+
+.task-row.period-expanded {
+  display: grid;
+}
+
+.goal-card.period-expanded {
+  display: grid;
+  align-items: center;
+}
+
+.goal-card.period-expanded .goal-top {
+  min-width: 0;
+}
+
+.today-period-day.done .period-day-check {
+  border-color: #34d399;
+  background: #34d399;
+}
+
+.today-period-day.partial .period-day-check {
+  border-color: #f6b94f;
+  background: #f6b94f;
+}
+
+.today-period-day.active {
+  border-color: #111318;
+  background: #eef2ff;
+}
+
+.today-period-day.future {
+  opacity: 0.52;
+}
+
+.profile-row-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.profile-row-icon.danger {
+  color: #ff6681;
+  border-color: rgba(255, 92, 120, 0.2);
+  background: rgba(255, 92, 120, 0.08);
+}
+
+.theme-icon-selector button span,
+.profile-segmented button {
+  font-size: 1rem;
+}
+
+.profile-flag {
+  display: block;
+  width: 24px;
+  height: 16px;
+  overflow: hidden;
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px rgba(17, 19, 24, 0.16);
+}
+
+.profile-flag.flag-us {
+  background:
+    linear-gradient(90deg, #2f4f9e 0 40%, transparent 40%),
+    repeating-linear-gradient(180deg, #c7464f 0 8%, #c7464f 8% 15.38%, #fff 15.38% 23.07%);
+}
+
+.profile-flag.flag-ru {
+  background: linear-gradient(180deg, #fff 0 33.33%, #2f62c8 33.33% 66.66%, #d9474f 66.66% 100%);
+}
+
+@keyframes sheet-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .sheet-handle {
@@ -7691,6 +8321,7 @@ html[data-resolved-theme="dark"] .app-shell {
 }
 
 .reorderable-item {
+  --reorder-y: 0px;
   touch-action: pan-y;
   transition:
     transform 0.16s ease,
@@ -7702,7 +8333,11 @@ html[data-resolved-theme="dark"] .app-shell {
   z-index: 6;
   opacity: 0.92;
   filter: drop-shadow(0 16px 26px rgba(0, 0, 0, 0.38));
-  transform: scale(1.018);
+  touch-action: none;
+  transform: translate3d(0, var(--reorder-y), 0) scale(1.018);
+  transition:
+    opacity 0.16s ease,
+    filter 0.16s ease;
 }
 
 .goal-card {

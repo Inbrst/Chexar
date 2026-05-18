@@ -69,6 +69,7 @@ type RemoteSettings = {
   theme: string | null;
   tips_enabled: boolean | null;
   onboarding_completed: boolean | null;
+  telegram_bot_enabled?: boolean | null;
 };
 
 export type RemoteLoadResult = {
@@ -263,19 +264,28 @@ function getSupabaseErrorDetails(error: unknown) {
 
 export async function saveRemoteSettings(userId: string, settings: AppSettings): Promise<void> {
   const client = requireSupabase();
-  const { error } = await client.from("settings").upsert(
-    {
-      user_id: userId,
-      language: settings.language,
-      theme: settings.theme,
-      tips_enabled: settings.hintsEnabled,
-      onboarding_completed: settings.onboardingCompleted,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "user_id" },
-  );
+  const row = {
+    user_id: userId,
+    language: settings.language,
+    theme: settings.theme,
+    tips_enabled: settings.hintsEnabled,
+    onboarding_completed: settings.onboardingCompleted,
+    telegram_bot_enabled: settings.telegramBotEnabled,
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await client.from("settings").upsert(row, { onConflict: "user_id" });
 
   if (error) {
+    const missingColumn = getMissingColumnName(error);
+    if (missingColumn === "telegram_bot_enabled") {
+      warnOptionalSchema("settings.telegram_bot_enabled is missing; Telegram bot toggle will stay local until the migration is applied.");
+      const fallbackRow = omitRemoteColumn(row, "telegram_bot_enabled");
+      const fallback = await client.from("settings").upsert(fallbackRow, { onConflict: "user_id" });
+      if (!fallback.error) {
+        return;
+      }
+    }
+
     throw error;
   }
 }
@@ -298,6 +308,53 @@ const OPTIONAL_ITEM_COLUMNS = new Set([
   "due_time",
 ]);
 const optionalSchemaWarnings = new Set<string>();
+const knownIconKeys = new Set([
+  "book",
+  "target",
+  "dumbbell",
+  "run",
+  "home",
+  "cart",
+  "language",
+  "star",
+  "fire",
+  "plus",
+  "graduation",
+  "droplet",
+  "clock",
+  "calendar",
+  "moon",
+  "pill",
+  "shield",
+  "phone",
+  "mail",
+]);
+const emojiSegmentPattern =
+  /(?:\p{Regional_Indicator}{2})|(?:[#*0-9]\uFE0F?\u20E3)|(?:[\p{Extended_Pictographic}\p{Emoji_Presentation}](?:[\uFE0F\uFE0E]|\p{Emoji_Modifier})?(?:\u200D[\p{Extended_Pictographic}\p{Emoji_Presentation}](?:[\uFE0F\uFE0E]|\p{Emoji_Modifier})?)*)/gu;
+
+function normalizeEmoji(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  return Array.from(value.trim().matchAll(emojiSegmentPattern), (match) => match[0]).slice(0, 2).join("") || undefined;
+}
+
+function normalizeIconValue(value: unknown): { iconKey?: string; emoji?: string } {
+  const icon = typeof value === "string" ? value.trim() : "";
+
+  if (!icon) {
+    return {};
+  }
+
+  if (knownIconKeys.has(icon)) {
+    return { iconKey: icon };
+  }
+
+  const emoji = normalizeEmoji(icon);
+
+  return emoji ? { emoji } : { iconKey: icon };
+}
 
 function sortRemoteItems(items: RemoteItem[]): RemoteItem[] {
   return [...items].sort((left, right) => {
@@ -348,7 +405,7 @@ function getMissingColumnName(error: unknown): string | null {
   const details = getSupabaseErrorDetails(error);
   const message = details.message;
   const schemaCacheMatch = message.match(/Could not find the '([^']+)' column/i);
-  const sqlMatch = message.match(/column (?:items\.)?([a-z_]+) does not exist/i);
+  const sqlMatch = message.match(/column (?:items\.|settings\.)?([a-z_]+) does not exist/i);
   const column = schemaCacheMatch?.[1] ?? sqlMatch?.[1] ?? null;
 
   return column?.trim() || null;
@@ -465,6 +522,7 @@ function normalizeSettings(row: RemoteSettings | null, fallback: AppSettings): A
     theme: row?.theme === "light" || row?.theme === "dark" || row?.theme === "system" ? row.theme : fallback.theme,
     hintsEnabled: typeof row?.tips_enabled === "boolean" ? row.tips_enabled : fallback.hintsEnabled,
     onboardingCompleted: typeof row?.onboarding_completed === "boolean" ? row.onboarding_completed : fallback.onboardingCompleted,
+    telegramBotEnabled: typeof row?.telegram_bot_enabled === "boolean" ? row.telegram_bot_enabled : fallback.telegramBotEnabled,
   };
 }
 
@@ -481,6 +539,7 @@ function rowsToAppState(items: RemoteItem[], entries: RemoteDailyEntry[], occurr
 
   items.forEach((item) => {
     const itemEntries = entriesByItem.get(item.id) ?? [];
+    const itemIcon = normalizeIconValue(item.icon);
 
     if (item.tracking_type === "quantity") {
       const progressEntries: ProgressEntry[] = itemEntries
@@ -497,9 +556,9 @@ function rowsToAppState(items: RemoteItem[], entries: RemoteDailyEntry[], occurr
         title: item.title,
         groupName: item.group_name?.trim() || undefined,
         note: item.note?.trim() || undefined,
-        emoji: item.emoji?.trim() || undefined,
-        iconType: item.icon ? "custom" : "letter",
-        iconKey: item.icon ?? undefined,
+        emoji: item.emoji?.trim() || itemIcon.emoji,
+        iconType: itemIcon.iconKey ? "custom" : "letter",
+        iconKey: itemIcon.iconKey,
         targetValue: Number(item.target_value ?? 0),
         currentValue: progressEntries.reduce((total, entry) => total + entry.amount, 0),
         unit: item.unit ?? "",
@@ -534,9 +593,9 @@ function rowsToAppState(items: RemoteItem[], entries: RemoteDailyEntry[], occurr
       title: item.title,
       groupName: item.group_name?.trim() || undefined,
       note: item.note?.trim() || undefined,
-      emoji: item.emoji?.trim() || undefined,
-      iconType: item.icon ? "custom" : "letter",
-      iconKey: item.icon ?? undefined,
+      emoji: item.emoji?.trim() || itemIcon.emoji,
+      iconType: itemIcon.iconKey ? "custom" : "letter",
+      iconKey: itemIcon.iconKey,
       priority: "medium",
       startDate: item.start_date,
       endDate: getRemoteEffectiveEndDate(item),
@@ -559,50 +618,58 @@ function rowsToAppState(items: RemoteItem[], entries: RemoteDailyEntry[], occurr
 
 function appStateToItemRows(userId: string, appState: AppState) {
   return [
-    ...appState.goals.map((goal, index) => ({
-      id: goal.id,
-      user_id: userId,
-      title: goal.title.trim(),
-      group_name: goal.groupName?.trim() || null,
-      note: goal.note?.trim() || null,
-      emoji: goal.emoji ?? null,
-      icon: goal.iconKey ?? null,
-      tracking_type: "quantity",
-      repeat_mode: toRemoteRepeat(goal.repeatMode),
-      start_date: goal.startDate,
-      end_date: goal.endDate,
-      selected_days: goal.repeatMode === "selectedDays" ? (goal.selectedDays ?? []) : null,
-      due_time: goal.dueTime ?? null,
-      target_value: goal.targetValue,
-      unit: goal.unit,
-      quick_add_values: goal.quickAddValues,
-      subitems: null,
-      sort_order: goal.sortOrder ?? index + 1,
-      archived: false,
-      updated_at: new Date().toISOString(),
-    })),
-    ...appState.tasks.map((task, index) => ({
-      id: task.id,
-      user_id: userId,
-      title: task.title.trim(),
-      group_name: task.groupName?.trim() || null,
-      note: task.note?.trim() || null,
-      emoji: task.emoji ?? null,
-      icon: task.iconKey ?? null,
-      tracking_type: "checkbox",
-      repeat_mode: toRemoteRepeat(task.repeatMode),
-      start_date: task.startDate,
-      end_date: task.endDate,
-      selected_days: task.repeatMode === "selectedDays" ? (task.selectedDays ?? []) : null,
-      due_time: task.dueTime ?? null,
-      target_value: null,
-      unit: null,
-      quick_add_values: null,
-      subitems: normalizeRemoteSubitems(task.subitems),
-      sort_order: task.sortOrder ?? index + 1,
-      archived: false,
-      updated_at: new Date().toISOString(),
-    })),
+    ...appState.goals.map((goal, index) => {
+      const icon = normalizeIconValue(goal.iconKey);
+
+      return {
+        id: goal.id,
+        user_id: userId,
+        title: goal.title.trim(),
+        group_name: goal.groupName?.trim() || null,
+        note: goal.note?.trim() || null,
+        emoji: goal.emoji ?? icon.emoji ?? null,
+        icon: icon.iconKey ?? null,
+        tracking_type: "quantity",
+        repeat_mode: toRemoteRepeat(goal.repeatMode),
+        start_date: goal.startDate,
+        end_date: goal.endDate,
+        selected_days: goal.repeatMode === "selectedDays" ? (goal.selectedDays ?? []) : null,
+        due_time: goal.dueTime ?? null,
+        target_value: goal.targetValue,
+        unit: goal.unit,
+        quick_add_values: goal.quickAddValues,
+        subitems: null,
+        sort_order: goal.sortOrder ?? index + 1,
+        archived: false,
+        updated_at: new Date().toISOString(),
+      };
+    }),
+    ...appState.tasks.map((task, index) => {
+      const icon = normalizeIconValue(task.iconKey);
+
+      return {
+        id: task.id,
+        user_id: userId,
+        title: task.title.trim(),
+        group_name: task.groupName?.trim() || null,
+        note: task.note?.trim() || null,
+        emoji: task.emoji ?? icon.emoji ?? null,
+        icon: icon.iconKey ?? null,
+        tracking_type: "checkbox",
+        repeat_mode: toRemoteRepeat(task.repeatMode),
+        start_date: task.startDate,
+        end_date: task.endDate,
+        selected_days: task.repeatMode === "selectedDays" ? (task.selectedDays ?? []) : null,
+        due_time: task.dueTime ?? null,
+        target_value: null,
+        unit: null,
+        quick_add_values: null,
+        subitems: normalizeRemoteSubitems(task.subitems),
+        sort_order: task.sortOrder ?? index + 1,
+        archived: false,
+        updated_at: new Date().toISOString(),
+      };
+    }),
   ];
 }
 

@@ -105,9 +105,19 @@ export type AppSettings = {
   theme: ThemePreference;
   hintsEnabled: boolean;
   onboardingCompleted: boolean;
+  telegramBotEnabled: boolean;
 };
 
 export type OnboardingQuestStep =
+  | "questTaskCompleted"
+  | "questTaskDeleted"
+  | "questPairTimerSet"
+  | "questPairEmojiChanged"
+  | "questPairReordered"
+  | "questMiniListOpened"
+  | "questMiniListCompleted"
+  | "questProgressEntered"
+  | "questTaskCreated"
   | "swipeRightTriggered"
   | "swipeLeftTriggered"
   | "taskCreated"

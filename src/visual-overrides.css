@@ -1751,23 +1751,26 @@ html[data-resolved-theme="light"] .bottom-nav button.active {
 }
 
 .today-quick-menu {
-  display: grid !important;
-  grid-template-columns: repeat(4, 34px) !important;
+  display: flex !important;
+  flex-wrap: nowrap !important;
   align-items: center !important;
-  justify-content: end !important;
-  gap: 6px !important;
-  min-height: 27px !important;
+  justify-content: flex-end !important;
+  gap: 3px !important;
+  min-height: 30px !important;
+  overflow-x: auto !important;
+  scrollbar-width: none !important;
 }
 
 .today-menu-button {
-  width: 34px !important;
-  height: 26px !important;
-  min-width: 34px !important;
-  min-height: 26px !important;
+  width: auto !important;
+  height: 28px !important;
+  min-width: 0 !important;
+  min-height: 28px !important;
+  flex: 0 0 auto !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  padding: 0 !important;
+  padding: 0 7px !important;
   border: 1px solid transparent !important;
   border-radius: 7px !important;
   color: var(--text) !important;
@@ -1789,22 +1792,24 @@ html[data-resolved-theme="light"] .bottom-nav button.active {
 }
 
 .today-menu-add {
-  border-color: color-mix(in srgb, var(--text) 18%, transparent) !important;
-  background: linear-gradient(135deg, #7c5cff, #5e46d8) !important;
+  min-width: 66px !important;
+  border-color: color-mix(in srgb, #6f5cff 32%, transparent) !important;
+  border-radius: 8px 8px 4px 4px !important;
+  background: #6f5cff !important;
   color: #fff !important;
 }
 
 html[data-resolved-theme="light"] .today-menu-add {
-  border-color: color-mix(in srgb, #0f172a 14%, transparent) !important;
-  background: linear-gradient(135deg, #38d996, #17b77b) !important;
-  color: #062216 !important;
+  border-color: color-mix(in srgb, #6f5cff 26%, transparent) !important;
+  background: #6f5cff !important;
+  color: #fff !important;
 }
 
 .today-menu-add span {
-  font-size: 1.22rem !important;
-  font-weight: 470 !important;
+  font-size: 1.16rem !important;
+  font-weight: 520 !important;
   line-height: 1 !important;
-  transform: translateY(-1px) !important;
+  transform: translateY(-1px) scaleX(1.35) !important;
 }
 
 .today-menu-ai span {
@@ -2881,6 +2886,145 @@ html[data-resolved-theme="light"] .bottom-sheet:not(.progress-entry-bottom-sheet
 
 html[data-resolved-theme="light"] .start-quest-toast {
   box-shadow: none !important;
+}
+
+.action-list.with-period {
+  --period-cell: 29px !important;
+  overflow-x: auto !important;
+  overscroll-behavior-x: contain !important;
+  padding-bottom: 2px !important;
+  scrollbar-width: none !important;
+}
+
+.action-list.with-period::-webkit-scrollbar {
+  display: none !important;
+}
+
+.action-list.with-period .action-group,
+.action-list.with-period .period-inline-header {
+  min-width: max(100%, calc(156px + var(--period-days) * var(--period-cell))) !important;
+}
+
+.period-inline-header {
+  display: grid !important;
+  grid-template-columns: minmax(148px, 1fr) auto !important;
+  align-items: end !important;
+  gap: 6px !important;
+  padding: 0 8px 1px 10px !important;
+}
+
+.period-inline-left-label {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  color: var(--muted) !important;
+  font-size: 0.62rem !important;
+  font-weight: 760 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.period-inline-cells {
+  display: grid !important;
+  grid-template-columns: repeat(var(--period-days), var(--period-cell)) !important;
+  gap: 2px !important;
+  justify-content: end !important;
+}
+
+.period-inline-day-head,
+.period-inline-check {
+  display: grid !important;
+  width: var(--period-cell) !important;
+  min-width: var(--period-cell) !important;
+  place-items: center !important;
+  border: 0 !important;
+  color: var(--text) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.period-inline-day-head {
+  min-height: 34px !important;
+  align-content: center !important;
+  gap: 1px !important;
+  padding: 2px 0 !important;
+  border-radius: 8px !important;
+}
+
+.period-inline-day-head.active {
+  background: color-mix(in srgb, #7c5cff 18%, transparent) !important;
+}
+
+.period-inline-day-head.future,
+.period-inline-check.future {
+  opacity: 0.62 !important;
+}
+
+.period-inline-day-head span,
+.period-inline-day-head small {
+  color: var(--muted) !important;
+  font-size: 0.46rem !important;
+  font-weight: 780 !important;
+  line-height: 1 !important;
+}
+
+.period-inline-day-head strong {
+  color: var(--text) !important;
+  font-size: 0.7rem !important;
+  line-height: 1 !important;
+}
+
+.period-inline-check {
+  min-height: 32px !important;
+}
+
+.period-inline-check span {
+  display: grid !important;
+  width: 18px !important;
+  height: 18px !important;
+  place-items: center !important;
+  border: 1.4px solid color-mix(in srgb, var(--text) 26%, transparent) !important;
+  border-radius: 6px !important;
+  color: #fff !important;
+  background: transparent !important;
+  font-size: 0.68rem !important;
+  font-weight: 900 !important;
+  line-height: 1 !important;
+}
+
+.period-inline-check.checked span {
+  border-color: #34d399 !important;
+  background: #34d399 !important;
+}
+
+.period-inline-check.off::before {
+  content: "" !important;
+  width: 4px !important;
+  height: 4px !important;
+  border-radius: 50% !important;
+  background: color-mix(in srgb, var(--text) 16%, transparent) !important;
+}
+
+.period-inline-check.readonly span {
+  border-style: dashed !important;
+}
+
+.action-list .task-row.period-expanded,
+.action-list .goal-card.period-expanded {
+  grid-template-columns: minmax(148px, 1fr) auto !important;
+  min-width: max(100%, calc(156px + var(--period-days) * var(--period-cell))) !important;
+}
+
+.action-list .task-row.period-expanded {
+  display: grid !important;
+}
+
+.action-list .goal-card.period-expanded {
+  display: grid !important;
+  align-items: center !important;
+}
+
+.action-list .goal-card.period-expanded .goal-top {
+  min-width: 0 !important;
 }
 
 /* Keep scrollable tab content clear of the fixed bottom navigation. */

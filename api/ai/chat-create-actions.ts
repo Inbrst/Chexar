@@ -167,6 +167,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
               `Today is ${today}. User language is ${language}.`,
               "Schema: {\"actions\":[{\"title\":\"string\",\"icon\":\"emoji\",\"tracking_type\":\"checkbox|quantity\",\"target_value\":number|null,\"unit\":\"string|null\",\"repeat_mode\":\"once|daily|weekdays|selected_days\",\"period\":\"today|week|month|custom\",\"start_date\":\"YYYY-MM-DD\",\"end_date\":\"YYYY-MM-DD|null\",\"due_time\":\"HH:mm|null\",\"subitems\":[{\"title\":\"string\",\"target\":number|null}]}]}.",
               "Use checkbox for done/not done actions. Use quantity only when the user gives a numeric target.",
+              "If the user asks to create several actions, do not convert that instruction line into an action.",
+              "For numbered lists, ignore list numbers such as 1., 2., 3.; use only real quantities from the item text.",
               "For tomorrow, set start_date and end_date to tomorrow and period to today.",
               "Do not save anything. Only suggest drafts.",
             ].join(" "),
