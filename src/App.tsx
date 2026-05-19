@@ -48,6 +48,7 @@ import {
   getDailyCompletionPercent,
   getGoalSchedulePreview,
   getGoalProgressPercent,
+  getGoalDailyMetrics,
   getLastNDaysCompletionTrend,
   getMonthRange,
   getMonthAverageCompletion,
@@ -63,6 +64,7 @@ import {
   upsertDailyRecord,
 } from "./calculations";
 import { addDays, daysInclusive, parseDateKey, todayKey, toDateKey } from "./dateUtils";
+import { normalizeSemanticQuantityUnit } from "./semanticUnits";
 import {
   createEmptyDailyRecords,
   createEmptyState,
@@ -832,11 +834,6 @@ type ProgressSheetState = {
   goal: ProgressGoal;
 } | null;
 
-type ConfirmState = {
-  task: TaskItem;
-  nextCompleted: boolean;
-} | null;
-
 type ViewAllState = "goals" | "tasks" | null;
 
 type DeleteState =
@@ -963,6 +960,70 @@ function formatNumber(value: number): string {
   return new Intl.NumberFormat("ru-RU", {
     maximumFractionDigits: Number.isInteger(value) ? 0 : 1,
   }).format(value);
+}
+
+function getRussianCountForm(value: number, forms: [string, string, string]): string {
+  const integer = Math.abs(Math.trunc(value));
+  const lastTwo = integer % 100;
+  const last = integer % 10;
+
+  if (lastTwo >= 11 && lastTwo <= 14) {
+    return forms[2];
+  }
+
+  if (last === 1) {
+    return forms[0];
+  }
+
+  if (last >= 2 && last <= 4) {
+    return forms[1];
+  }
+
+  return forms[2];
+}
+
+function formatGoalAmount(value: number, unit: string): string {
+  const normalizedUnit = unit.trim().toLocaleLowerCase("ru-RU");
+  const russianForms: Record<string, [string, string, string]> = {
+    "урок": ["урок", "урока", "уроков"],
+    "урока": ["урок", "урока", "уроков"],
+    "уроков": ["урок", "урока", "уроков"],
+    "страница": ["страница", "страницы", "страниц"],
+    "страницы": ["страница", "страницы", "страниц"],
+    "страниц": ["страница", "страницы", "страниц"],
+    "задача": ["задача", "задачи", "задач"],
+    "задачи": ["задача", "задачи", "задач"],
+    "задач": ["задача", "задачи", "задач"],
+    "тренировка": ["тренировка", "тренировки", "тренировок"],
+    "тренировки": ["тренировка", "тренировки", "тренировок"],
+    "тренировок": ["тренировка", "тренировки", "тренировок"],
+    "минута": ["минута", "минуты", "минут"],
+    "минуты": ["минута", "минуты", "минут"],
+    "минут": ["минута", "минуты", "минут"],
+    "час": ["час", "часа", "часов"],
+    "часа": ["час", "часа", "часов"],
+    "часов": ["час", "часа", "часов"],
+    "шаг": ["шаг", "шага", "шагов"],
+    "шага": ["шаг", "шага", "шагов"],
+    "шагов": ["шаг", "шага", "шагов"],
+    "стакан": ["стакан", "стакана", "стаканов"],
+    "стакана": ["стакан", "стакана", "стаканов"],
+    "стаканов": ["стакан", "стакана", "стаканов"],
+  };
+  const displayUnit = russianForms[normalizedUnit] ? getRussianCountForm(value, russianForms[normalizedUnit]) : unit.trim();
+
+  return `${formatNumber(value)} ${displayUnit}`.trim();
+}
+
+function getGoalDisplayUnit(goal: ProgressGoal, language: AppSettings["language"] = "ru"): string {
+  return normalizeSemanticQuantityUnit({
+    title: goal.title,
+    unit: goal.unit,
+    sourceText: `${goal.title} ${goal.note ?? ""}`,
+    targetValue: goal.targetValue,
+    language,
+    mode: "display",
+  });
 }
 
 function capitalizeLabel(value: string): string {
@@ -1357,6 +1418,16 @@ function buildLocalAiDraft(text: string): AiActionDraft {
   const title = knownTitle ?? fallbackTitle ?? sourceText.trim() ?? "Действие";
   const normalizedTitle = title.charAt(0).toLocaleUpperCase("ru-RU") + title.slice(1, 42);
   const scheduledDate = hasTomorrow ? addDays(todayKey(), 1) : todayKey();
+  const semanticUnit = hasQuantity
+    ? normalizeSemanticQuantityUnit({
+        title: normalizedTitle,
+        unit: unitMatch?.[1],
+        sourceText,
+        targetValue,
+        language: "ru",
+        mode: "draft",
+      })
+    : undefined;
 
   return {
     intent: commandOnly ? "unknown" : "create_action",
@@ -1364,7 +1435,7 @@ function buildLocalAiDraft(text: string): AiActionDraft {
     icon: inferAiEmoji(sourceText),
     tracking_type: hasQuantity ? "quantity" : "checkbox",
     target_value: hasQuantity ? targetValue : undefined,
-    unit: hasQuantity ? unitMatch?.[1] ?? "раз" : undefined,
+    unit: semanticUnit,
     repeat_mode: repeatMode,
     period,
     start_date: scheduledDate,
@@ -1432,17 +1503,32 @@ function normalizeAiActionDraft(value: unknown, fallbackText: string): AiActionD
         .filter((item): item is AiSubitemDraft => item !== null)
         .slice(0, 12)
     : [];
+  const trackingType = record.tracking_type === "checkbox" || record.tracking_type === "quantity" ? record.tracking_type : local.tracking_type;
+  const normalizedTitle = cleanedTitle || local.title;
+  const normalizedTargetValue = Number.isFinite(target) && target > 0 ? target : local.target_value;
+  const rawUnit = typeof record.unit === "string" && record.unit.trim() ? record.unit.trim() : local.unit;
+  const normalizedUnit =
+    trackingType === "quantity"
+      ? normalizeSemanticQuantityUnit({
+          title: normalizedTitle,
+          unit: rawUnit,
+          sourceText: fallbackText,
+          targetValue: normalizedTargetValue,
+          language: "ru",
+          mode: "draft",
+        })
+      : undefined;
 
   return {
     intent:
       record.intent === "create_action" || record.intent === "mark_done" || record.intent === "add_progress" || record.intent === "unknown"
         ? record.intent
         : "create_action",
-    title: cleanedTitle || local.title,
+    title: normalizedTitle,
     icon: typeof record.icon === "string" && record.icon.trim() ? record.icon.trim() : local.icon,
-    tracking_type: record.tracking_type === "checkbox" || record.tracking_type === "quantity" ? record.tracking_type : local.tracking_type,
-    target_value: Number.isFinite(target) && target > 0 ? target : local.target_value,
-    unit: typeof record.unit === "string" && record.unit.trim() ? record.unit.trim() : local.unit,
+    tracking_type: trackingType,
+    target_value: normalizedTargetValue,
+    unit: normalizedUnit,
     repeat_mode: record.repeat_mode === "once" || record.repeat_mode === "daily" || record.repeat_mode === "weekdays" || record.repeat_mode === "selected_days" ? record.repeat_mode : local.repeat_mode,
     period: record.period === "today" || record.period === "week" || record.period === "month" || record.period === "custom" ? record.period : local.period,
     start_date: normalizeAiDateKey(record.start_date) ?? local.start_date,
@@ -1724,14 +1810,15 @@ function getCarryOverCandidates(state: AppState, todayDateKey: string, language:
       }
 
       const remaining = Math.max(goal.targetValue - getCalendarGoalValueAtEndOfDate(goal, yesterday), 0);
+      const displayUnit = getGoalDisplayUnit(goal, language);
       addCandidate({
         type: "goal",
         goal,
         movedFromDate: occurrence.movedFromDate ?? occurrence.date,
         detail:
           language === "en"
-            ? `${formatNumber(remaining)} ${goal.unit} still left`
-            : `Еще осталось ${formatNumber(remaining)} ${goal.unit}`,
+            ? `${formatGoalAmount(remaining, displayUnit)} still left`
+            : `Еще осталось ${formatGoalAmount(remaining, displayUnit)}`,
       });
     });
 
@@ -1755,6 +1842,7 @@ function getCarryOverCandidates(state: AppState, todayDateKey: string, language:
 
   state.goals.forEach((goal) => {
     const periodRemaining = Math.max(goal.targetValue - goal.currentValue, 0);
+    const displayUnit = getGoalDisplayUnit(goal, language);
 
     if (!alreadyCarried.has(`goal:${goal.id}`) && goal.endDate < todayDateKey && periodRemaining > 0) {
       addCandidate({
@@ -1763,8 +1851,8 @@ function getCarryOverCandidates(state: AppState, todayDateKey: string, language:
         movedFromDate: goal.endDate,
         detail:
           language === "en"
-            ? `${formatNumber(periodRemaining)} ${goal.unit} left from the period`
-            : `Осталось ${formatNumber(periodRemaining)} ${goal.unit} за период`,
+            ? `${formatGoalAmount(periodRemaining, displayUnit)} left from the period`
+            : `Осталось ${formatGoalAmount(periodRemaining, displayUnit)} за период`,
       });
       return;
     }
@@ -1785,7 +1873,7 @@ function getCarryOverCandidates(state: AppState, todayDateKey: string, language:
       type: "goal",
       goal,
       movedFromDate: yesterday,
-      detail: `${formatNumber(logged)} / ${formatNumber(required)} ${goal.unit}`,
+      detail: `${formatNumber(logged)} / ${formatNumber(required)} ${displayUnit}`,
     });
   });
 
@@ -1945,10 +2033,10 @@ function getCalendarDayDetails(
   const isPast = dateKey < today;
 
   dueGoals.forEach((goal) => {
-    const required = getCalendarRequiredForDate(goal, dateKey);
-    const logged = getCalendarLoggedAmount(goal, dateKey);
+    const metrics = getGoalDailyMetrics(goal, dateKey);
     const completedGoal = isCalendarGoalDailySuccess(goal, dateKey);
-    const detail = required > 0 ? `${formatNumber(logged)} / ${formatNumber(required)}` : `${formatNumber(logged)} ${goal.unit}`;
+    const displayUnit = getGoalDisplayUnit(goal);
+    const detail = metrics.dailyPlan > 0 ? `${formatNumber(metrics.todayCompleted)} / ${formatNumber(metrics.dailyPlan)}` : formatGoalAmount(metrics.todayCompleted, displayUnit);
     const item = {
       id: goal.id,
       title: goal.title,
@@ -2042,49 +2130,13 @@ function isCalendarGoalCompletedByTarget(goal: ProgressGoal, dateKey: string): b
 }
 
 function isCalendarGoalDailySuccess(goal: ProgressGoal, dateKey: string): boolean {
-  const required = getCalendarRequiredForDate(goal, dateKey);
-  const logged = getCalendarLoggedAmount(goal, dateKey);
+  const metrics = getGoalDailyMetrics(goal, dateKey);
 
-  return required <= 0 || logged >= required || isCalendarGoalCompletedByTarget(goal, dateKey);
-}
-
-function countCalendarActiveDays(goal: ProgressGoal, startDate: string): number {
-  if (startDate > goal.endDate) {
-    return 0;
-  }
-
-  let count = 0;
-  let cursor = startDate;
-
-  while (cursor <= goal.endDate) {
-    if (isGoalDueOnDate(goal, parseDateKey(cursor), cursor)) {
-      count += 1;
-    }
-
-    cursor = addDays(cursor, 1);
-  }
-
-  return count;
+  return metrics.dailyPlan <= 0 || metrics.todayCompleted >= metrics.dailyPlan || metrics.totalCompleted >= metrics.targetAmount;
 }
 
 function getCalendarRequiredForDate(goal: ProgressGoal, dateKey: string): number {
-  if (!isGoalDueOnDate(goal, parseDateKey(dateKey), dateKey)) {
-    return 0;
-  }
-
-  if (dateKey === todayKey()) {
-    return getRequiredToday(goal, dateKey);
-  }
-
-  const valueAtStart = getCalendarGoalValueBeforeDate(goal, dateKey);
-  const remaining = Math.max(goal.targetValue - valueAtStart, 0);
-  const remainingActiveDays = countCalendarActiveDays(goal, dateKey);
-
-  if (remaining <= 0) {
-    return 0;
-  }
-
-  return remainingActiveDays <= 0 ? remaining : Math.ceil(remaining / remainingActiveDays);
+  return getGoalDailyMetrics(goal, dateKey).dailyPlan;
 }
 
 function getCalendarDayTone(percent: number, hasData: boolean): "closed" | "partial" | "missed" | "empty" {
@@ -2487,10 +2539,9 @@ function sortTasksForToday(tasks: TaskItem[], dateKey: string): TaskItem[] {
 function sortGoalsForToday(goals: ProgressGoal[], dateKey: string): ProgressGoal[] {
   return goals
     .map((goal, index) => {
-      const required = getRequiredToday(goal, dateKey);
-      const logged = getTodayLoggedAmount(goal, dateKey);
-      const completed = goal.currentValue >= goal.targetValue;
-      const overRatio = required <= 0 ? (completed ? Number.POSITIVE_INFINITY : 0) : logged / required;
+      const metrics = getGoalDailyMetrics(goal, dateKey);
+      const completed = metrics.totalCompleted >= metrics.targetAmount;
+      const overRatio = metrics.dailyPlan <= 0 ? (completed ? Number.POSITIVE_INFINITY : 0) : metrics.todayCompleted / metrics.dailyPlan;
 
       return {
         goal,
@@ -2620,7 +2671,6 @@ export default function App() {
   const [dayRecords, setDayRecords] = useState(() => loadDailyRecords());
     const [progressSheet, setProgressSheet] = useState<ProgressSheetState>(null);
     const [actionSheet, setActionSheet] = useState<ActionSheetState>(null);
-    const [confirmState, setConfirmState] = useState<ConfirmState>(null);
     const [deleteState, setDeleteState] = useState<DeleteState>(null);
     const [editState, setEditState] = useState<EditState>(null);
     const [timerNow, setTimerNow] = useState(() => Date.now());
@@ -2745,9 +2795,8 @@ export default function App() {
         return item.completed ? 100 : 0;
       }
 
-      const required = getRequiredToday(item.goal, activeDate);
-      const logged = getTodayLoggedAmount(item.goal, activeDate);
-      return required > 0 ? clampPercent((logged / required) * 100) : getGoalProgressPercent(item.goal);
+      const metrics = getGoalDailyMetrics(item.goal, activeDate);
+      return metrics.dailyPlan > 0 ? clampPercent((metrics.todayCompleted / metrics.dailyPlan) * 100) : metrics.progressPercent;
     };
     const getItemGroup = (item: TodayActionItem): Pick<TodayActionGroup, "key" | "title" | "order"> => {
       if (todayGroupMode === "none") {
@@ -2911,7 +2960,6 @@ export default function App() {
     Boolean(
       resetConfirmOpen ||
         progressSheet ||
-        confirmState ||
         actionSheet ||
         deleteState ||
         editState ||
@@ -2953,7 +3001,6 @@ export default function App() {
     addSheetOpen,
     aiCreateOpen,
     carryOverOpen,
-    confirmState,
     deleteState,
     editState,
     isSelectedDateMode,
@@ -3212,11 +3259,6 @@ export default function App() {
       return true;
     }
 
-    if (confirmState) {
-      setConfirmState(null);
-      return true;
-    }
-
     if (progressSheet) {
       setProgressSheet(null);
       return true;
@@ -3248,7 +3290,6 @@ export default function App() {
     setResetConfirmOpen(false);
     setAddSheetOpen(false);
     setProgressSheet(null);
-      setConfirmState(null);
       setDeleteState(null);
       setEditState(null);
       setActionSheet(null);
@@ -3591,6 +3632,48 @@ export default function App() {
     setGoalProgressForDate(goalId, activeDate, nextAmount, note);
   }
 
+  function isSubitemStateEmpty(state: ActionSubitemState): boolean {
+    return state.completed !== true && Number(state.count ?? 0) <= 0;
+  }
+
+  function getCompleteSubitemState(subitem: ActionSubitem): ActionSubitemState {
+    if (subitem.targetCount && subitem.targetCount > 1) {
+      return {
+        count: subitem.targetCount,
+        completed: true,
+      };
+    }
+
+    return { completed: true };
+  }
+
+  function isActionSubitemComplete(subitem: ActionSubitem, state: ActionSubitemState | undefined): boolean {
+    if (subitem.targetCount && subitem.targetCount > 1) {
+      return Number(state?.count ?? 0) >= subitem.targetCount;
+    }
+
+    return state?.completed === true;
+  }
+
+  function areTaskSubitemsComplete(subitems: ActionSubitem[], dayState: Record<string, ActionSubitemState>): boolean {
+    return subitems.length > 0 && subitems.every((subitem) => isActionSubitemComplete(subitem, dayState[subitem.id]));
+  }
+
+  function getNextSubitemClickState(subitem: ActionSubitem, currentState: ActionSubitemState): ActionSubitemState {
+    if (subitem.targetCount && subitem.targetCount > 1) {
+      const target = subitem.targetCount;
+      const currentCount = Math.min(Number(currentState.count ?? 0), target);
+      const nextCount = currentCount >= target ? 0 : Math.min(currentCount + 1, target);
+
+      return {
+        count: nextCount,
+        completed: nextCount >= target,
+      };
+    }
+
+    return { completed: currentState.completed !== true };
+  }
+
   function toggleGoalCompletedForDate(goalId: string, dateKey: string, completed: boolean) {
     const goal = appState.goals.find((item) => item.id === goalId);
 
@@ -3613,11 +3696,19 @@ export default function App() {
         }
 
         const completedDates = new Set(task.completedDates ?? []);
+        const subitems = task.subitems ?? [];
+        const subitemStateByDate = { ...(task.subitemStateByDate ?? {}) };
 
         if (completed) {
           completedDates.add(dateKey);
+          if (subitems.length > 0) {
+            subitemStateByDate[dateKey] = Object.fromEntries(subitems.map((subitem) => [subitem.id, getCompleteSubitemState(subitem)]));
+          }
         } else {
           completedDates.delete(dateKey);
+          if (subitems.length > 0) {
+            delete subitemStateByDate[dateKey];
+          }
         }
 
         const completedAtByDate = { ...(task.completedAtByDate ?? {}) };
@@ -3643,6 +3734,7 @@ export default function App() {
           completedDates: Array.from(completedDates).sort(),
           completedAtByDate: Object.keys(completedAtByDate).length > 0 ? completedAtByDate : undefined,
           lateDates: Array.from(lateDates).sort(),
+          subitemStateByDate: Object.keys(subitemStateByDate).length > 0 ? subitemStateByDate : undefined,
         };
       }),
       occurrences: (state.occurrences ?? []).map((occurrence) =>
@@ -3669,25 +3761,21 @@ export default function App() {
         }
 
         const subitems = task.subitems ?? [];
-        const dayState = {
+        const dayState: Record<string, ActionSubitemState> = {
           ...(task.subitemStateByDate?.[activeDate] ?? {}),
-          [subitemId]: nextState,
         };
-        const subitemStateByDate = {
-          ...(task.subitemStateByDate ?? {}),
-          [activeDate]: dayState,
-        };
-        const allComplete =
-          subitems.length > 0 &&
-          subitems.every((subitem) => {
-            const state = dayState[subitem.id];
-
-            if (subitem.targetCount && subitem.targetCount > 1) {
-              return Number(state?.count ?? 0) >= subitem.targetCount;
-            }
-
-            return state?.completed === true;
-          });
+        if (isSubitemStateEmpty(nextState)) {
+          delete dayState[subitemId];
+        } else {
+          dayState[subitemId] = nextState;
+        }
+        const subitemStateByDate = { ...(task.subitemStateByDate ?? {}) };
+        if (Object.keys(dayState).length > 0) {
+          subitemStateByDate[activeDate] = dayState;
+        } else {
+          delete subitemStateByDate[activeDate];
+        }
+        const allComplete = areTaskSubitemsComplete(subitems, dayState);
         const completedDates = new Set(task.completedDates ?? []);
 
         if (allComplete) {
@@ -3716,7 +3804,7 @@ export default function App() {
 
         return {
           ...task,
-          subitemStateByDate,
+          subitemStateByDate: Object.keys(subitemStateByDate).length > 0 ? subitemStateByDate : undefined,
           completedDates: Array.from(completedDates).sort(),
           completedAtByDate: Object.keys(completedAtByDate).length > 0 ? completedAtByDate : undefined,
           lateDates: Array.from(lateDates).sort(),
@@ -3746,36 +3834,15 @@ export default function App() {
 
     const currentState = task.subitemStateByDate?.[activeDate]?.[subitemId] ?? {};
     const dayState = task.subitemStateByDate?.[activeDate] ?? {};
-    const willCompleteAll =
-      (task.subitems ?? []).length > 0 &&
-      (task.subitems ?? []).every((item) => {
-        if (item.id === subitemId) {
-          if (item.targetCount && item.targetCount > 1) {
-            return Math.min(Number(currentState.count ?? 0) + 1, item.targetCount) >= item.targetCount;
-          }
-
-          return true;
-        }
-
-        const state = dayState[item.id];
-        return item.targetCount && item.targetCount > 1 ? Number(state?.count ?? 0) >= item.targetCount : state?.completed === true;
-      });
-
-    if (subitem.targetCount && subitem.targetCount > 1) {
-      const nextCount = Math.min(Number(currentState.count ?? 0) + 1, subitem.targetCount);
-      telegramImpact("light");
-      updateTaskSubitem(taskId, subitemId, {
-        count: nextCount,
-        completed: nextCount >= subitem.targetCount,
-      });
-      if (willCompleteAll) {
-        completeOnboardingQuestStep("taskCompleted");
-      }
-      return;
+    const nextState = getNextSubitemClickState(subitem, currentState);
+    const nextDayState = { ...dayState, [subitemId]: nextState };
+    if (isSubitemStateEmpty(nextState)) {
+      delete nextDayState[subitemId];
     }
+    const willCompleteAll = areTaskSubitemsComplete(task.subitems ?? [], nextDayState);
 
     telegramImpact("light");
-    updateTaskSubitem(taskId, subitemId, { completed: true });
+    updateTaskSubitem(taskId, subitemId, nextState);
     if (willCompleteAll) {
       completeOnboardingQuestStep("taskCompleted");
     }
@@ -4001,13 +4068,22 @@ export default function App() {
     const emoji = normalizeEmojiChoice(draft.icon ?? "") ?? inferAiEmoji(`${draft.title} ${draft.unit ?? ""}`);
 
     if (draft.tracking_type === "quantity") {
-      const unit = draft.unit?.trim() || (settings.language === "en" ? "times" : "раз");
       const targetValue = Number(draft.target_value);
+      const normalizedTargetValue = Number.isFinite(targetValue) && targetValue > 0 ? targetValue : 50;
+      const unit = normalizeSemanticQuantityUnit({
+        title,
+        unit: draft.unit,
+        sourceText: `${draft.title} ${draft.unit ?? ""}`,
+        fallbackUnit: settings.language === "en" ? "times" : "раз",
+        targetValue: normalizedTargetValue,
+        language: settings.language,
+        mode: "draft",
+      });
 
       createGoal({
         title,
         emoji,
-        targetValue: Number.isFinite(targetValue) && targetValue > 0 ? targetValue : 50,
+        targetValue: normalizedTargetValue,
         currentValue: 0,
         unit,
         startDate: dates.startDate,
@@ -4283,10 +4359,7 @@ export default function App() {
                                   setActionSheet({ type: "task", task });
                                 }}
                                 onToggle={() => {
-                                  setConfirmState({
-                                    task,
-                                    nextCompleted: !completedToday,
-                                  });
+                                  setTaskCompleted(task.id, !completedToday);
                                 }}
                                 onSubitemAdvance={(subitemId) => {
                                   setSubitemsPanelActivity(Date.now());
@@ -4375,20 +4448,6 @@ export default function App() {
             />
           )}
 
-          {confirmState && (
-            <ConfirmDialog
-              title={confirmState.nextCompleted ? activeUiCopy.markDoneTitle : activeUiCopy.undoDoneTitle}
-              description={confirmState.task.note}
-              confirmLabel={confirmState.nextCompleted ? activeUiCopy.yesDone : activeUiCopy.yes}
-              cancelLabel={activeUiCopy.cancel}
-              onCancel={() => setConfirmState(null)}
-              onConfirm={() => {
-                setTaskCompleted(confirmState.task.id, confirmState.nextCompleted);
-                setConfirmState(null);
-              }}
-            />
-          )}
-
           {actionSheet && actionSheet.type === "task" && (
             <TaskActionSheet
               task={actionSheet.task}
@@ -4396,10 +4455,7 @@ export default function App() {
               copy={activeUiCopy}
               onClose={() => setActionSheet(null)}
               onToggle={() => {
-                setConfirmState({
-                  task: actionSheet.task,
-                  nextCompleted: !isTaskCompletedOnDate(actionSheet.task, activeDate),
-                });
+                setTaskCompleted(actionSheet.task.id, !isTaskCompletedOnDate(actionSheet.task, activeDate));
                 setActionSheet(null);
               }}
               onEdit={() => {
@@ -4549,10 +4605,7 @@ export default function App() {
                 const completedToday = isTaskCompletedOnDate(task, activeDate);
 
                 setViewAllSheet(null);
-                setConfirmState({
-                  task,
-                  nextCompleted: !completedToday,
-                });
+                setTaskCompleted(task.id, !completedToday);
               }}
             />
           )}
@@ -5156,13 +5209,12 @@ function TodayPeriodOverview({
       return null;
     }
 
-    const required = getCalendarRequiredForDate(goal, dateKey);
-    const logged = getCalendarLoggedAmount(goal, dateKey);
+    const metrics = getGoalDailyMetrics(goal, dateKey);
 
     return {
       checked: isCalendarGoalDailySuccess(goal, dateKey),
       disabled: false,
-      detail: { completed: logged, total: required },
+      detail: { completed: metrics.todayCompleted, total: metrics.dailyPlan },
     };
   }
 
@@ -6400,18 +6452,15 @@ function GoalCard({
   onEdit?: () => void;
   periodCells?: ReactNode;
 }) {
-  const progressPercent = getGoalProgressPercent(goal);
-  const requiredToday = getRequiredToday(goal, today);
-  const loggedToday = getTodayLoggedAmount(goal, today);
-  const isGoalCompleted = goal.currentValue >= goal.targetValue;
+  const metrics = getGoalDailyMetrics(goal, today);
+  const progressPercent = metrics.progressPercent;
+  const isGoalCompleted = metrics.totalCompleted >= metrics.targetAmount;
   const isTodayDone = isGoalCompleted;
   const dueMeta = formatDueMeta(goal.dueTime, today, isTodayDone, goal.completedAtByDate?.[today], goal.lateDates?.includes(today) ?? false, nowMs, copy);
   const progressStyle = { "--goal-progress": `${progressPercent}%`, ...getFillToneStyle(progressPercent) } as CSSProperties;
-  const recommendedLeft = Math.max(requiredToday - loggedToday, 0);
-  const requiredLine = recommendedLeft > 0 ? `${formatNumber(recommendedLeft)} ${goal.unit}` : "";
   const swipeDeleteHandler = periodCells ? undefined : onOpenManual;
-  const periodRemaining = Math.max(goal.targetValue - goal.currentValue, 0);
-  const recommendedTitleValue = periodRemaining > 0 && requiredLine ? requiredLine : "";
+  const displayUnit = getGoalDisplayUnit(goal);
+  const dailyPlanText = metrics.dailyPlan > 0 && metrics.dailyRemaining > 0 ? formatGoalAmount(metrics.dailyPlan, displayUnit) : "";
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
@@ -6434,15 +6483,15 @@ function GoalCard({
             <div className="goal-title-row">
               <div className="goal-title-progress">
                 <div className="goal-main-line">
-                  <h3 title={recommendedTitleValue ? `${goal.title} (${recommendedTitleValue})` : goal.title}>
+                  <h3 title={dailyPlanText ? `${goal.title} (${dailyPlanText})` : goal.title}>
                     <span className="goal-title-text">{goal.title}</span>
-                    {recommendedTitleValue && <span className="goal-title-recommendation">({recommendedTitleValue})</span>}
+                    {dailyPlanText && <span className="goal-title-recommendation"> ({dailyPlanText})</span>}
                   </h3>
                   {dueMeta && <small className="due-meta">{dueMeta}</small>}
                 </div>
                 <div className="goal-progress-stack">
                   <span className="goal-numbers">
-                    {formatNumber(goal.currentValue)} / {formatNumber(goal.targetValue)} ({formatNumber(Math.round(progressPercent))}%)
+                    {formatNumber(metrics.totalCompleted)} / {formatNumber(metrics.targetAmount)} · {formatNumber(Math.round(progressPercent))}%
                   </span>
                 </div>
               </div>
@@ -8515,8 +8564,9 @@ function ProgressSheet({
   onClose: () => void;
   onSave: (amount: number, note?: string) => void;
 }) {
-  const requiredToday = getRequiredToday(goal, today);
-  const loggedToday = getTodayLoggedAmount(goal, today);
+  const metrics = getGoalDailyMetrics(goal, today);
+  const requiredToday = metrics.dailyPlan;
+  const loggedToday = metrics.todayCompleted;
   const [amount, setAmount] = useState(String(loggedToday || 0));
   const [note, setNote] = useState("");
   const numericDraftAmount = Number(amount);
@@ -8526,6 +8576,7 @@ function ProgressSheet({
   const targetLabel = copy.save === "Save" ? "target" : "цель";
   const todayNeedLabel = copy.requiredToday;
   const periodLabel = copy.save === "Save" ? "period until" : "период до";
+  const displayUnit = getGoalDisplayUnit(goal, copy.save === "Save" ? "en" : "ru");
   const progressStyle = {
     "--entry-progress": `${todayPercent}%`,
   } as CSSProperties;
@@ -8558,15 +8609,15 @@ function ProgressSheet({
             <span className="progress-entry-emoji" aria-hidden="true">{getActionEmoji(goal, "📈")}</span>
             <div>
               <h3>{goal.title}</h3>
-              <p>{goal.note ? `${goal.note} · ` : ""}{targetLabel} {formatNumber(goal.targetValue)} {goal.unit} · {periodLabel} {formatDateLabel(goal.endDate)}</p>
+              <p>{goal.note ? `${goal.note} · ` : ""}{targetLabel} {formatGoalAmount(goal.targetValue, displayUnit)} · {periodLabel} {formatDateLabel(goal.endDate)}</p>
             </div>
           </div>
-          <strong>{todayNeedLabel}: {formatNumber(requiredToday)} {goal.unit}</strong>
+          <strong>{todayNeedLabel}: {formatGoalAmount(requiredToday, displayUnit)}</strong>
         </section>
 
         <div className="progress-entry-fill" style={progressStyle}>
           <span />
-          <strong>{formatNumber(previewAmount)} / {formatNumber(requiredToday)} {goal.unit}</strong>
+          <strong>{formatGoalAmount(previewAmount, displayUnit)} / {formatGoalAmount(requiredToday, displayUnit)}</strong>
           <em>{formatNumber(todayPercent)}%</em>
         </div>
 
@@ -9337,7 +9388,16 @@ function AddSheet({
     const nextPeriod: ActionPeriod = draft.period === "custom" ? "month" : draft.period;
     const nextRepeatMode: GoalRepeatMode =
       draft.repeat_mode === "weekdays" ? "weekdays" : draft.repeat_mode === "selected_days" ? "selectedDays" : "everyDay";
-    const nextUnit = draft.unit?.trim() || unit || (language === "en" ? "times" : "раз");
+    const nextTargetValue = Number(draft.target_value && draft.target_value > 0 ? draft.target_value : 50);
+    const nextUnit = normalizeSemanticQuantityUnit({
+      title: draft.title,
+      unit: draft.unit?.trim() || unit,
+      sourceText: `${draft.title} ${draft.unit ?? ""}`,
+      fallbackUnit: language === "en" ? "times" : "раз",
+      targetValue: nextTargetValue,
+      language,
+      mode: "draft",
+    });
     const normalizedEmoji = normalizeEmojiChoice(draft.icon ?? "") ?? inferAiEmoji(`${draft.title} ${draft.unit ?? ""}`);
     const nextSubitems = normalizeAiSubitems({ subitems: draft.subitems ?? [] }, draft.title).map((subitem, index) => ({
       id: createId("subitem"),
@@ -9353,7 +9413,7 @@ function AddSheet({
     setPeriod(nextPeriod);
     setRepeatMode(nextRepeatMode);
     setSelectedDays(defaultGoalSelectedDays);
-    setTargetValue(nextTrackingMode === "amount" ? String(draft.target_value && draft.target_value > 0 ? draft.target_value : 50) : "");
+    setTargetValue(nextTrackingMode === "amount" ? String(nextTargetValue) : "");
     setUnit(nextTrackingMode === "amount" ? nextUnit : "");
     setCurrentValue("0");
     setQuickValues(nextTrackingMode === "amount" ? getDefaultQuickValues(nextUnit).join(", ") : "");

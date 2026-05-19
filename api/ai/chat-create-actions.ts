@@ -1,3 +1,5 @@
+import { normalizeSemanticQuantityUnit } from "../../src/semanticUnits";
+
 declare const process: {
   env: Record<string, string | undefined>;
 };
@@ -94,6 +96,18 @@ function normalizeDraft(value: unknown, fallbackTitle: string): AiActionDraft | 
 
   const trackingType: TrackingType = item.tracking_type === "checkbox" || item.tracking_type === "quantity" ? item.tracking_type : "checkbox";
   const targetValue = Number(item.target_value);
+  const normalizedTargetValue = trackingType === "quantity" && Number.isFinite(targetValue) && targetValue > 0 ? targetValue : undefined;
+  const normalizedUnit =
+    trackingType === "quantity"
+      ? normalizeSemanticQuantityUnit({
+          title,
+          unit: text(item.unit),
+          sourceText: fallbackTitle,
+          targetValue: normalizedTargetValue,
+          language: "ru",
+          mode: "draft",
+        })
+      : undefined;
   const repeatMode: RepeatMode =
     item.repeat_mode === "once" || item.repeat_mode === "daily" || item.repeat_mode === "weekdays" || item.repeat_mode === "selected_days"
       ? item.repeat_mode
@@ -127,8 +141,8 @@ function normalizeDraft(value: unknown, fallbackTitle: string): AiActionDraft | 
     title,
     icon: text(item.icon) || undefined,
     tracking_type: trackingType,
-    target_value: trackingType === "quantity" && Number.isFinite(targetValue) && targetValue > 0 ? targetValue : undefined,
-    unit: trackingType === "quantity" ? text(item.unit) || undefined : undefined,
+    target_value: normalizedTargetValue,
+    unit: normalizedUnit,
     repeat_mode: repeatMode,
     period,
     start_date: dateKey(item.start_date),
@@ -195,6 +209,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
               "Schema: {\"actions\":[{\"intent\":\"create_action|mark_done|add_progress|unknown\",\"title\":\"string\",\"icon\":\"emoji\",\"tracking_type\":\"checkbox|quantity\",\"target_value\":number|null,\"unit\":\"string|null\",\"repeat_mode\":\"once|daily|weekdays|selected_days\",\"period\":\"today|week|month|custom\",\"start_date\":\"YYYY-MM-DD\",\"end_date\":\"YYYY-MM-DD|null\",\"due_time\":\"HH:mm|null\",\"subitems\":[{\"title\":\"string\",\"target\":number|null}],\"missing_fields\":[],\"clarifying_question\":\"string|null\"}],\"question\":\"string|null\"}.",
               "Use checkbox for done/not done actions. Use quantity only when the user gives a numeric target.",
               "Example: 'создай немецкий 50 уроков на месяц' -> title 'Немецкий', icon '🇩🇪', quantity, target_value 50, unit 'уроков', daily, month.",
+              "Use semantically logical units. For generic workout/training/sport requests, use unit тренировок/workouts unless the user explicitly says minutes or hours.",
+              "Do not invent minutes for 'тренировка 2' or 'workout 2'; that means 2 workouts, not 2 minutes.",
               "Never use goal/task/action/цель/задача as title unless the user explicitly quoted it as the title.",
               "If important fields are missing, return no low-quality action and set a one-sentence question.",
               "If the user asks to create several actions, do not convert that instruction line into an action.",

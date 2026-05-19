@@ -25,6 +25,15 @@ type SchedulableItem = {
   selectedDays?: number[];
 };
 
+export type GoalDailyMetrics = {
+  totalCompleted: number;
+  targetAmount: number;
+  todayCompleted: number;
+  dailyPlan: number;
+  dailyRemaining: number;
+  progressPercent: number;
+};
+
 export type GoalSchedulePreview = {
   neededPerDay: number;
   neededPerWeek: number;
@@ -137,21 +146,43 @@ export function getTaskSubitemProgress(task: TaskItem, dateKey: string): { compl
 }
 
 export function getRequiredToday(goal: ProgressGoal, today: string): number {
-  const todayDate = parseDateKey(today);
+  return getGoalDailyMetrics(goal, today).dailyPlan;
+}
 
-  if (!isGoalDueOnDate(goal, todayDate, today)) {
-    return 0;
+export function getGoalDailyRecommendation(goal: ProgressGoal, dateKey: string, currentDateKey = todayKey()): number {
+  return getGoalDailyMetrics(goal, dateKey, currentDateKey).dailyPlan;
+}
+
+export function getGoalDailyMetrics(goal: ProgressGoal, dateKey: string, currentDateKey = todayKey()): GoalDailyMetrics {
+  const date = parseDateKey(dateKey);
+  const targetAmount = Math.max(goal.targetValue, 0);
+  const totalCompleted = Math.max(dateKey >= currentDateKey ? goal.currentValue : getGoalHistoricalValueAtEndOfDate(goal, dateKey), 0);
+  const todayCompleted = Math.max(getLoggedAmountForDate(goal, dateKey), 0);
+  const progressPercent = targetAmount <= 0 ? 0 : clampPercent((totalCompleted / targetAmount) * 100);
+
+  if (!isGoalDueOnDate(goal, date, dateKey)) {
+    return {
+      totalCompleted,
+      targetAmount,
+      todayCompleted,
+      dailyPlan: 0,
+      dailyRemaining: 0,
+      progressPercent,
+    };
   }
 
-  const valueAtStartOfDay = getGoalValueBeforeDate(goal, today);
-  const remainingAmount = Math.max(goal.targetValue - valueAtStartOfDay, 0);
-  const remainingActiveDays = countActiveDays(today, goal.endDate, goal.repeatMode, goal.selectedDays);
+  const remainingAmount = Math.max(targetAmount - totalCompleted, 0);
+  const remainingActiveDays = countActiveDays(dateKey, goal.endDate, goal.repeatMode, goal.selectedDays);
+  const dailyPlan = remainingAmount > 0 && remainingActiveDays > 0 ? Math.ceil(remainingAmount / remainingActiveDays) : 0;
 
-  if (remainingAmount <= 0) {
-    return 0;
-  }
-
-  return remainingActiveDays <= 0 ? remainingAmount : Math.ceil(remainingAmount / remainingActiveDays);
+  return {
+    totalCompleted,
+    targetAmount,
+    todayCompleted,
+    dailyPlan,
+    dailyRemaining: Math.max(dailyPlan - todayCompleted, 0),
+    progressPercent,
+  };
 }
 
 export function getTodayLoggedAmount(goal: ProgressGoal, today: string): number {
@@ -267,11 +298,8 @@ export function calculateDailyProgress(goals: ProgressGoal[], tasks: TaskItem[],
   let nextAction = "Все закрыто";
 
   if (nextGoal) {
-    const required = getRequiredForDate(nextGoal, today);
-    const logged = getLoggedAmountForDate(nextGoal, today);
-    const remainingToTarget = Math.max(nextGoal.targetValue - getGoalValueAtEndOfDate(nextGoal, today), 0);
-    const recommendedLeft = Math.max(required - logged, 0);
-    nextAction = `${recommendedLeft > 0 ? recommendedLeft : remainingToTarget} ${nextGoal.unit} · ${nextGoal.title}`;
+    const metrics = getGoalDailyMetrics(nextGoal, today);
+    nextAction = `${metrics.dailyRemaining} / ${metrics.dailyPlan} ${nextGoal.unit} · ${nextGoal.title}`;
   } else if (nextTask) {
     nextAction = nextTask.title;
   }
@@ -330,31 +358,13 @@ function isGoalCompletedOnDate(goal: ProgressGoal, date: Date, dateKey: string):
 
   const required = getRequiredForDate(goal, dateKey);
   const logged = getLoggedAmountForDate(goal, dateKey);
-  const valueAtEndOfDate = getGoalValueAtEndOfDate(goal, dateKey);
+  const metrics = getGoalDailyMetrics(goal, dateKey);
 
-  return required <= 0 || logged >= required || valueAtEndOfDate >= goal.targetValue;
+  return required <= 0 || logged >= required || metrics.totalCompleted >= metrics.targetAmount;
 }
 
 function getRequiredForDate(goal: ProgressGoal, dateKey: string): number {
-  const date = parseDateKey(dateKey);
-
-  if (!isGoalDueOnDate(goal, date, dateKey)) {
-    return 0;
-  }
-
-  if (dateKey === todayKey()) {
-    return getRequiredToday(goal, dateKey);
-  }
-
-  const valueAtStartOfDate = getGoalValueBeforeDate(goal, dateKey);
-  const remainingAmount = Math.max(goal.targetValue - valueAtStartOfDate, 0);
-  const remainingActiveDays = countActiveDays(dateKey, goal.endDate, goal.repeatMode, goal.selectedDays);
-
-  if (remainingAmount <= 0) {
-    return 0;
-  }
-
-  return remainingActiveDays <= 0 ? remainingAmount : Math.ceil(remainingAmount / remainingActiveDays);
+  return getGoalDailyRecommendation(goal, dateKey);
 }
 
 function getGoalValueBeforeDate(goal: ProgressGoal, dateKey: string): number {
@@ -366,6 +376,10 @@ function getGoalValueAtEndOfDate(goal: ProgressGoal, dateKey: string): number {
     return goal.currentValue;
   }
 
+  return getGoalHistoricalValueAtEndOfDate(goal, dateKey);
+}
+
+function getGoalHistoricalValueAtEndOfDate(goal: ProgressGoal, dateKey: string): number {
   return getGoalBaseline(goal) + getEntriesTotal(goal, (entryDate) => entryDate <= dateKey);
 }
 

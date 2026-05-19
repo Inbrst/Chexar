@@ -1,3 +1,5 @@
+import { normalizeSemanticQuantityUnit } from "../../src/semanticUnits";
+
 declare const process: {
   env: Record<string, string | undefined>;
 };
@@ -155,6 +157,18 @@ function normalizeDraft(raw: unknown, fallbackText: string): ActionDraft {
   const title = sanitizeTitle(normalizeText(record.title), fallbackText);
   const startDate = normalizeDate(record.start_date) ?? todayKey();
   const period = periods.includes(record.period as Period) ? (record.period as Period) : tracking === "checkbox" ? "today" : "month";
+  const normalizedTargetValue = tracking === "quantity" && Number.isFinite(targetValue) && targetValue > 0 ? targetValue : null;
+  const normalizedUnit =
+    tracking === "quantity"
+      ? normalizeSemanticQuantityUnit({
+          title,
+          unit: normalizeText(record.unit),
+          sourceText: fallbackText,
+          targetValue: normalizedTargetValue,
+          language: "ru",
+          mode: "draft",
+        })
+      : null;
   const missingFields = Array.isArray(record.missing_fields)
     ? record.missing_fields.map(normalizeText).filter(Boolean).slice(0, 4)
     : [];
@@ -172,8 +186,8 @@ function normalizeDraft(raw: unknown, fallbackText: string): ActionDraft {
     title,
     icon: normalizeText(record.icon) || inferEmoji(title || fallbackText),
     tracking_type: tracking,
-    target_value: tracking === "quantity" && Number.isFinite(targetValue) && targetValue > 0 ? targetValue : null,
-    unit: tracking === "quantity" ? normalizeText(record.unit) || "раз" : null,
+    target_value: normalizedTargetValue,
+    unit: normalizedUnit,
     repeat_mode: repeatModes.includes(record.repeat_mode as RepeatMode) ? (record.repeat_mode as RepeatMode) : tracking === "checkbox" ? "daily" : "daily",
     period,
     start_date: startDate,
@@ -203,6 +217,16 @@ function localParseAction(text: string): ActionDraft {
   const unitMatch = normalized.match(/\d+(?:[.,]\d+)?\s+([а-яёa-z]+)/i);
   const title = inferTitle(text);
   const startDate = todayKey();
+  const unit = quantity
+    ? normalizeSemanticQuantityUnit({
+        title,
+        unit: unitMatch?.[1],
+        sourceText: text,
+        targetValue,
+        language: "ru",
+        mode: "draft",
+      })
+    : null;
 
   return {
     intent,
@@ -210,7 +234,7 @@ function localParseAction(text: string): ActionDraft {
     icon: inferEmoji(text),
     tracking_type: quantity ? "quantity" : "checkbox",
     target_value: quantity ? targetValue : null,
-    unit: quantity ? unitMatch?.[1] ?? "раз" : null,
+    unit,
     repeat_mode: repeatMode,
     period,
     start_date: startDate,
@@ -384,6 +408,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       "Use checkbox for done/not done habits, quantity when a number target is mentioned.",
       "Keep title short and natural. Never use goal/task/action/цель/задача as title unless the user explicitly quoted it as the title.",
       "For 'создай немецкий 50 уроков на месяц': title Немецкий, icon 🇩🇪, quantity, target_value 50, unit уроков, daily, month.",
+      "Use semantically logical units. For generic workout/training/sport requests, use unit тренировок/workouts unless the user explicitly says minutes or hours.",
+      "Do not invent minutes for 'тренировка 2' or 'workout 2'; that means 2 workouts, not 2 minutes.",
       "If required fields are missing, set intent unknown or create_action with missing_fields and one short clarifying_question.",
     ].join(" ");
     const raw = await callProvider(systemPrompt, text);
