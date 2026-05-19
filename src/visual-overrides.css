@@ -576,14 +576,13 @@ html[data-resolved-theme="light"] .action-list .task-x-mark span {
 }
 
 .template-button {
-  min-height: 48px !important;
-  align-items: center !important;
+  min-height: 56px !important;
+  align-items: start !important;
 }
 
 .template-button small {
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  white-space: nowrap !important;
+  overflow-wrap: anywhere !important;
+  white-space: normal !important;
 }
 
 .progress-rank-icon {
@@ -1322,6 +1321,174 @@ html[data-resolved-theme="light"] .action-list .task-x-mark span:nth-child(2) {
   padding-bottom: calc(var(--bottom-nav-height, 58px) + var(--bottom-nav-offset, 8px) + 44px) !important;
 }
 
+/* Main screen cleanup: separate checkboxes from period goals and reduce text noise. */
+.today-screen .action-list {
+  gap: 6px !important;
+}
+
+.today-screen .action-group {
+  gap: 4px !important;
+}
+
+.today-screen .action-group.has-title {
+  margin-top: 8px !important;
+}
+
+.today-screen .action-group-title {
+  padding: 0 4px 2px !important;
+  color: color-mix(in srgb, var(--text) 48%, transparent) !important;
+  font-size: 0.62rem !important;
+  font-weight: 760 !important;
+  line-height: 1 !important;
+}
+
+.today-screen .action-list .task-row,
+.today-screen .action-list .goal-card {
+  min-height: 42px !important;
+  padding: 4px 8px !important;
+  border-radius: 12px !important;
+}
+
+.today-screen .action-list .task-row-main,
+.today-screen .action-list .goal-top {
+  min-height: 34px !important;
+  gap: 8px !important;
+}
+
+.today-screen .action-list .task-title {
+  font-size: 0.76rem !important;
+  line-height: 1.08 !important;
+}
+
+.today-screen .action-list .task-title small,
+.today-screen .action-list .due-meta {
+  display: block !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  color: color-mix(in srgb, var(--text) 48%, transparent) !important;
+  font-size: 0.54rem !important;
+  line-height: 1.08 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.today-screen .action-list .goal-card {
+  min-height: 44px !important;
+  border-color: color-mix(in srgb, var(--text) 7%, transparent) !important;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--text) 3%, transparent), transparent),
+    color-mix(in srgb, var(--card) 94%, black 6%) !important;
+}
+
+.today-screen .action-list .goal-card::before {
+  opacity: 0.72 !important;
+}
+
+.today-screen .action-list .goal-title-progress {
+  grid-template-columns: minmax(0, 1fr) minmax(68px, max-content) !important;
+  gap: 8px !important;
+}
+
+.today-screen .action-list .goal-main-line h3 {
+  color: color-mix(in srgb, var(--text) 88%, transparent) !important;
+  font-size: 0.76rem !important;
+  font-weight: 720 !important;
+  line-height: 1.08 !important;
+}
+
+.today-screen .action-list .goal-progress-stack {
+  min-width: 72px !important;
+  gap: 2px !important;
+}
+
+.today-screen .action-list .goal-numbers {
+  color: color-mix(in srgb, var(--text) 82%, transparent) !important;
+  font-size: 0.62rem !important;
+  font-weight: 760 !important;
+}
+
+.today-screen .action-list .goal-period-pace {
+  display: block !important;
+  max-width: 116px !important;
+  overflow: hidden !important;
+  color: color-mix(in srgb, var(--text) 42%, transparent) !important;
+  font-size: 0.52rem !important;
+  font-weight: 620 !important;
+  line-height: 1.05 !important;
+  text-align: right !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.today-screen .action-group[data-group-key="period:quantity"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+  align-items: stretch !important;
+}
+
+.today-screen .action-group[data-group-key="period:quantity"] .action-group-title {
+  grid-column: 1 / -1 !important;
+}
+
+.today-screen .action-group[data-group-key="period:quantity"] .reorderable-item,
+.today-screen .action-group[data-group-key="period:quantity"] .swipe-delete-shell,
+.today-screen .action-group[data-group-key="period:quantity"] .swipe-delete-content {
+  min-width: 0 !important;
+  height: 100% !important;
+}
+
+.today-screen .action-group[data-group-key="period:quantity"] .goal-card {
+  min-height: 62px !important;
+  height: 100% !important;
+  padding: 7px !important;
+}
+
+.today-screen .action-group[data-group-key="period:quantity"] .goal-top {
+  display: grid !important;
+  grid-template-columns: 22px minmax(0, 1fr) !important;
+  align-items: start !important;
+  min-height: 0 !important;
+  gap: 6px !important;
+}
+
+.today-screen .action-group[data-group-key="period:quantity"] .action-emoji {
+  width: 21px !important;
+  height: 21px !important;
+  font-size: 0.92rem !important;
+}
+
+.today-screen .action-group[data-group-key="period:quantity"] .goal-title-progress {
+  grid-template-columns: minmax(0, 1fr) !important;
+  align-items: start !important;
+  gap: 4px !important;
+}
+
+.today-screen .action-group[data-group-key="period:quantity"] .goal-main-line h3 {
+  font-size: 0.7rem !important;
+  line-height: 1.08 !important;
+}
+
+.today-screen .action-group[data-group-key="period:quantity"] .goal-progress-stack {
+  min-width: 0 !important;
+  align-items: start !important;
+  gap: 2px !important;
+}
+
+.today-screen .action-group[data-group-key="period:quantity"] .goal-numbers {
+  max-width: 100% !important;
+  overflow: hidden !important;
+  font-size: 0.6rem !important;
+  text-align: left !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.today-screen .action-group[data-group-key="period:quantity"] .goal-period-pace {
+  max-width: 100% !important;
+  font-size: 0.5rem !important;
+  text-align: left !important;
+}
+
 .action-list .task-row-main,
 .action-list .goal-top {
   min-height: 31px !important;
@@ -1678,17 +1845,56 @@ html[data-resolved-theme="light"] .bottom-nav button.active {
 
 .ai-preview-card {
   display: grid !important;
-  gap: 10px !important;
-  padding: 12px !important;
+  gap: 8px !important;
+  padding: 10px !important;
   border: 1px solid var(--border) !important;
-  border-radius: 16px !important;
+  border-radius: 14px !important;
   color: var(--text) !important;
   background: var(--card) !important;
 }
 
 .ai-preview-card > strong {
-  font-size: 0.9rem !important;
+  color: var(--muted) !important;
+  font-size: 0.78rem !important;
+  font-weight: 720 !important;
   line-height: 1.1 !important;
+}
+
+.ai-preview-action-card {
+  display: grid !important;
+  grid-template-columns: 26px minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: 9px !important;
+  min-height: 46px !important;
+  padding: 7px 8px !important;
+  border: 1px solid color-mix(in srgb, var(--text) 8%, transparent) !important;
+  border-radius: 12px !important;
+  background: color-mix(in srgb, var(--text) 4%, transparent) !important;
+}
+
+.ai-preview-action-copy {
+  display: grid !important;
+  min-width: 0 !important;
+  gap: 3px !important;
+}
+
+.ai-preview-action-copy b {
+  overflow: hidden !important;
+  color: var(--text) !important;
+  font-size: 0.82rem !important;
+  font-weight: 760 !important;
+  line-height: 1.08 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.ai-preview-action-copy small {
+  overflow: hidden !important;
+  color: var(--muted) !important;
+  font-size: 0.62rem !important;
+  line-height: 1.12 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
 }
 
 .ai-preview-fields {
@@ -1792,9 +1998,11 @@ html[data-resolved-theme="light"] .bottom-nav button.active {
 }
 
 .today-menu-add {
-  min-width: 66px !important;
+  width: 46px !important;
+  min-width: 46px !important;
+  padding: 0 !important;
   border-color: color-mix(in srgb, #6f5cff 32%, transparent) !important;
-  border-radius: 8px 8px 4px 4px !important;
+  border-radius: 10px 10px 5px 5px !important;
   background: #6f5cff !important;
   color: #fff !important;
 }
@@ -1806,10 +2014,10 @@ html[data-resolved-theme="light"] .today-menu-add {
 }
 
 .today-menu-add span {
-  font-size: 1.16rem !important;
+  font-size: 1rem !important;
   font-weight: 520 !important;
   line-height: 1 !important;
-  transform: translateY(-1px) scaleX(1.35) !important;
+  transform: none !important;
 }
 
 .today-menu-ai span {
@@ -1989,17 +2197,21 @@ html[data-resolved-theme="light"] .today-menu-add {
 }
 
 .sheet-overlay:not(:has(.progress-entry-bottom-sheet)) {
-  align-items: center !important;
-  place-items: center !important;
-  padding: 14px !important;
+  align-items: end !important;
+  place-items: end center !important;
+  padding: 0 10px max(10px, env(safe-area-inset-bottom)) !important;
   background: rgba(0, 0, 0, 0.72) !important;
   backdrop-filter: blur(12px) !important;
   -webkit-backdrop-filter: blur(12px) !important;
 }
 
 .bottom-sheet:not(.progress-entry-bottom-sheet) {
+  width: min(100%, 430px) !important;
+  max-height: min(82dvh, 640px) !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
   border-color: color-mix(in srgb, var(--text) 10%, transparent) !important;
-  border-radius: 24px !important;
+  border-radius: 26px 26px 20px 20px !important;
   background: var(--card) !important;
   box-shadow: none !important;
 }
@@ -2203,7 +2415,7 @@ html[data-resolved-theme="light"] .bottom-sheet:not(.progress-entry-bottom-sheet
 }
 
 .ai-chat-draft {
-  grid-template-columns: 24px 28px minmax(0, 1fr) 30px !important;
+  grid-template-columns: 24px minmax(0, 1fr) 30px !important;
 }
 
 .ai-chat-draft.selected {
@@ -2235,6 +2447,87 @@ html[data-resolved-theme="light"] .bottom-sheet:not(.progress-entry-bottom-sheet
 
 .ai-chat-draft-check[aria-pressed="true"] span {
   background: var(--text) !important;
+}
+
+.ai-chat-draft-action {
+  min-height: 44px !important;
+  padding: 6px 8px !important;
+  border-radius: 12px !important;
+}
+
+.ai-chat-draft-action .action-emoji {
+  width: 26px !important;
+  height: 26px !important;
+  min-width: 26px !important;
+}
+
+.ai-chat-draft .ai-preview-action-copy b {
+  color: var(--text) !important;
+  font-size: 0.82rem !important;
+  font-weight: 760 !important;
+  line-height: 1.08 !important;
+  text-align: left !important;
+}
+
+.ai-chat-draft .ai-preview-action-copy small {
+  color: var(--muted) !important;
+  font-size: 0.62rem !important;
+  line-height: 1.12 !important;
+}
+
+/* Inline mini-list: one compact frame, no internal separators. */
+.action-list .inline-subitems {
+  gap: 1px !important;
+  margin: 2px 0 1px 30px !important;
+  overflow: hidden !important;
+  padding: 3px !important;
+  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent) !important;
+  border-radius: 4px !important;
+  background: rgba(0, 0, 0, 0.18) !important;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text) 3%, transparent) !important;
+}
+
+.action-list .inline-subitems .reorderable-item + .reorderable-item {
+  border-top: 0 !important;
+}
+
+.action-list .inline-subitems .swipe-advance-shell {
+  border-radius: 3px !important;
+}
+
+.action-list .inline-subitem-row {
+  min-height: 25px !important;
+  padding: 3px 4px !important;
+  border: 0 !important;
+  border-radius: 3px !important;
+  background: transparent !important;
+  background-image: none !important;
+}
+
+.action-list .inline-subitem-head {
+  grid-template-columns: 13px minmax(0, 1fr) auto !important;
+  gap: 5px !important;
+  font-size: 0.64rem !important;
+  line-height: 1 !important;
+}
+
+.action-list .inline-subitem-check {
+  width: 13px !important;
+  height: 13px !important;
+  border-width: 1px !important;
+  border-radius: 2px !important;
+  font-size: 0.46rem !important;
+}
+
+.action-list .inline-subitem-head strong {
+  min-width: 24px !important;
+  padding: 2px 4px !important;
+  border-radius: 5px !important;
+  color: var(--text) !important;
+  background: color-mix(in srgb, var(--text) 8%, transparent) !important;
+  font-size: 0.62rem !important;
+  line-height: 1 !important;
+  text-align: center !important;
 }
 
 .ai-chat-create:disabled {
@@ -2810,6 +3103,16 @@ html[data-resolved-theme="light"] .bottom-sheet:not(.progress-entry-bottom-sheet
   margin-top: 2px !important;
 }
 
+.start-quest-inline-list-shell {
+  display: grid !important;
+  gap: 5px !important;
+}
+
+.start-quest-inline-list {
+  padding-left: 36px !important;
+  animation: inline-subitems-slide-down 160ms ease both !important;
+}
+
 .start-quest-mini-list span {
   position: relative !important;
   display: block !important;
@@ -2889,7 +3192,7 @@ html[data-resolved-theme="light"] .start-quest-toast {
 }
 
 .action-list.with-period {
-  --period-cell: 29px !important;
+  --period-cell: 18px !important;
   overflow-x: auto !important;
   overscroll-behavior-x: contain !important;
   padding-bottom: 2px !important;
@@ -2900,14 +3203,14 @@ html[data-resolved-theme="light"] .start-quest-toast {
   display: none !important;
 }
 
-.action-list.with-period .action-group,
+.action-list.with-period .action-group.has-period-grid,
 .action-list.with-period .period-inline-header {
-  min-width: max(100%, calc(156px + var(--period-days) * var(--period-cell))) !important;
+  min-width: max(100%, calc(132px + var(--period-days) * var(--period-cell))) !important;
 }
 
 .period-inline-header {
   display: grid !important;
-  grid-template-columns: minmax(148px, 1fr) auto !important;
+  grid-template-columns: minmax(124px, 1fr) auto !important;
   align-items: end !important;
   gap: 6px !important;
   padding: 0 8px 1px 10px !important;
@@ -2943,11 +3246,11 @@ html[data-resolved-theme="light"] .start-quest-toast {
 }
 
 .period-inline-day-head {
-  min-height: 34px !important;
+  min-height: 28px !important;
   align-content: center !important;
   gap: 1px !important;
   padding: 2px 0 !important;
-  border-radius: 8px !important;
+  border-radius: 6px !important;
 }
 
 .period-inline-day-head.active {
@@ -2962,31 +3265,31 @@ html[data-resolved-theme="light"] .start-quest-toast {
 .period-inline-day-head span,
 .period-inline-day-head small {
   color: var(--muted) !important;
-  font-size: 0.46rem !important;
+  font-size: 0.4rem !important;
   font-weight: 780 !important;
   line-height: 1 !important;
 }
 
 .period-inline-day-head strong {
   color: var(--text) !important;
-  font-size: 0.7rem !important;
+  font-size: 0.62rem !important;
   line-height: 1 !important;
 }
 
 .period-inline-check {
-  min-height: 32px !important;
+  min-height: 23px !important;
 }
 
 .period-inline-check span {
   display: grid !important;
-  width: 18px !important;
-  height: 18px !important;
+  width: 12px !important;
+  height: 12px !important;
   place-items: center !important;
   border: 1.4px solid color-mix(in srgb, var(--text) 26%, transparent) !important;
-  border-radius: 6px !important;
+  border-radius: 4px !important;
   color: #fff !important;
   background: transparent !important;
-  font-size: 0.68rem !important;
+  font-size: 0.48rem !important;
   font-weight: 900 !important;
   line-height: 1 !important;
 }
@@ -2994,6 +3297,17 @@ html[data-resolved-theme="light"] .start-quest-toast {
 .period-inline-check.checked span {
   border-color: #34d399 !important;
   background: #34d399 !important;
+}
+
+.period-inline-check.partial span {
+  color: #111318 !important;
+  border-color: #a78bfa !important;
+  background: #a78bfa !important;
+}
+
+.period-inline-check.week-cell span {
+  width: 16px !important;
+  border-radius: 999px !important;
 }
 
 .period-inline-check.off::before {
@@ -3010,8 +3324,8 @@ html[data-resolved-theme="light"] .start-quest-toast {
 
 .action-list .task-row.period-expanded,
 .action-list .goal-card.period-expanded {
-  grid-template-columns: minmax(148px, 1fr) auto !important;
-  min-width: max(100%, calc(156px + var(--period-days) * var(--period-cell))) !important;
+  grid-template-columns: minmax(124px, 1fr) auto !important;
+  min-width: max(100%, calc(132px + var(--period-days) * var(--period-cell))) !important;
 }
 
 .action-list .task-row.period-expanded {

@@ -19,6 +19,7 @@ type RepeatMode = "once" | "daily" | "weekdays" | "selected_days";
 type Period = "today" | "week" | "month" | "custom";
 
 type AiActionDraft = {
+  intent?: "create_action" | "mark_done" | "add_progress" | "unknown";
   title: string;
   icon?: string;
   tracking_type: TrackingType;
@@ -30,6 +31,8 @@ type AiActionDraft = {
   end_date?: string | null;
   due_time?: string | null;
   subitems?: Array<{ title: string; target?: number }>;
+  missing_fields?: string[];
+  clarifying_question?: string | null;
 };
 
 type AiSubitemDraft = {
@@ -64,9 +67,27 @@ function dueTime(value: unknown): string | null {
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 
+function cleanTitle(value: string, fallbackTitle: string): string {
+  const cleaned = value
+    .replace(/^["'“”«»]+|["'“”«»]+$/g, "")
+    .replace(/\b(цель|задача|действие|goal|task|action)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (cleaned) {
+    return cleaned.slice(0, 48);
+  }
+
+  return fallbackTitle
+    .replace(/\b(цель|задача|действие|goal|task|action)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 48);
+}
+
 function normalizeDraft(value: unknown, fallbackTitle: string): AiActionDraft | null {
   const item = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
-  const title = text(item.title) || fallbackTitle;
+  const title = cleanTitle(text(item.title), fallbackTitle);
   if (!title) {
     return null;
   }
@@ -99,6 +120,10 @@ function normalizeDraft(value: unknown, fallbackTitle: string): AiActionDraft | 
     : [];
 
   return {
+    intent:
+      item.intent === "create_action" || item.intent === "mark_done" || item.intent === "add_progress" || item.intent === "unknown"
+        ? item.intent
+        : "create_action",
     title,
     icon: text(item.icon) || undefined,
     tracking_type: trackingType,
@@ -110,6 +135,8 @@ function normalizeDraft(value: unknown, fallbackTitle: string): AiActionDraft | 
     end_date: dateKey(item.end_date) ?? null,
     due_time: dueTime(item.due_time),
     subitems,
+    missing_fields: Array.isArray(item.missing_fields) ? item.missing_fields.map(text).filter(Boolean).slice(0, 4) : [],
+    clarifying_question: text(item.clarifying_question) || null,
   };
 }
 
@@ -165,8 +192,11 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
             content: [
               "You create Chexar action drafts for a Telegram Mini App. Return only JSON.",
               `Today is ${today}. User language is ${language}.`,
-              "Schema: {\"actions\":[{\"title\":\"string\",\"icon\":\"emoji\",\"tracking_type\":\"checkbox|quantity\",\"target_value\":number|null,\"unit\":\"string|null\",\"repeat_mode\":\"once|daily|weekdays|selected_days\",\"period\":\"today|week|month|custom\",\"start_date\":\"YYYY-MM-DD\",\"end_date\":\"YYYY-MM-DD|null\",\"due_time\":\"HH:mm|null\",\"subitems\":[{\"title\":\"string\",\"target\":number|null}]}]}.",
+              "Schema: {\"actions\":[{\"intent\":\"create_action|mark_done|add_progress|unknown\",\"title\":\"string\",\"icon\":\"emoji\",\"tracking_type\":\"checkbox|quantity\",\"target_value\":number|null,\"unit\":\"string|null\",\"repeat_mode\":\"once|daily|weekdays|selected_days\",\"period\":\"today|week|month|custom\",\"start_date\":\"YYYY-MM-DD\",\"end_date\":\"YYYY-MM-DD|null\",\"due_time\":\"HH:mm|null\",\"subitems\":[{\"title\":\"string\",\"target\":number|null}],\"missing_fields\":[],\"clarifying_question\":\"string|null\"}],\"question\":\"string|null\"}.",
               "Use checkbox for done/not done actions. Use quantity only when the user gives a numeric target.",
+              "Example: 'создай немецкий 50 уроков на месяц' -> title 'Немецкий', icon '🇩🇪', quantity, target_value 50, unit 'уроков', daily, month.",
+              "Never use goal/task/action/цель/задача as title unless the user explicitly quoted it as the title.",
+              "If important fields are missing, return no low-quality action and set a one-sentence question.",
               "If the user asks to create several actions, do not convert that instruction line into an action.",
               "For numbered lists, ignore list numbers such as 1., 2., 3.; use only real quantities from the item text.",
               "For tomorrow, set start_date and end_date to tomorrow and period to today.",

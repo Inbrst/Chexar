@@ -20,6 +20,7 @@ type RepeatMode = "once" | "daily" | "weekdays" | "selected_days";
 type Period = "today" | "week" | "month" | "custom";
 
 type ActionDraft = {
+  intent: "create_action" | "mark_done" | "add_progress" | "unknown";
   title: string;
   icon: string;
   tracking_type: TrackingType;
@@ -27,15 +28,21 @@ type ActionDraft = {
   unit: string | null;
   repeat_mode: RepeatMode;
   period: Period;
+  start_date: string | null;
+  end_date: string | null;
   due_time: string | null;
   subitems: Array<{ title: string; target?: number | null }>;
+  missing_fields: string[];
+  clarifying_question?: string;
 };
 
 const fallbackEmojiRules: Array<[string[], string]> = [
   [["заряд", "трениров", "спорт", "gym", "workout"], "🏋️"],
   [["прогул", "ходьб", "walk"], "🚶"],
   [["бег", "run"], "🏃"],
-  [["англий", "язык", "english", "language"], "🇬🇧"],
+  [["немец", "german", "deutsch"], "🇩🇪"],
+  [["англий", "english"], "🇬🇧"],
+  [["язык", "language"], "🌐"],
   [["чтен", "книг", "book", "read"], "📚"],
   [["вода", "water"], "💧"],
   [["медитац", "meditation"], "🧘"],
@@ -53,6 +60,43 @@ function inferEmoji(text: string): string {
 
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim().slice(0, 500) : "";
+}
+
+function todayKey(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function addDays(dateKey: string, days: number): string {
+  const date = new Date(`${dateKey}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function monthEnd(dateKey: string): string {
+  const date = new Date(`${dateKey}T00:00:00.000Z`);
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
+}
+
+function weekEnd(dateKey: string): string {
+  return addDays(dateKey, 6);
+}
+
+function normalizeDate(value: unknown): string | null {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
+function sanitizeTitle(value: string, fallbackText: string): string {
+  const cleaned = value
+    .replace(/^["'“”«»]+|["'“”«»]+$/g, "")
+    .replace(/\b(цель|задача|действие|goal|task|action)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (cleaned && cleaned.length > 1) {
+    return cleaned.slice(0, 48);
+  }
+
+  return inferTitle(fallbackText);
 }
 
 function extractJson(text: string): unknown {
@@ -88,6 +132,10 @@ function normalizeDueTime(value: unknown): string | null {
 
 function normalizeDraft(raw: unknown, fallbackText: string): ActionDraft {
   const record = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+  const intent =
+    record.intent === "create_action" || record.intent === "mark_done" || record.intent === "add_progress" || record.intent === "unknown"
+      ? record.intent
+      : "create_action";
   const tracking = record.tracking_type === "checkbox" || record.tracking_type === "quantity" ? record.tracking_type : "quantity";
   const repeatModes: RepeatMode[] = ["once", "daily", "weekdays", "selected_days"];
   const periods: Period[] = ["today", "week", "month", "custom"];
@@ -104,23 +152,49 @@ function normalizeDraft(raw: unknown, fallbackText: string): ActionDraft {
         .slice(0, 12)
     : [];
 
-  const title = normalizeText(record.title) || fallbackText || "Действие";
+  const title = sanitizeTitle(normalizeText(record.title), fallbackText);
+  const startDate = normalizeDate(record.start_date) ?? todayKey();
+  const period = periods.includes(record.period as Period) ? (record.period as Period) : tracking === "checkbox" ? "today" : "month";
+  const missingFields = Array.isArray(record.missing_fields)
+    ? record.missing_fields.map(normalizeText).filter(Boolean).slice(0, 4)
+    : [];
+
+  if (intent === "create_action" && !title) {
+    missingFields.push("title");
+  }
+
+  if (intent === "create_action" && tracking === "quantity" && (!Number.isFinite(targetValue) || targetValue <= 0)) {
+    missingFields.push("target_value");
+  }
 
   return {
+    intent,
     title,
     icon: normalizeText(record.icon) || inferEmoji(title || fallbackText),
     tracking_type: tracking,
     target_value: tracking === "quantity" && Number.isFinite(targetValue) && targetValue > 0 ? targetValue : null,
     unit: tracking === "quantity" ? normalizeText(record.unit) || "раз" : null,
     repeat_mode: repeatModes.includes(record.repeat_mode as RepeatMode) ? (record.repeat_mode as RepeatMode) : tracking === "checkbox" ? "daily" : "daily",
-    period: periods.includes(record.period as Period) ? (record.period as Period) : tracking === "checkbox" ? "today" : "month",
+    period,
+    start_date: startDate,
+    end_date: normalizeDate(record.end_date) ?? (period === "month" ? monthEnd(startDate) : period === "week" ? weekEnd(startDate) : startDate),
     due_time: normalizeDueTime(record.due_time),
     subitems,
+    missing_fields: Array.from(new Set(missingFields)),
+    clarifying_question: normalizeText(record.clarifying_question) || undefined,
   };
 }
 
 function localParseAction(text: string): ActionDraft {
   const normalized = text.toLocaleLowerCase();
+  const commandOnly = /^(создай|создать|добавь|добавить|create|add)\s*$/i.test(normalized.trim());
+  const intent: ActionDraft["intent"] = /^(отметь|закрой|выполн|mark)/i.test(normalized)
+    ? "mark_done"
+    : /^(добавь|запиши|прибавь|add)\s+\d/i.test(normalized)
+      ? "add_progress"
+      : commandOnly
+        ? "unknown"
+        : "create_action";
   const targetMatch = normalized.match(/(\d+(?:[.,]\d+)?)/);
   const targetValue = targetMatch ? Number(targetMatch[1].replace(",", ".")) : null;
   const quantity = Boolean(targetValue);
@@ -128,8 +202,10 @@ function localParseAction(text: string): ActionDraft {
   const repeatMode: RepeatMode = /будн|weekday/.test(normalized) ? "weekdays" : period === "today" && !quantity ? "once" : "daily";
   const unitMatch = normalized.match(/\d+(?:[.,]\d+)?\s+([а-яёa-z]+)/i);
   const title = inferTitle(text);
+  const startDate = todayKey();
 
   return {
+    intent,
     title,
     icon: inferEmoji(text),
     tracking_type: quantity ? "quantity" : "checkbox",
@@ -137,8 +213,12 @@ function localParseAction(text: string): ActionDraft {
     unit: quantity ? unitMatch?.[1] ?? "раз" : null,
     repeat_mode: repeatMode,
     period,
+    start_date: startDate,
+    end_date: period === "month" ? monthEnd(startDate) : period === "week" ? weekEnd(startDate) : startDate,
     due_time: normalizeDueTime(normalized.match(/(?:до|before)\s*(\d{1,2}:\d{2})/)?.[1]),
     subitems: [],
+    missing_fields: commandOnly ? ["title"] : [],
+    clarifying_question: commandOnly ? "Что создать?" : undefined,
   };
 }
 
@@ -166,7 +246,9 @@ function inferTitle(text: string): string {
     return known.charAt(0).toLocaleUpperCase() + known.slice(1);
   }
 
-  return compact ? compact.charAt(0).toLocaleUpperCase() + compact.slice(1, 42) : "Действие";
+  const withoutGeneric = compact.replace(/\b(цель|задача|действие|goal|task|action)\b/gi, " ").replace(/\s+/g, " ").trim();
+
+  return withoutGeneric ? withoutGeneric.charAt(0).toLocaleUpperCase() + withoutGeneric.slice(1, 42) : "Действие";
 }
 
 function localSubitems(title: string) {
@@ -297,10 +379,12 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     }
 
     const systemPrompt = [
-      "Return only JSON for a daily tracker action.",
-      "Schema: {\"title\":\"string\",\"icon\":\"emoji\",\"tracking_type\":\"checkbox|quantity\",\"target_value\":number|null,\"unit\":\"string|null\",\"repeat_mode\":\"once|daily|weekdays|selected_days\",\"period\":\"today|week|month|custom\",\"due_time\":\"HH:mm|null\",\"subitems\":[]}.",
+      "Return only JSON for a Telegram Mini App daily tracker.",
+      "Schema: {\"intent\":\"create_action|mark_done|add_progress|unknown\",\"title\":\"string\",\"icon\":\"emoji\",\"tracking_type\":\"checkbox|quantity\",\"target_value\":number|null,\"unit\":\"string|null\",\"repeat_mode\":\"once|daily|weekdays|selected_days\",\"period\":\"today|week|month|custom\",\"start_date\":\"YYYY-MM-DD|null\",\"end_date\":\"YYYY-MM-DD|null\",\"due_time\":\"HH:mm|null\",\"subitems\":[],\"missing_fields\":[],\"clarifying_question\":\"string|null\"}.",
       "Use checkbox for done/not done habits, quantity when a number target is mentioned.",
-      "Keep title short, natural, and without goal/task wording.",
+      "Keep title short and natural. Never use goal/task/action/цель/задача as title unless the user explicitly quoted it as the title.",
+      "For 'создай немецкий 50 уроков на месяц': title Немецкий, icon 🇩🇪, quantity, target_value 50, unit уроков, daily, month.",
+      "If required fields are missing, set intent unknown or create_action with missing_fields and one short clarifying_question.",
     ].join(" ");
     const raw = await callProvider(systemPrompt, text);
     res.status(200).json(normalizeDraft(raw, text));

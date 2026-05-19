@@ -801,6 +801,7 @@ type AiSubitemDraft = {
 };
 
 type AiActionDraft = {
+  intent?: "create_action" | "mark_done" | "add_progress" | "unknown";
   title: string;
   icon?: string;
   tracking_type: AiTrackingType;
@@ -812,6 +813,8 @@ type AiActionDraft = {
   end_date?: string | null;
   due_time?: string | null;
   subitems?: AiSubitemDraft[];
+  missing_fields?: string[];
+  clarifying_question?: string | null;
 };
 
 type AiPreviewState =
@@ -1150,7 +1153,7 @@ const iconEmojiMap: Record<string, string> = {
   language: "🌐",
   star: "⭐",
   fire: "🔥",
-  plus: "✅",
+  plus: "➕",
   graduation: "🎓",
   droplet: "💧",
   clock: "⏰",
@@ -1199,7 +1202,7 @@ function inferEmojiFromTitle(title: string): string | undefined {
   return rules.find(([keywords]) => keywords.some((keyword) => normalized.includes(keyword)))?.[1];
 }
 
-function getActionEmoji(action: Pick<ProgressGoal | TaskItem, "emoji" | "iconKey" | "title">, fallback = "✅"): string {
+function getActionEmoji(action: Pick<ProgressGoal | TaskItem, "emoji" | "iconKey" | "title">, fallback = "•"): string {
   return action.emoji?.trim() || getIconEmoji(action.iconKey) || inferEmojiFromTitle(action.title) || fallback;
 }
 
@@ -1224,7 +1227,9 @@ function inferAiEmoji(text: string): string {
     [["заряд", "трениров", "спорт"], "🏋️"],
     [["прогул", "ходьб"], "🚶"],
     [["бег"], "🏃"],
-    [["англий", "немец", "язык"], "🌐"],
+    [["немец", "german", "deutsch"], "🇩🇪"],
+    [["англий", "english"], "🇬🇧"],
+    [["язык", "language"], "🌐"],
     [["чтен", "книг", "прочита", "страниц"], "📚"],
     [["вода"], "💧"],
     [["медит"], "🧘"],
@@ -1301,6 +1306,7 @@ function isAiInstructionRequest(value: string): boolean {
 function buildLocalAiDraft(text: string): AiActionDraft {
   const sourceText = cleanAiActionRequest(text) || text.trim();
   const normalized = sourceText.toLocaleLowerCase("ru-RU");
+  const commandOnly = /^(создай|создать|добавь|добавить|create|add)\s*$/i.test(normalized.trim());
   const dueTime = parseAiDueTimeFromText(normalized);
   const targetSource = normalized.replace(/(?:до|before)\s*\d{1,2}(?::\d{2})?\s*(утра|дня|вечера|ночи|am|pm)?/gi, " ");
   const targetMatch = targetSource.match(/(\d+(?:[.,]\d+)?)/);
@@ -1345,7 +1351,7 @@ function buildLocalAiDraft(text: string): AiActionDraft {
   ].find((keyword) => normalized.includes(keyword));
   const fallbackTitle = sourceText
     .replace(/\d+(?:[.,]\d+)?/g, "")
-    .replace(/\b(создай|создать|за|на|до|каждый|каждую|хочу|нужно|пройти|прочитать|сделать|месяц|неделю|день|завтра|сегодня|утра|дня|вечера|ночи)\b/gi, " ")
+    .replace(/\b(создай|создать|добавь|добавить|за|на|до|каждый|каждую|хочу|нужно|пройти|прочитать|сделать|месяц|неделю|день|завтра|сегодня|утра|дня|вечера|ночи|цель|задача|действие)\b/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
   const title = knownTitle ?? fallbackTitle ?? sourceText.trim() ?? "Действие";
@@ -1353,6 +1359,7 @@ function buildLocalAiDraft(text: string): AiActionDraft {
   const scheduledDate = hasTomorrow ? addDays(todayKey(), 1) : todayKey();
 
   return {
+    intent: commandOnly ? "unknown" : "create_action",
     title: normalizedTitle,
     icon: inferAiEmoji(sourceText),
     tracking_type: hasQuantity ? "quantity" : "checkbox",
@@ -1364,6 +1371,8 @@ function buildLocalAiDraft(text: string): AiActionDraft {
     end_date: hasTomorrow ? scheduledDate : null,
     due_time: dueTime,
     subitems: [],
+    missing_fields: commandOnly ? ["title"] : [],
+    clarifying_question: commandOnly ? "Что создать?" : null,
   };
 }
 
@@ -1395,6 +1404,12 @@ function normalizeAiActionDraft(value: unknown, fallbackText: string): AiActionD
   const record = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
   const local = buildLocalAiDraft(fallbackText);
   const target = Number(record.target_value);
+  const rawTitle = typeof record.title === "string" ? record.title.trim() : "";
+  const cleanedTitle = rawTitle
+    .replace(/^["'“”«»]+|["'“”«»]+$/g, "")
+    .replace(/\b(цель|задача|действие|goal|task|action)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   const toSubitemDraft = (item: unknown): AiSubitemDraft | null => {
     const subitem = typeof item === "object" && item !== null ? (item as Record<string, unknown>) : {};
     const title = typeof subitem.title === "string" ? subitem.title.trim() : "";
@@ -1419,7 +1434,11 @@ function normalizeAiActionDraft(value: unknown, fallbackText: string): AiActionD
     : [];
 
   return {
-    title: typeof record.title === "string" && record.title.trim() ? record.title.trim() : local.title,
+    intent:
+      record.intent === "create_action" || record.intent === "mark_done" || record.intent === "add_progress" || record.intent === "unknown"
+        ? record.intent
+        : "create_action",
+    title: cleanedTitle || local.title,
     icon: typeof record.icon === "string" && record.icon.trim() ? record.icon.trim() : local.icon,
     tracking_type: record.tracking_type === "checkbox" || record.tracking_type === "quantity" ? record.tracking_type : local.tracking_type,
     target_value: Number.isFinite(target) && target > 0 ? target : local.target_value,
@@ -1430,6 +1449,8 @@ function normalizeAiActionDraft(value: unknown, fallbackText: string): AiActionD
     end_date: normalizeAiDateKey(record.end_date) ?? local.end_date,
     due_time: typeof record.due_time === "string" && record.due_time.trim() ? record.due_time.trim() : local.due_time,
     subitems,
+    missing_fields: Array.isArray(record.missing_fields) ? record.missing_fields.filter((field): field is string => typeof field === "string" && field.trim().length > 0).slice(0, 4) : [],
+    clarifying_question: typeof record.clarifying_question === "string" && record.clarifying_question.trim() ? record.clarifying_question.trim() : null,
   };
 }
 
@@ -1639,6 +1660,24 @@ function getEffectiveStateForDate(state: AppState, dateKey: string): AppState {
   };
 }
 
+function getCarryOverGoalRequired(goal: ProgressGoal, dateKey: string): number {
+  const scheduledRequired = getCalendarRequiredForDate(goal, dateKey);
+
+  if (scheduledRequired > 0) {
+    return scheduledRequired;
+  }
+
+  const valueBeforeDate = getCalendarGoalValueBeforeDate(goal, dateKey);
+  return Math.max(goal.targetValue - valueBeforeDate, 0);
+}
+
+function isCarryOverGoalCompleted(goal: ProgressGoal, dateKey: string): boolean {
+  const required = getCarryOverGoalRequired(goal, dateKey);
+  const logged = getCalendarLoggedAmount(goal, dateKey);
+
+  return required <= 0 || logged >= required || getCalendarGoalValueAtEndOfDate(goal, dateKey) >= goal.targetValue;
+}
+
 function getCarryOverCandidates(state: AppState, todayDateKey: string, language: AppSettings["language"]): CarryOverCandidate[] {
   const yesterday = addDays(todayDateKey, -1);
   const yesterdayDate = parseDateKey(yesterday);
@@ -1646,13 +1685,62 @@ function getCarryOverCandidates(state: AppState, todayDateKey: string, language:
   const alreadyCarried = new Set(
     (state.occurrences ?? [])
       .filter((occurrence) => occurrence.date === todayDateKey && occurrence.status !== "skipped")
-      .map((occurrence) => occurrence.itemId),
+      .map((occurrence) => `${occurrence.itemType}:${occurrence.itemId}`),
   );
   const candidates: CarryOverCandidate[] = [];
+  const candidateKeys = new Set<string>();
+  const addCandidate = (candidate: CarryOverCandidate) => {
+    const id = candidate.type === "goal" ? candidate.goal.id : candidate.task.id;
+    const key = `${candidate.type}:${id}`;
+
+    if (alreadyCarried.has(key) || candidateKeys.has(key)) {
+      return;
+    }
+
+    candidateKeys.add(key);
+    candidates.push(candidate);
+  };
+
+  (state.occurrences ?? [])
+    .filter((occurrence) => occurrence.date === yesterday && occurrence.source === "carry_over" && occurrence.status === "active")
+    .forEach((occurrence) => {
+      if (occurrence.itemType === "task") {
+        const task = state.tasks.find((item) => item.id === occurrence.itemId);
+
+        if (!task || isTaskDueOnDate(task, todayDate, todayDateKey) || isTaskCompletedOnDate(task, yesterday)) {
+          return;
+        }
+
+        addCandidate({
+          type: "task",
+          task,
+          movedFromDate: occurrence.movedFromDate ?? occurrence.date,
+          detail: language === "en" ? "carried over" : "перенесено",
+        });
+        return;
+      }
+
+      const goal = state.goals.find((item) => item.id === occurrence.itemId);
+
+      if (!goal || isGoalDueOnDate(goal, todayDate, todayDateKey) || isCarryOverGoalCompleted(goal, yesterday)) {
+        return;
+      }
+
+      const remaining = Math.max(goal.targetValue - getCalendarGoalValueAtEndOfDate(goal, yesterday), 0);
+      addCandidate({
+        type: "goal",
+        goal,
+        movedFromDate: occurrence.movedFromDate ?? occurrence.date,
+        detail:
+          language === "en"
+            ? `${formatNumber(remaining)} ${goal.unit} still left`
+            : `Еще осталось ${formatNumber(remaining)} ${goal.unit}`,
+      });
+    });
 
   state.tasks.forEach((task) => {
     if (
-      alreadyCarried.has(task.id) ||
+      alreadyCarried.has(`task:${task.id}`) ||
       !isTaskDueOnDate(task, yesterdayDate, yesterday) ||
       isTaskDueOnDate(task, todayDate, todayDateKey) ||
       isTaskCompletedOnDate(task, yesterday)
@@ -1660,7 +1748,7 @@ function getCarryOverCandidates(state: AppState, todayDateKey: string, language:
       return;
     }
 
-    candidates.push({
+    addCandidate({
       type: "task",
       task,
       movedFromDate: yesterday,
@@ -1671,8 +1759,8 @@ function getCarryOverCandidates(state: AppState, todayDateKey: string, language:
   state.goals.forEach((goal) => {
     const periodRemaining = Math.max(goal.targetValue - goal.currentValue, 0);
 
-    if (!alreadyCarried.has(goal.id) && goal.endDate < todayDateKey && periodRemaining > 0) {
-      candidates.push({
+    if (!alreadyCarried.has(`goal:${goal.id}`) && goal.endDate < todayDateKey && periodRemaining > 0) {
+      addCandidate({
         type: "goal",
         goal,
         movedFromDate: goal.endDate,
@@ -1684,7 +1772,7 @@ function getCarryOverCandidates(state: AppState, todayDateKey: string, language:
       return;
     }
 
-    if (alreadyCarried.has(goal.id) || !isGoalDueOnDate(goal, yesterdayDate, yesterday) || isGoalDueOnDate(goal, todayDate, todayDateKey)) {
+    if (alreadyCarried.has(`goal:${goal.id}`) || !isGoalDueOnDate(goal, yesterdayDate, yesterday) || isGoalDueOnDate(goal, todayDate, todayDateKey)) {
       return;
     }
 
@@ -1696,7 +1784,7 @@ function getCarryOverCandidates(state: AppState, todayDateKey: string, language:
       return;
     }
 
-    candidates.push({
+    addCandidate({
       type: "goal",
       goal,
       movedFromDate: yesterday,
@@ -2535,6 +2623,7 @@ export default function App() {
     const [editState, setEditState] = useState<EditState>(null);
     const [timerNow, setTimerNow] = useState(() => Date.now());
     const [subitemsSheetTaskId, setSubitemsSheetTaskId] = useState<string | null>(null);
+    const [subitemsPanelActivity, setSubitemsPanelActivity] = useState(0);
     const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [aiCreateOpen, setAiCreateOpen] = useState(false);
   const [todaySearchOpen, setTodaySearchOpen] = useState(false);
@@ -2569,10 +2658,29 @@ export default function App() {
   const activeDateLabel = useMemo(() => formatTodayDate(activeDateDate, settings.language), [activeDateDate, settings.language]);
   const todayHeaderLabel = useMemo(() => formatTodayHeaderLabel(activeDateDate, settings.language, todayOverviewMode), [activeDateDate, settings.language, todayOverviewMode]);
   const inlinePeriodDates = useMemo(
-    () => (todayOverviewMode === "day" ? [] : getPeriodOverviewWeeks(activeDateDate, todayOverviewMode).flat()),
+    () => {
+      if (todayOverviewMode === "day") {
+        return [];
+      }
+
+      const weeks = getPeriodOverviewWeeks(activeDateDate, todayOverviewMode);
+
+      if (todayOverviewMode === "month") {
+        return weeks.map((week) => week[0]).filter(Boolean);
+      }
+
+      return weeks.flat();
+    },
     [activeDateDate, todayOverviewMode],
   );
   const inlinePeriodDateKeys = useMemo(() => inlinePeriodDates.map((date) => toDateKey(date)), [inlinePeriodDates]);
+  const periodSourceDateKeys = useMemo(() => {
+    if (todayOverviewMode === "day") {
+      return [];
+    }
+
+    return getPeriodOverviewWeeks(activeDateDate, todayOverviewMode).flat().map((date) => toDateKey(date));
+  }, [activeDateDate, todayOverviewMode]);
   const isSelectedDateMode = selectedDate !== null;
   const selectedDateNote =
     selectedDate && activeDate > today
@@ -2599,13 +2707,13 @@ export default function App() {
   const sortedTodayGoals = useMemo(() => sortGoalsForToday(todayGoals, activeDate), [activeDate, todayGoals]);
   const visibleTodayTasks = useMemo(() => sortTasksForToday(dedupeTodayTasks(todayTasks, activeDate), activeDate), [activeDate, todayTasks]);
   const periodTasks = useMemo(() => {
-    if (inlinePeriodDateKeys.length === 0) {
+    if (periodSourceDateKeys.length === 0) {
       return visibleTodayTasks;
     }
 
     const tasksById = new Map<string, TaskItem>();
 
-    inlinePeriodDateKeys.forEach((dateKey) => {
+    periodSourceDateKeys.forEach((dateKey) => {
       getScheduledTasksForDate(appState, dateKey).forEach((task) => {
         if (!tasksById.has(task.id)) {
           tasksById.set(task.id, task);
@@ -2614,26 +2722,10 @@ export default function App() {
     });
 
     return sortTasksForToday(Array.from(tasksById.values()), activeDate);
-  }, [activeDate, appState, inlinePeriodDateKeys, visibleTodayTasks]);
-  const periodGoals = useMemo(() => {
-    if (inlinePeriodDateKeys.length === 0) {
-      return sortedTodayGoals;
-    }
-
-    const goalsById = new Map<string, ProgressGoal>();
-
-    inlinePeriodDateKeys.forEach((dateKey) => {
-      getScheduledGoalsForDate(appState, dateKey).forEach((goal) => {
-        if (!goalsById.has(goal.id)) {
-          goalsById.set(goal.id, goal);
-        }
-      });
-    });
-
-    return sortGoalsForToday(Array.from(goalsById.values()), activeDate);
-  }, [activeDate, appState, inlinePeriodDateKeys, sortedTodayGoals]);
-  const actionListTasks = inlinePeriodDateKeys.length > 0 ? periodTasks : visibleTodayTasks;
-  const actionListGoals = inlinePeriodDateKeys.length > 0 ? periodGoals : sortedTodayGoals;
+  }, [activeDate, appState, periodSourceDateKeys, visibleTodayTasks]);
+  const periodOverviewActive = periodSourceDateKeys.length > 0;
+  const actionListTasks = periodOverviewActive ? periodTasks : visibleTodayTasks;
+  const actionListGoals = periodOverviewActive ? [] : sortedTodayGoals;
   const groupedTodayActions = useMemo(
     () => groupTodayActions(actionListTasks, actionListGoals, activeDate),
     [activeDate, actionListGoals, actionListTasks],
@@ -2782,21 +2874,24 @@ export default function App() {
       .map((group) => ({ ...group, items: sortItems(group.items) }))
       .sort((first, second) => first.order - second.order || (first.title ?? "").localeCompare(second.title ?? ""))
       .filter((group) => group.items.length > 0);
-  }, [activeDate, groupedTodayActions, normalizedTodaySearch, settings.language, todayFilterModes, todayGroupMode, todaySortMode]);
+  }, [activeDate, groupedTodayActions, normalizedTodaySearch, periodOverviewActive, settings.language, todayFilterModes, todayGroupMode, todaySortMode]);
   const hasActiveDateItems = actionListGoals.length > 0 || actionListTasks.length > 0;
   const hasDisplayedTodayItems = displayedTodayActionGroups.some((group) => group.items.length > 0);
+  const hasPeriodGridItems = periodOverviewActive && displayedTodayActionGroups.some((group) => group.items.some((item) => item.type === "task"));
   const todayListSettingsActive = todaySortMode !== "manual" || todayGroupMode !== "group" || todayFilterModes.length > 0;
-  const subitemsSheetTask = useMemo(() => {
+
+  useEffect(() => {
     if (!subitemsSheetTaskId) {
-      return null;
+      return undefined;
     }
 
-    return (
-      activeDateState.tasks.find((task) => task.id === subitemsSheetTaskId) ??
-      appState.tasks.find((task) => task.id === subitemsSheetTaskId) ??
-      null
-    );
-  }, [activeDateState.tasks, appState.tasks, subitemsSheetTaskId]);
+    const timeoutId = window.setTimeout(() => {
+      setSubitemsSheetTaskId((currentTaskId) => (currentTaskId === subitemsSheetTaskId ? null : currentTaskId));
+    }, 6500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [subitemsPanelActivity, subitemsSheetTaskId]);
+
   const viewAllGoals = useMemo(
     () => activeDateState.goals.filter((goal) => isGoalDueOnDate(goal, activeDateDate, activeDate) || goal.currentValue >= goal.targetValue),
     [activeDate, activeDateDate, activeDateState.goals],
@@ -2816,7 +2911,6 @@ export default function App() {
         progressSheet ||
         confirmState ||
         actionSheet ||
-        subitemsSheetTaskId ||
         deleteState ||
         editState ||
         addSheetOpen ||
@@ -2864,7 +2958,6 @@ export default function App() {
     progressSheet,
     resetConfirmOpen,
     settings.language,
-    subitemsSheetTaskId,
     telegramBackVisible,
     todayListSettingsOpen,
     viewAllSheet,
@@ -3367,7 +3460,10 @@ export default function App() {
           return goal;
         }
 
-        const required = getRequiredToday(goal, activeDate);
+        const carryOverOccurrence = (state.occurrences ?? []).find(
+          (occurrence) => occurrence.itemType === "goal" && occurrence.itemId === goalId && occurrence.date === activeDate && occurrence.source === "carry_over" && occurrence.status !== "skipped",
+        );
+        const required = carryOverOccurrence ? getCarryOverGoalRequired(goal, activeDate) : getRequiredToday(goal, activeDate);
         const previousLogged = getTodayLoggedAmount(goal, activeDate);
         const nextLogged = previousLogged + amount;
         const completedNow = required > 0 && previousLogged < required && nextLogged >= required;
@@ -3378,7 +3474,7 @@ export default function App() {
           lateDates.add(activeDate);
         }
 
-        completedCarryOver = required > 0 && nextLogged >= required;
+        completedCarryOver = Boolean(carryOverOccurrence) && (required <= 0 ? goal.currentValue + amount >= goal.targetValue : nextLogged >= required);
 
         return {
           ...goal,
@@ -3431,7 +3527,10 @@ export default function App() {
         const normalizedAmount = Math.max(nextAmount, 0);
         const previousLogged = getCalendarLoggedAmount(goal, dateKey);
         const delta = normalizedAmount - previousLogged;
-        const required = getCalendarRequiredForDate(goal, dateKey);
+        const carryOverOccurrence = (state.occurrences ?? []).find(
+          (occurrence) => occurrence.itemType === "goal" && occurrence.itemId === goalId && occurrence.date === dateKey && occurrence.source === "carry_over" && occurrence.status !== "skipped",
+        );
+        const required = carryOverOccurrence ? getCarryOverGoalRequired(goal, dateKey) : getCalendarRequiredForDate(goal, dateKey);
         const nextCurrentValue = Math.max(goal.currentValue + delta, 0);
         const completedForDay = required > 0 ? normalizedAmount >= required : normalizedAmount > 0 || nextCurrentValue >= goal.targetValue;
         const completedAtByDate = { ...(goal.completedAtByDate ?? {}) };
@@ -3451,7 +3550,7 @@ export default function App() {
           lateDates.delete(dateKey);
         }
 
-        completedCarryOver = completedForDay;
+        completedCarryOver = Boolean(carryOverOccurrence) && completedForDay;
 
         return {
           ...goal,
@@ -4126,8 +4225,8 @@ export default function App() {
               )}
               <section className="section-block unified-actions-section">
                 <div
-                  className={`action-list ${inlinePeriodDates.length > 0 ? "with-period" : ""}`}
-                  style={inlinePeriodDates.length > 0 ? ({ "--period-days": inlinePeriodDates.length } as CSSProperties) : undefined}
+                  className={`action-list ${hasPeriodGridItems ? "with-period" : ""}`}
+                  style={hasPeriodGridItems ? ({ "--period-days": inlinePeriodDates.length } as CSSProperties) : undefined}
                 >
                   {onboardingQuest.enabled && !onboardingQuest.hidden && (
                     <InteractiveStartQuestBlock
@@ -4137,7 +4236,7 @@ export default function App() {
                       onCreateAction={() => setAddSheetOpen(true)}
                     />
                   )}
-                  {inlinePeriodDates.length > 0 && hasDisplayedTodayItems && (
+                  {hasPeriodGridItems && hasDisplayedTodayItems && (
                     <PeriodInlineHeader
                       mode={todayOverviewMode}
                       dates={inlinePeriodDates}
@@ -4148,7 +4247,13 @@ export default function App() {
                     />
                   )}
                   {displayedTodayActionGroups.map((group) => (
-                    <div key={group.key || "ungrouped"} className={`action-group ${group.title ? "has-title" : "is-ungrouped"}`}>
+                    <div
+                      key={group.key || "ungrouped"}
+                      data-group-key={group.key}
+                      className={`action-group ${group.title ? "has-title" : "is-ungrouped"} ${
+                        hasPeriodGridItems && group.items.some((groupItem) => groupItem.type === "task") ? "has-period-grid" : ""
+                      }`}
+                    >
                       {group.title && <div className="action-group-title">{group.title}</div>}
                       {group.items.map((item) => {
                         if (item.type === "task") {
@@ -4165,11 +4270,13 @@ export default function App() {
                                 isToday={activeDate === today}
                                 nowMs={timerNow}
                                 copy={activeUiCopy}
+                                expanded={taskHasSubitems && subitemsSheetTaskId === task.id}
                                 editLabel={activeUiCopy.editAction}
                                 toggleLabel={completedToday ? activeUiCopy.undoDoneTitle : activeUiCopy.markDoneTitle}
                                 onClick={() => {
                                   if (taskHasSubitems) {
-                                    setSubitemsSheetTaskId(task.id);
+                                    setSubitemsSheetTaskId((current) => (current === task.id ? null : task.id));
+                                    setSubitemsPanelActivity(Date.now());
                                     return;
                                   }
 
@@ -4181,11 +4288,16 @@ export default function App() {
                                     nextCompleted: !completedToday,
                                   });
                                 }}
-                                onSubitemAdvance={(subitemId) => advanceTaskSubitem(task.id, subitemId)}
+                                onSubitemAdvance={(subitemId) => {
+                                  setSubitemsPanelActivity(Date.now());
+                                  advanceTaskSubitem(task.id, subitemId);
+                                }}
+                                onSubitemActivity={() => setSubitemsPanelActivity(Date.now())}
                                 onSubitemMove={(sourceId, targetId) => reorderTaskSubitems(task.id, sourceId, targetId)}
                                 onEdit={() => setEditState({ type: "task", task })}
-                                periodCells={inlinePeriodDates.length > 0 ? (
+                                periodCells={hasPeriodGridItems ? (
                                   <PeriodInlineCells
+                                    mode={todayOverviewMode}
                                     item={{ type: "task", task }}
                                     dates={inlinePeriodDates}
                                     appState={appState}
@@ -4212,17 +4324,6 @@ export default function App() {
                               onOpenManual={() => setProgressSheet({ goal })}
                               onQuickAdd={(amount) => addProgress(goal.id, amount)}
                               onEdit={() => setEditState({ type: "goal", goal })}
-                              periodCells={inlinePeriodDates.length > 0 ? (
-                                <PeriodInlineCells
-                                  item={{ type: "goal", goal }}
-                                  dates={inlinePeriodDates}
-                                  appState={appState}
-                                  today={today}
-                                  onSelectDate={openSelectedDate}
-                                  onToggleTaskDate={setTaskCompletedForDate}
-                                  onToggleGoalDate={toggleGoalCompletedForDate}
-                                />
-                              ) : undefined}
                             />
                           </ReorderableItem>
                         );
@@ -4305,16 +4406,6 @@ export default function App() {
                 setEditState({ type: "task", task: actionSheet.task });
                 setActionSheet(null);
               }}
-            />
-          )}
-
-          {subitemsSheetTask && (
-            <SubitemsSheet
-              task={subitemsSheetTask}
-              dateKey={activeDate}
-              language={settings.language}
-              onClose={() => setSubitemsSheetTaskId(null)}
-              onChange={(taskId, subitemId, state) => updateTaskSubitem(taskId, subitemId, state)}
             />
           )}
 
@@ -4825,9 +4916,17 @@ function PeriodInlineHeader({
               onClick={() => onSelectDate(dateKey)}
               aria-label={`${formatDateLabel(dateKey)} ${weekday}`}
             >
-              {mode === "month" && <span>{language === "en" ? `W${getWeekOfMonth(date)}` : `Н${getWeekOfMonth(date)}`}</span>}
-              <strong>{date.getDate()}</strong>
-              <small>{weekday}</small>
+              {mode === "month" ? (
+                <>
+                  <strong>{language === "en" ? `W${getWeekOfMonth(date)}` : `Н${getWeekOfMonth(date)}`}</strong>
+                  <small>{date.getDate()}</small>
+                </>
+              ) : (
+                <>
+                  <strong>{date.getDate()}</strong>
+                  <small>{weekday}</small>
+                </>
+              )}
             </button>
           );
         })}
@@ -4837,6 +4936,7 @@ function PeriodInlineHeader({
 }
 
 function PeriodInlineCells({
+  mode,
   item,
   dates,
   appState,
@@ -4845,6 +4945,7 @@ function PeriodInlineCells({
   onToggleTaskDate,
   onToggleGoalDate,
 }: {
+  mode: TodayOverviewMode;
   item: { type: "task"; task: TaskItem } | { type: "goal"; goal: ProgressGoal };
   dates: Date[];
   appState: AppState;
@@ -4860,6 +4961,43 @@ function PeriodInlineCells({
         const isFuture = dateKey > today;
 
         if (item.type === "task") {
+          if (mode === "month") {
+            const weekDates = getWeekRange(date).map((weekDate) => toDateKey(weekDate));
+            const scheduled = weekDates
+              .map((weekDateKey) => getScheduledTasksForDate(appState, weekDateKey).find((scheduledTask) => scheduledTask.id === item.task.id))
+              .filter((task): task is TaskItem => Boolean(task));
+
+            if (scheduled.length === 0) {
+              return <span key={dateKey} className="period-inline-check off" aria-hidden="true" />;
+            }
+
+            const completedCount = weekDates.filter((weekDateKey) => {
+              const task = getScheduledTasksForDate(appState, weekDateKey).find((scheduledTask) => scheduledTask.id === item.task.id);
+              return task ? isTaskCompletedOnDate(task, weekDateKey) : false;
+            }).length;
+            const checked = completedCount >= scheduled.length;
+            const partial = completedCount > 0 && !checked;
+
+            return (
+              <button
+                key={dateKey}
+                type="button"
+                className={`period-inline-check week-cell ${checked ? "checked" : ""} ${partial ? "partial" : ""} ${isFuture ? "future" : ""} readonly`}
+                aria-pressed={checked}
+                aria-label={`${item.task.title} · ${formatDateLabel(dateKey)}`}
+                onPointerDown={(event) => event.stopPropagation()}
+                onPointerUp={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onSelectDate(dateKey);
+                }}
+              >
+                <span aria-hidden="true">{checked ? "✓" : partial ? "•" : ""}</span>
+              </button>
+            );
+          }
+
           const task = getScheduledTasksForDate(appState, dateKey).find((scheduledTask) => scheduledTask.id === item.task.id);
 
           if (!task) {
@@ -5416,9 +5554,18 @@ function AiCreationSheet({
           empty: "Write what you want to track first.",
           questions: ["What do you want to improve?", "For what period?", "How will you mark progress?"],
           samples: ["English: 50 lessons this month", "Morning exercise every day before 11:00", "Read 1000 pages in a month"],
-          target: "target",
           checkbox: "checkbox",
           quantity: "quantity",
+          today: "today",
+          week: "week",
+          month: "month",
+          custom: "period",
+          daily: "every day",
+          weekdays: "weekdays",
+          selectedDays: "selected days",
+          once: "once",
+          due: "due",
+          subitems: "steps",
         }
       : {
           title: "Создание с ИИ",
@@ -5436,9 +5583,18 @@ function AiCreationSheet({
           empty: "Сначала напиши, что хочешь отслеживать.",
           questions: ["Что хочешь улучшить?", "На какой период?", "Как отмечать прогресс?"],
           samples: ["Английский: 50 уроков за месяц", "Зарядка каждый день до 11:00", "Прочитать 1000 страниц за месяц"],
-          target: "цель",
           checkbox: "галочка",
           quantity: "число",
+          today: "день",
+          week: "неделя",
+          month: "месяц",
+          custom: "период",
+          daily: "каждый день",
+          weekdays: "будни",
+          selectedDays: "выбранные дни",
+          once: "разово",
+          due: "до",
+          subitems: "пункты",
         };
   type AiChatMessage = {
     id: string;
@@ -5456,6 +5612,28 @@ function AiCreationSheet({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const selectedDrafts = drafts.filter((_: AiActionDraft, index: number) => selectedDraftIndexes.has(index));
+  const getDraftPeriodLabel = (period: AiActionDraft["period"]) => {
+    if (period === "today") return labels.today;
+    if (period === "week") return labels.week;
+    if (period === "month") return labels.month;
+    return labels.custom;
+  };
+  const getDraftRepeatLabel = (repeat: AiActionDraft["repeat_mode"]) => {
+    if (repeat === "once") return labels.once;
+    if (repeat === "weekdays") return labels.weekdays;
+    if (repeat === "selected_days") return labels.selectedDays;
+    return labels.daily;
+  };
+  const getDraftMeta = (draft: AiActionDraft) =>
+    [
+      draft.tracking_type === "quantity"
+        ? `${formatNumber(Number(draft.target_value ?? 0))} ${draft.unit ?? ""}`.trim()
+        : labels.checkbox,
+      getDraftPeriodLabel(draft.period),
+      getDraftRepeatLabel(draft.repeat_mode),
+      draft.due_time ? `${labels.due} ${draft.due_time}` : "",
+      draft.subitems?.length ? `${labels.subitems}: ${draft.subitems.length}` : "",
+    ].filter(Boolean).join(" · ");
 
   function splitActionRequests(value: string): string[] {
     const normalizedList = value
@@ -5636,22 +5814,21 @@ function AiCreationSheet({
               {drafts.map((draft: AiActionDraft, index: number) => {
                 const selected = selectedDraftIndexes.has(index);
                 return (
-                <div key={`${draft.title}-${draft.start_date}-${index}`} className={`ai-chat-draft ${selected ? "selected" : ""}`}>
-                  <button type="button" className="ai-chat-draft-check" aria-label="Select draft" aria-pressed={selected} onClick={() => toggleDraft(index)}>
-                    <span aria-hidden="true" />
-                  </button>
-                  <b>{draft.icon ?? inferAiEmoji(draft.title)}</b>
-                  <div>
-                    <span>{draft.title}</span>
-                    <small>
-                      {draft.tracking_type === "quantity" ? labels.quantity : labels.checkbox}
-                      {draft.tracking_type === "quantity" ? ` · ${labels.target}: ${formatNumber(Number(draft.target_value ?? 0))} ${draft.unit ?? ""}` : ""}
-                    </small>
+                  <div key={`${draft.title}-${draft.start_date}-${index}`} className={`ai-chat-draft ${selected ? "selected" : ""}`}>
+                    <button type="button" className="ai-chat-draft-check" aria-label="Select draft" aria-pressed={selected} onClick={() => toggleDraft(index)}>
+                      <span aria-hidden="true" />
+                    </button>
+                    <div className="ai-preview-action-card ai-chat-draft-action">
+                      <span className="action-emoji" aria-hidden="true">{draft.icon ?? inferAiEmoji(draft.title)}</span>
+                      <span className="ai-preview-action-copy">
+                        <b>{draft.title}</b>
+                        <small>{getDraftMeta(draft)}</small>
+                      </span>
+                    </div>
+                    <button type="button" aria-label="Remove" onClick={() => removeDraft(index)}>
+                      <X size={14} aria-hidden="true" />
+                    </button>
                   </div>
-                  <button type="button" aria-label="Remove" onClick={() => removeDraft(index)}>
-                    <X size={14} aria-hidden="true" />
-                  </button>
-                </div>
                 );
               })}
             </div>
@@ -6048,19 +6225,44 @@ function InteractiveStartQuestBlock({
 
     if (activeScenario.id === "miniList") {
       return (
-        <button type="button" className="start-quest-row-button" onClick={openMiniList}>
-          {renderQuestRow(
-            activeScenario,
-            <div className="start-quest-mini-list">
-              {copy.scenarios.miniList.rows.map((row: string, index: number) => (
-                <span key={row} className={miniCheckedRows.includes(index) ? "done" : ""}>
-                  {row}
-                </span>
-              ))}
-            </div>,
-            <span className="start-quest-count">{Math.min(miniCheckedRows.length, 2)}/2</span>,
+        <div className="start-quest-inline-list-shell">
+          <button type="button" className="start-quest-row-button" onClick={openMiniList}>
+            {renderQuestRow(
+              activeScenario,
+              <div className="start-quest-mini-list">
+                {copy.scenarios.miniList.rows.map((row: string, index: number) => (
+                  <span key={row} className={miniCheckedRows.includes(index) ? "done" : ""}>
+                    {row}
+                  </span>
+                ))}
+              </div>,
+              <span className="start-quest-count">{Math.min(miniCheckedRows.length, 2)}/2</span>,
+            )}
+          </button>
+          {miniListOpen && (
+            <div className="subitems-sheet-list start-quest-sheet-list start-quest-inline-list">
+              {copy.scenarios.miniList.rows.map((row: string, index: number) => {
+                const checked = miniCheckedRows.includes(index);
+
+                return (
+                  <div key={row} className={`subitem-sheet-row ${checked ? "completed" : ""}`}>
+                    <button type="button" className="subitem-toggle" onClick={() => toggleMiniRow(index)}>
+                      <span className="task-check" aria-hidden="true">
+                        {checked && (
+                          <span className="task-x-mark">
+                            <span />
+                            <span />
+                          </span>
+                        )}
+                      </span>
+                      <strong>{row}</strong>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
           )}
-        </button>
+        </div>
       );
     }
 
@@ -6157,31 +6359,6 @@ function InteractiveStartQuestBlock({
           </form>
         </BottomSheet>
       )}
-      {miniListOpen && (
-        <BottomSheet title={copy.scenarios.miniList.title} subtitle={copy.scenarios.miniList.meta} closeLabel={copy.cancel} onClose={() => setMiniListOpen(false)}>
-          <div className="subitems-sheet-list start-quest-sheet-list">
-            {copy.scenarios.miniList.rows.map((row: string, index: number) => {
-              const checked = miniCheckedRows.includes(index);
-
-              return (
-                <div key={row} className={`subitem-sheet-row ${checked ? "completed" : ""}`}>
-                  <button type="button" className="subitem-toggle" onClick={() => toggleMiniRow(index)}>
-                    <span className="task-check" aria-hidden="true">
-                      {checked && (
-                        <span className="task-x-mark">
-                          <span />
-                          <span />
-                        </span>
-                      )}
-                    </span>
-                    <strong>{row}</strong>
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </BottomSheet>
-      )}
       {progressOpen && (
         <BottomSheet title={copy.scenarios.progress.title} subtitle={copy.scenarios.progress.meta} closeLabel={copy.cancel} onClose={() => setProgressOpen(false)}>
           <form className="sheet-form start-quest-progress-form" onSubmit={submitProgress}>
@@ -6232,12 +6409,14 @@ function GoalCard({
   const isTodayDone = isGoalCompleted || loggedToday >= requiredToday;
   const dueMeta = formatDueMeta(goal.dueTime, today, isTodayDone, goal.completedAtByDate?.[today], goal.lateDates?.includes(today) ?? false, nowMs, copy);
   const progressStyle = { "--goal-progress": `${progressPercent}%`, ...getFillToneStyle(progressPercent) } as CSSProperties;
-  const requiredLine = requiredToday > 0 ? `${formatNumber(requiredToday)} ${goal.unit} ${copy.perDay}` : "";
-  const titleLine = !isTodayDone && requiredLine ? `${goal.title} (${copy.recommendedToFinish(requiredLine)})` : goal.title;
+  const requiredLine = requiredToday > 0 ? `${formatNumber(requiredToday)} ${goal.unit}` : "";
+  const swipeDeleteHandler = periodCells ? undefined : onOpenManual;
   const periodRemaining = Math.max(goal.targetValue - goal.currentValue, 0);
   const periodPaceLine =
     periodRemaining > 0
-      ? `${copy.requiredToday}: ${formatNumber(requiredToday)} ${goal.unit} · ${copy.toFinishDaily}: ${formatNumber(periodRemaining)} · ${formatDateLabel(goal.endDate)}`
+      ? requiredLine
+        ? `${copy.requiredToday}: ${requiredLine}`
+        : `${copy.toFinishDaily}: ${formatNumber(periodRemaining)}`
       : copy.goalClosed;
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
@@ -6248,7 +6427,7 @@ function GoalCard({
   }
 
   return (
-    <SwipeDeleteShell deleteLabel={copy.enter} editLabel={copy.editAction} deleteTone="complete" onDelete={onOpenManual} onEdit={onEdit} onTap={onOpenManual}>
+    <SwipeDeleteShell deleteLabel={copy.enter} editLabel={copy.editAction} deleteTone="complete" onDelete={swipeDeleteHandler} onEdit={onEdit} onTap={onOpenManual}>
       <article
         className={`goal-card ${isTodayDone ? "is-done" : ""} ${isGoalCompleted ? "is-complete" : ""} ${periodCells ? "period-expanded" : ""}`}
         style={progressStyle}
@@ -6262,7 +6441,7 @@ function GoalCard({
             <div className="goal-title-row">
               <div className="goal-title-progress">
                 <div className="goal-main-line">
-                  <h3 title={titleLine}>{titleLine}</h3>
+                  <h3 title={goal.title}>{goal.title}</h3>
                   {dueMeta && <small className="due-meta">{dueMeta}</small>}
                 </div>
                 <div className="goal-progress-stack">
@@ -6294,6 +6473,7 @@ function TaskRow({
   onClick,
   onToggle,
   onSubitemAdvance,
+  onSubitemActivity,
   onSubitemMove,
   onEdit,
   periodCells,
@@ -6310,6 +6490,7 @@ function TaskRow({
   onClick: () => void;
   onToggle?: () => void;
   onSubitemAdvance?: (subitemId: string) => void;
+  onSubitemActivity?: () => void;
   onSubitemMove?: (sourceId: string, targetId: string, placement?: ReorderPlacement) => void;
   onEdit?: () => void;
   periodCells?: ReactNode;
@@ -6318,9 +6499,10 @@ function TaskRow({
   const subitems = [...(task.subitems ?? [])].sort((first, second) => (first.sortOrder ?? 0) - (second.sortOrder ?? 0));
   const dayState = task.subitemStateByDate?.[dateKey] ?? {};
   const dueMeta = formatDueMeta(task.dueTime, dateKey, completed, task.completedAtByDate?.[dateKey], task.lateDates?.includes(dateKey) ?? false, nowMs, copy);
+  const swipeToggleHandler = periodCells ? undefined : onToggle ?? onClick;
 
   return (
-    <SwipeDeleteShell deleteLabel={toggleLabel} editLabel={editLabel} deleteTone={completed ? "undo" : "complete"} onDelete={onToggle ?? onClick} onEdit={onEdit} onTap={onClick}>
+    <SwipeDeleteShell deleteLabel={toggleLabel} editLabel={editLabel} deleteTone={completed ? "undo" : "complete"} onDelete={swipeToggleHandler} onEdit={onEdit} onTap={onClick}>
       <div className={`task-card-inline ${expanded ? "expanded" : ""}`}>
       <div className={`task-row ${completed ? "completed" : ""} ${subitemProgress ? "with-subitems" : ""} ${periodCells ? "period-expanded" : ""} priority-${task.priority ?? "medium"}`}>
         <div
@@ -6366,24 +6548,51 @@ function TaskRow({
         )}
       </div>
       {expanded && subitems.length > 0 && (
-        <div className="inline-subitems" aria-label={task.title}>
+        <div
+          className="inline-subitems"
+          aria-label={task.title}
+          onPointerDownCapture={onSubitemActivity}
+          onKeyDownCapture={onSubitemActivity}
+          onPointerDown={(event) => event.stopPropagation()}
+          onPointerUp={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+        >
           {subitems.map((subitem) => {
             const state = dayState[subitem.id] ?? {};
             const target = subitem.targetCount && subitem.targetCount > 1 ? subitem.targetCount : 1;
             const current = subitem.targetCount && subitem.targetCount > 1 ? Math.min(Number(state.count ?? 0), target) : state.completed ? 1 : 0;
-            const percent = target > 0 ? clampPercent((current / target) * 100) : 0;
             const isComplete = current >= target;
+            const showCount = target > 1 && current > 0;
+            const advanceSubitem = () => {
+              onSubitemActivity?.();
+              onSubitemAdvance?.(subitem.id);
+            };
 
             return (
               <ReorderableItem key={subitem.id} id={subitem.id} scope={`subitems-${task.id}`} onMove={(sourceId, targetId, placement) => onSubitemMove?.(sourceId, targetId, placement)}>
-                <SwipeAdvanceShell onAdvance={() => onSubitemAdvance?.(subitem.id)}>
-                  <div className={`inline-subitem-row ${isComplete ? "completed" : ""}`}>
+                <SwipeAdvanceShell onAdvance={advanceSubitem}>
+                  <div
+                    className={`inline-subitem-row ${isComplete ? "completed" : ""}`}
+                    role="button"
+                    tabIndex={0}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      advanceSubitem();
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        advanceSubitem();
+                      }
+                    }}
+                  >
                     <div className="inline-subitem-head">
-                      <span>{subitem.title}</span>
-                      <strong>{current}/{target}</strong>
-                    </div>
-                    <div className="mini-progress-track" style={{ "--mini-progress": `${percent}%`, ...getFillToneStyle(percent) } as CSSProperties}>
-                      <span />
+                      <span className="inline-subitem-check" aria-hidden="true">{isComplete ? "✓" : ""}</span>
+                      <span className="inline-subitem-title">{subitem.title}</span>
+                      {showCount && <strong>{current}/{target}</strong>}
                     </div>
                   </div>
                 </SwipeAdvanceShell>
@@ -6802,6 +7011,10 @@ function SwipeDeleteShell({
   }
 
   function handlePointerEnd(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!startPoint.current) {
+      return;
+    }
+
     const shouldDelete = offsetRef.current <= -72;
     const shouldEdit = offsetRef.current >= 72;
     const shouldSuppressClick = Math.abs(offsetRef.current) > 18 || shouldDelete || shouldEdit;
@@ -8628,6 +8841,8 @@ type ActionTemplate = {
   quickValues?: number[];
   selectedDays?: number[];
   priority?: Priority;
+  dueTime?: string;
+  subitems?: Array<{ title: string; targetCount?: number }>;
 };
 
 const weekdays = [
@@ -8675,49 +8890,53 @@ const actionIcons: ActionIconOption[] = [
 ];
 
 const actionTemplates: ActionTemplate[] = [
-  { group: "progress", title: "Английский", iconKey: "language", trackingMode: "amount", targetValue: 30, unit: "уроков", period: "month", repeatMode: "everyDay", quickValues: [1, 2] },
-  { group: "progress", title: "Чтение", iconKey: "book", trackingMode: "amount", targetValue: 1000, unit: "страниц", period: "month", repeatMode: "everyDay", quickValues: [10, 25] },
-  { group: "progress", title: "Бег", iconKey: "run", trackingMode: "amount", targetValue: 50, unit: "км", period: "month", repeatMode: "weekdays", quickValues: [1, 5] },
-  { group: "progress", title: "Тренировки", iconKey: "dumbbell", trackingMode: "amount", targetValue: 20, unit: "тренировок", period: "month", repeatMode: "weekdays", quickValues: [1, 2] },
-  { group: "progress", title: "Учеба", iconKey: "graduation", trackingMode: "amount", targetValue: 40, unit: "занятий", period: "month", repeatMode: "everyDay", quickValues: [1, 2] },
-  { group: "progress", title: "Вода", iconKey: "droplet", trackingMode: "amount", targetValue: 60, unit: "стаканов", period: "month", repeatMode: "everyDay", quickValues: [1, 2] },
-  { group: "progress", title: "Медитация", iconKey: "clock", trackingMode: "amount", targetValue: 300, unit: "минут", period: "month", repeatMode: "everyDay", quickValues: [5, 10] },
-  { group: "progress", title: "Проект", iconKey: "target", trackingMode: "amount", targetValue: 30, unit: "задач", period: "month", repeatMode: "weekdays", quickValues: [1, 3] },
-  { group: "progress", title: "Книга", iconKey: "book", trackingMode: "amount", targetValue: 300, unit: "страниц", period: "month", repeatMode: "everyDay", quickValues: [10, 20] },
-  { group: "progress", title: "Ходьба", iconKey: "run", trackingMode: "amount", targetValue: 150000, unit: "шагов", period: "month", repeatMode: "everyDay", quickValues: [1000, 5000] },
-  { group: "checklist", title: "Зарядка", iconKey: "fire", trackingMode: "done", period: "month", repeatMode: "everyDay", priority: "medium" },
-  { group: "checklist", title: "Уборка", iconKey: "home", trackingMode: "done", period: "week", repeatMode: "selectedDays", selectedDays: [6], priority: "medium" },
-  { group: "checklist", title: "Сходить в магазин", iconKey: "cart", trackingMode: "done", period: "today", repeatMode: "everyDay", priority: "medium" },
-  { group: "checklist", title: "Сон до 23:00", iconKey: "moon", trackingMode: "done", period: "month", repeatMode: "everyDay", priority: "medium" },
-  { group: "checklist", title: "Витамины", iconKey: "pill", trackingMode: "done", period: "month", repeatMode: "everyDay", priority: "medium" },
-  { group: "checklist", title: "План дня", iconKey: "calendar", trackingMode: "done", period: "month", repeatMode: "everyDay", priority: "medium" },
-  { group: "checklist", title: "Без сахара", iconKey: "shield", trackingMode: "done", period: "month", repeatMode: "everyDay", priority: "medium" },
-  { group: "checklist", title: "Прогулка", iconKey: "run", trackingMode: "done", period: "month", repeatMode: "everyDay", priority: "medium" },
+  { group: "progress", title: "Уроки за месяц", iconKey: "graduation", trackingMode: "amount", targetValue: 40, unit: "уроков", period: "month", repeatMode: "everyDay", quickValues: [1, 2] },
+  { group: "progress", title: "Страницы за месяц", iconKey: "book", trackingMode: "amount", targetValue: 1000, unit: "страниц", period: "month", repeatMode: "everyDay", quickValues: [10, 25] },
+  { group: "progress", title: "Километры за неделю", iconKey: "run", trackingMode: "amount", targetValue: 25, unit: "км", period: "week", repeatMode: "weekdays", quickValues: [1, 5] },
+  { group: "progress", title: "Тренировки за месяц", iconKey: "dumbbell", trackingMode: "amount", targetValue: 20, unit: "тренировок", period: "month", repeatMode: "weekdays", quickValues: [1, 2] },
+  { group: "progress", title: "Минуты медитации", iconKey: "clock", trackingMode: "amount", targetValue: 300, unit: "минут", period: "month", repeatMode: "everyDay", quickValues: [5, 10] },
+  { group: "progress", title: "Шаги за неделю", iconKey: "run", trackingMode: "amount", targetValue: 70000, unit: "шагов", period: "week", repeatMode: "everyDay", quickValues: [1000, 5000] },
+  { group: "progress", title: "Задачи проекта", iconKey: "target", trackingMode: "amount", targetValue: 30, unit: "задач", period: "month", repeatMode: "weekdays", quickValues: [1, 3] },
+  { group: "progress", title: "Вода за день", iconKey: "droplet", trackingMode: "amount", targetValue: 8, unit: "стаканов", period: "today", repeatMode: "everyDay", quickValues: [1, 2] },
+  { group: "progress", title: "Часы практики", iconKey: "star", trackingMode: "amount", targetValue: 20, unit: "часов", period: "custom", repeatMode: "selectedDays", selectedDays: [1, 3, 5], quickValues: [1, 2] },
+  { group: "progress", title: "Бессрочный счетчик", iconKey: "plus", trackingMode: "amount", targetValue: 100, unit: "раз", period: "forever", repeatMode: "everyDay", quickValues: [1, 5] },
+  { group: "checklist", title: "Разовая задача", iconKey: "plus", trackingMode: "done", period: "today", repeatMode: "everyDay", priority: "medium" },
+  { group: "checklist", title: "Ежедневная привычка", iconKey: "fire", trackingMode: "done", period: "month", repeatMode: "everyDay", priority: "medium" },
+  { group: "checklist", title: "Будний ритуал", iconKey: "calendar", trackingMode: "done", period: "month", repeatMode: "weekdays", priority: "medium" },
+  { group: "checklist", title: "По выбранным дням", iconKey: "star", trackingMode: "done", period: "month", repeatMode: "selectedDays", selectedDays: [1, 3, 5], priority: "medium" },
+  { group: "checklist", title: "До времени", iconKey: "clock", trackingMode: "done", period: "month", repeatMode: "everyDay", dueTime: "11:00", priority: "medium" },
+  { group: "checklist", title: "С мини-списком", iconKey: "target", trackingMode: "done", period: "week", repeatMode: "everyDay", priority: "medium", subitems: [{ title: "Подготовка" }, { title: "Основной шаг" }, { title: "Закрыть" }] },
+  { group: "checklist", title: "С повтором пункта", iconKey: "dumbbell", trackingMode: "done", period: "week", repeatMode: "everyDay", priority: "medium", subitems: [{ title: "Разминка" }, { title: "Подходы", targetCount: 3 }, { title: "Растяжка" }] },
+  { group: "checklist", title: "Еженедельная уборка", iconKey: "home", trackingMode: "done", period: "week", repeatMode: "selectedDays", selectedDays: [6], priority: "medium" },
+  { group: "checklist", title: "Сон до 23:00", iconKey: "moon", trackingMode: "done", period: "month", repeatMode: "everyDay", dueTime: "23:00", priority: "medium" },
+  { group: "checklist", title: "Разобрать почту", iconKey: "mail", trackingMode: "done", period: "week", repeatMode: "weekdays", dueTime: "18:00", priority: "medium" },
   { group: "checklist", title: "Созвон", iconKey: "phone", trackingMode: "done", period: "week", repeatMode: "selectedDays", selectedDays: [1], priority: "medium" },
-  { group: "checklist", title: "Разобрать почту", iconKey: "mail", trackingMode: "done", period: "week", repeatMode: "weekdays", priority: "medium" },
+  { group: "checklist", title: "Покупки", iconKey: "cart", trackingMode: "done", period: "today", repeatMode: "everyDay", priority: "medium", subitems: [{ title: "Список" }, { title: "Магазин" }, { title: "Разложить" }] },
 ];
 
 const templateEnglishCopy: Record<string, { title: string; unit?: string }> = {
-  Английский: { title: "English", unit: "lessons" },
-  Чтение: { title: "Reading", unit: "pages" },
-  Бег: { title: "Running", unit: "km" },
-  Тренировки: { title: "Workouts", unit: "workouts" },
-  Учеба: { title: "Study", unit: "sessions" },
-  Вода: { title: "Water", unit: "glasses" },
-  Медитация: { title: "Meditation", unit: "minutes" },
-  Проект: { title: "Project", unit: "tasks" },
-  Книга: { title: "Book", unit: "pages" },
-  Ходьба: { title: "Walking", unit: "steps" },
-  Зарядка: { title: "Morning exercise" },
-  Уборка: { title: "Cleaning" },
-  "Сходить в магазин": { title: "Grocery run" },
+  "Уроки за месяц": { title: "Monthly lessons", unit: "lessons" },
+  "Страницы за месяц": { title: "Monthly pages", unit: "pages" },
+  "Километры за неделю": { title: "Weekly kilometers", unit: "km" },
+  "Тренировки за месяц": { title: "Monthly workouts", unit: "workouts" },
+  "Минуты медитации": { title: "Meditation minutes", unit: "minutes" },
+  "Шаги за неделю": { title: "Weekly steps", unit: "steps" },
+  "Задачи проекта": { title: "Project tasks", unit: "tasks" },
+  "Вода за день": { title: "Daily water", unit: "glasses" },
+  "Часы практики": { title: "Practice hours", unit: "hours" },
+  "Бессрочный счетчик": { title: "Open counter", unit: "times" },
+  "Разовая задача": { title: "One-off task" },
+  "Ежедневная привычка": { title: "Daily habit" },
+  "Будний ритуал": { title: "Weekday ritual" },
+  "По выбранным дням": { title: "Selected days" },
+  "До времени": { title: "Due time" },
+  "С мини-списком": { title: "Mini list" },
+  "С повтором пункта": { title: "Counted list" },
+  "Еженедельная уборка": { title: "Weekly cleaning" },
   "Сон до 23:00": { title: "Sleep by 23:00" },
-  Витамины: { title: "Vitamins" },
-  "План дня": { title: "Day plan" },
-  "Без сахара": { title: "No sugar" },
-  Прогулка: { title: "Walk" },
-  Созвон: { title: "Call" },
   "Разобрать почту": { title: "Inbox cleanup" },
+  Созвон: { title: "Call" },
+  Покупки: { title: "Shopping" },
 };
 
 function getTemplateTitle(template: ActionTemplate, language: AppSettings["language"]): string {
@@ -8726,6 +8945,22 @@ function getTemplateTitle(template: ActionTemplate, language: AppSettings["langu
 
 function getTemplateUnit(template: ActionTemplate, language: AppSettings["language"]): string | undefined {
   return language === "en" ? (templateEnglishCopy[template.title]?.unit ?? template.unit) : template.unit;
+}
+
+function translateTemplateSubitem(title: string): string {
+  const copy: Record<string, string> = {
+    Подготовка: "Prepare",
+    "Основной шаг": "Main step",
+    Закрыть: "Close",
+    Разминка: "Warm-up",
+    Подходы: "Sets",
+    Растяжка: "Stretch",
+    Список: "List",
+    Магазин: "Store",
+    Разложить: "Put away",
+  };
+
+  return copy[title] ?? title;
 }
 
 function AiDraftPreview({
@@ -8755,23 +8990,28 @@ function AiDraftPreview({
     if (repeat === "selected_days") return language === "en" ? "Selected days" : "Выбранные дни";
     return language === "en" ? "Every day" : "Каждый день";
   };
+  const trackingLabel = (draft: AiActionDraft) => (draft.tracking_type === "quantity" ? labels.quantity : labels.checkbox);
+  const actionMeta = (draft: AiActionDraft) =>
+    [
+      draft.tracking_type === "quantity" && draft.target_value ? `${formatNumber(Number(draft.target_value))} ${draft.unit ?? ""}`.trim() : trackingLabel(draft),
+      periodLabel(draft.period).toLocaleLowerCase(),
+      repeatLabel(draft.repeat_mode).toLocaleLowerCase(),
+      draft.due_time ? `${labels.due}: ${draft.due_time}` : "",
+      draft.subitems?.length ? `${labels.subitems}: ${draft.subitems.length}` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
 
   return (
     <div className="ai-preview-card">
       <strong>{labels.understood}</strong>
       {state.type === "action" ? (
-        <div className="ai-preview-fields">
-          <span>
-            <b>{state.draft.icon ?? inferAiEmoji(state.draft.title)}</b>
-            {state.draft.title}
+        <div className="ai-preview-action-card">
+          <span className="action-emoji" aria-hidden="true">{state.draft.icon ?? inferAiEmoji(state.draft.title)}</span>
+          <span className="ai-preview-action-copy">
+            <b>{state.draft.title}</b>
+            <small>{actionMeta(state.draft)}</small>
           </span>
-          <small>{labels.tracking}: {state.draft.tracking_type === "quantity" ? labels.quantity : labels.checkbox}</small>
-          {state.draft.tracking_type === "quantity" && (
-            <small>{labels.target}: {formatNumber(Number(state.draft.target_value ?? 0))} {state.draft.unit}</small>
-          )}
-          <small>{labels.period}: {periodLabel(state.draft.period)} · {labels.repeat}: {repeatLabel(state.draft.repeat_mode)}</small>
-          {state.draft.due_time && <small>{labels.due}: {state.draft.due_time}</small>}
-          {state.draft.subitems && state.draft.subitems.length > 0 && <small>{labels.subitems}: {state.draft.subitems.length}</small>}
         </div>
       ) : (
         <div className="ai-preview-fields">
@@ -8951,9 +9191,12 @@ function AddSheet({
   });
 
   function applyTemplate(template: ActionTemplate) {
-    setTitle(getTemplateTitle(template, language));
+    const templateTitle = getTemplateTitle(template, language);
+    const templateSubitems = template.subitems ?? [];
+
+    setTitle(templateTitle);
     setIconKey(template.iconKey);
-    setEmoji(getIconEmoji(template.iconKey) ?? inferEmojiFromTitle(getTemplateTitle(template, language)));
+    setEmoji(getIconEmoji(template.iconKey) ?? inferEmojiFromTitle(templateTitle));
     setTrackingMode(template.trackingMode);
     setPeriod(template.period);
     setRepeatMode(template.repeatMode);
@@ -8962,11 +9205,20 @@ function AddSheet({
     setUnit(getTemplateUnit(template, language) ?? "");
     setCurrentValue("0");
     setQuickValues(template.quickValues?.join(", ") ?? "");
-    setSubitemsEnabled(false);
-    setSubitemDrafts([]);
-    setDueTimeEnabled(false);
-    setDueTime("11:00");
-    setAdvancedOpen(false);
+    setSubitemsEnabled(template.trackingMode === "done" && templateSubitems.length > 0);
+    setSubitemDrafts(
+      template.trackingMode === "done"
+        ? templateSubitems.map((subitem, index) => ({
+            id: createId("subitem"),
+            title: language === "en" ? translateTemplateSubitem(subitem.title) : subitem.title,
+            targetCount: subitem.targetCount,
+            sortOrder: index + 1,
+          }))
+        : [],
+    );
+    setDueTimeEnabled(Boolean(template.dueTime));
+    setDueTime(template.dueTime ?? "11:00");
+    setAdvancedOpen(template.trackingMode === "amount" && Boolean(template.quickValues?.length));
     setTemplatePickerOpen(false);
     setIconPickerOpen(false);
   }
@@ -9040,9 +9292,25 @@ function AddSheet({
 
     try {
       const payload = await requestAiJson({ text });
-      setAiPreview({ type: "action", draft: normalizeAiActionDraft(payload, text) });
+      const draft = normalizeAiActionDraft(payload, text);
+
+      if ((draft.intent && draft.intent !== "create_action") || (draft.missing_fields && draft.missing_fields.length > 0)) {
+        setAiPreview(null);
+        setAiError(draft.clarifying_question || (language === "en" ? "What should I create?" : "Что создать?"));
+        return;
+      }
+
+      setAiPreview({ type: "action", draft });
     } catch {
-      setAiPreview({ type: "action", draft: buildLocalAiDraft(text) });
+      const draft = buildLocalAiDraft(text);
+
+      if (draft.missing_fields && draft.missing_fields.length > 0) {
+        setAiPreview(null);
+        setAiError(draft.clarifying_question || (language === "en" ? "What should I create?" : "Что создать?"));
+        return;
+      }
+
+      setAiPreview({ type: "action", draft });
     } finally {
       setAiLoading(null);
     }
@@ -9449,10 +9717,20 @@ function TemplateGroup({
         {templates.map((template) => {
           const title = getTemplateTitle(template, language);
           const unit = getTemplateUnit(template, language);
+          const periodSummary =
+            template.period === "custom"
+              ? language === "en" ? "Custom period" : "Свой период"
+              : getPeriodSummary(template.period, "", "", language);
           const summary =
             template.trackingMode === "amount"
-              ? `${formatNumber(template.targetValue ?? 0)} ${unit ?? ""} · ${getPeriodSummary(template.period, "", "", language)}`
-              : `${getPeriodSummary(template.period, "", "", language)} · ${getActionRepeatLabel(template.period, template.repeatMode, language)}`;
+              ? `${formatNumber(template.targetValue ?? 0)} ${unit ?? ""} · ${periodSummary}`
+              : template.period === "today"
+                ? periodSummary
+                : `${periodSummary} · ${getActionRepeatLabel(template.period, template.repeatMode, language)}`;
+          const detail = [
+            template.dueTime ? (language === "en" ? `before ${template.dueTime}` : `до ${template.dueTime}`) : "",
+            template.subitems?.length ? (language === "en" ? "list" : "список") : "",
+          ].filter(Boolean).join(" · ");
 
           return (
             <button key={`${template.group}-${template.title}`} type="button" className="template-button" onClick={() => onSelect(template)}>
@@ -9461,7 +9739,7 @@ function TemplateGroup({
               </span>
               <span>
                 <strong>{title}</strong>
-                <small>{summary}</small>
+                <small>{detail ? `${summary} · ${detail}` : summary}</small>
               </span>
             </button>
           );
