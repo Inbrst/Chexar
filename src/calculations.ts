@@ -143,7 +143,8 @@ export function getRequiredToday(goal: ProgressGoal, today: string): number {
     return 0;
   }
 
-  const remainingAmount = Math.max(goal.targetValue - goal.currentValue, 0);
+  const valueAtStartOfDay = getGoalValueBeforeDate(goal, today);
+  const remainingAmount = Math.max(goal.targetValue - valueAtStartOfDay, 0);
   const remainingActiveDays = countActiveDays(today, goal.endDate, goal.repeatMode, goal.selectedDays);
 
   if (remainingAmount <= 0) {
@@ -268,7 +269,9 @@ export function calculateDailyProgress(goals: ProgressGoal[], tasks: TaskItem[],
   if (nextGoal) {
     const required = getRequiredForDate(nextGoal, today);
     const logged = getLoggedAmountForDate(nextGoal, today);
-    nextAction = `${Math.max(required - logged, 0)} ${nextGoal.unit} · ${nextGoal.title}`;
+    const remainingToTarget = Math.max(nextGoal.targetValue - getGoalValueAtEndOfDate(nextGoal, today), 0);
+    const recommendedLeft = Math.max(required - logged, 0);
+    nextAction = `${recommendedLeft > 0 ? recommendedLeft : remainingToTarget} ${nextGoal.unit} · ${nextGoal.title}`;
   } else if (nextTask) {
     nextAction = nextTask.title;
   }

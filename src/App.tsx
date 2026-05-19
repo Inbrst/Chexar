@@ -587,7 +587,7 @@ const uiCopy = {
     deletePeriodText: "Delete the action and all its progress.",
     editAction: "Edit action",
     addProgress: "Add progress",
-    requiredToday: "Required today",
+    requiredToday: "Recommended",
     toFinishDaily: "To finish",
     recommendedToFinish: (value: string) => `rec. ${value}`,
     completedInput: "Completed",
@@ -710,7 +710,7 @@ const uiCopy = {
     deleteConfirm: "Удалить",
     editAction: "Редактировать",
     addProgress: "Внести прогресс",
-    requiredToday: "Нужно сегодня",
+    requiredToday: "Рекомендовано",
     toFinishDaily: "До финиша",
     recommendedToFinish: (value: string) => `рек. ${value}`,
     completedInput: "Выполнено",
@@ -1672,10 +1672,7 @@ function getCarryOverGoalRequired(goal: ProgressGoal, dateKey: string): number {
 }
 
 function isCarryOverGoalCompleted(goal: ProgressGoal, dateKey: string): boolean {
-  const required = getCarryOverGoalRequired(goal, dateKey);
-  const logged = getCalendarLoggedAmount(goal, dateKey);
-
-  return required <= 0 || logged >= required || getCalendarGoalValueAtEndOfDate(goal, dateKey) >= goal.targetValue;
+  return isCalendarGoalCompletedByTarget(goal, dateKey);
 }
 
 function getCarryOverCandidates(state: AppState, todayDateKey: string, language: AppSettings["language"]): CarryOverCandidate[] {
@@ -1778,7 +1775,7 @@ function getCarryOverCandidates(state: AppState, todayDateKey: string, language:
 
     const required = getRequiredToday(goal, yesterday);
     const logged = getTodayLoggedAmount(goal, yesterday);
-    const completed = required <= 0 || logged >= required;
+    const completed = isCalendarGoalCompletedByTarget(goal, yesterday);
 
     if (completed) {
       return;
@@ -1950,7 +1947,7 @@ function getCalendarDayDetails(
   dueGoals.forEach((goal) => {
     const required = getCalendarRequiredForDate(goal, dateKey);
     const logged = getCalendarLoggedAmount(goal, dateKey);
-    const completedGoal = required <= 0 || logged >= required || getCalendarGoalValueAtEndOfDate(goal, dateKey) >= goal.targetValue;
+    const completedGoal = isCalendarGoalDailySuccess(goal, dateKey);
     const detail = required > 0 ? `${formatNumber(logged)} / ${formatNumber(required)}` : `${formatNumber(logged)} ${goal.unit}`;
     const item = {
       id: goal.id,
@@ -2038,6 +2035,17 @@ function getCalendarGoalValueAtEndOfDate(goal: ProgressGoal, dateKey: string): n
   }
 
   return getCalendarGoalBaseline(goal) + getCalendarEntriesTotal(goal, (entryDate) => entryDate <= dateKey);
+}
+
+function isCalendarGoalCompletedByTarget(goal: ProgressGoal, dateKey: string): boolean {
+  return getCalendarGoalValueAtEndOfDate(goal, dateKey) >= goal.targetValue;
+}
+
+function isCalendarGoalDailySuccess(goal: ProgressGoal, dateKey: string): boolean {
+  const required = getCalendarRequiredForDate(goal, dateKey);
+  const logged = getCalendarLoggedAmount(goal, dateKey);
+
+  return required <= 0 || logged >= required || isCalendarGoalCompletedByTarget(goal, dateKey);
 }
 
 function countCalendarActiveDays(goal: ProgressGoal, startDate: string): number {
@@ -2375,10 +2383,7 @@ function getProgressActionRanks(range: Date[], appState: AppState, today: string
     const dueDates = activeRange.filter((date) => isGoalDueOnDate(goal, date, toDateKey(date)));
     const completed = dueDates.filter((date) => {
       const dateKey = toDateKey(date);
-      const required = getCalendarRequiredForDate(goal, dateKey);
-      const logged = getCalendarLoggedAmount(goal, dateKey);
-
-      return required <= 0 || logged >= required || getCalendarGoalValueAtEndOfDate(goal, dateKey) >= goal.targetValue;
+      return isCalendarGoalDailySuccess(goal, dateKey);
     }).length;
 
     return {
@@ -2484,7 +2489,7 @@ function sortGoalsForToday(goals: ProgressGoal[], dateKey: string): ProgressGoal
     .map((goal, index) => {
       const required = getRequiredToday(goal, dateKey);
       const logged = getTodayLoggedAmount(goal, dateKey);
-      const completed = goal.currentValue >= goal.targetValue || logged >= required;
+      const completed = goal.currentValue >= goal.targetValue;
       const overRatio = required <= 0 ? (completed ? Number.POSITIVE_INFINITY : 0) : logged / required;
 
       return {
@@ -2525,16 +2530,13 @@ function groupTodayActions(tasks: TaskItem[], goals: ProgressGoal[], dateKey: st
       index,
     })),
     ...goals.map((goal, index) => {
-      const required = getRequiredToday(goal, dateKey);
-      const logged = getTodayLoggedAmount(goal, dateKey);
-
       return {
         type: "goal" as const,
         goal,
         id: goal.id,
         groupName: normalizeActionGroupName(goal.groupName) || undefined,
         sortOrder: goal.sortOrder ?? index + 1,
-        completed: goal.currentValue >= goal.targetValue || logged >= required,
+        completed: goal.currentValue >= goal.targetValue,
         index,
       };
     }),
@@ -3463,10 +3465,8 @@ export default function App() {
         const carryOverOccurrence = (state.occurrences ?? []).find(
           (occurrence) => occurrence.itemType === "goal" && occurrence.itemId === goalId && occurrence.date === activeDate && occurrence.source === "carry_over" && occurrence.status !== "skipped",
         );
-        const required = carryOverOccurrence ? getCarryOverGoalRequired(goal, activeDate) : getRequiredToday(goal, activeDate);
-        const previousLogged = getTodayLoggedAmount(goal, activeDate);
-        const nextLogged = previousLogged + amount;
-        const completedNow = required > 0 && previousLogged < required && nextLogged >= required;
+        const nextGoalValue = goal.currentValue + amount;
+        const completedNow = goal.currentValue < goal.targetValue && nextGoalValue >= goal.targetValue;
         const completedAt = completedNow ? new Date().toISOString() : goal.completedAtByDate?.[activeDate];
         const lateDates = new Set(goal.lateDates ?? []);
 
@@ -3474,7 +3474,7 @@ export default function App() {
           lateDates.add(activeDate);
         }
 
-        completedCarryOver = Boolean(carryOverOccurrence) && (required <= 0 ? goal.currentValue + amount >= goal.targetValue : nextLogged >= required);
+        completedCarryOver = Boolean(carryOverOccurrence) && nextGoalValue >= goal.targetValue;
 
         return {
           ...goal,
@@ -3530,9 +3530,8 @@ export default function App() {
         const carryOverOccurrence = (state.occurrences ?? []).find(
           (occurrence) => occurrence.itemType === "goal" && occurrence.itemId === goalId && occurrence.date === dateKey && occurrence.source === "carry_over" && occurrence.status !== "skipped",
         );
-        const required = carryOverOccurrence ? getCarryOverGoalRequired(goal, dateKey) : getCalendarRequiredForDate(goal, dateKey);
         const nextCurrentValue = Math.max(goal.currentValue + delta, 0);
-        const completedForDay = required > 0 ? normalizedAmount >= required : normalizedAmount > 0 || nextCurrentValue >= goal.targetValue;
+        const completedForDay = nextCurrentValue >= goal.targetValue;
         const completedAtByDate = { ...(goal.completedAtByDate ?? {}) };
         const lateDates = new Set(goal.lateDates ?? []);
         const completedAt = completedForDay ? (completedAtByDate[dateKey] ?? new Date().toISOString()) : undefined;
@@ -3600,7 +3599,8 @@ export default function App() {
     }
 
     const required = getCalendarRequiredForDate(goal, dateKey);
-    setGoalProgressForDate(goalId, dateKey, completed ? Math.max(required, 1) : 0);
+    const remainingToTarget = Math.max(goal.targetValue - getCalendarGoalValueBeforeDate(goal, dateKey), 1);
+    setGoalProgressForDate(goalId, dateKey, completed ? Math.max(remainingToTarget, required, 1) : 0);
   }
 
   function setTaskCompletedForDate(taskId: string, dateKey: string, completed: boolean) {
@@ -5039,9 +5039,7 @@ function PeriodInlineCells({
           return <span key={dateKey} className="period-inline-check off" aria-hidden="true" />;
         }
 
-        const required = getCalendarRequiredForDate(goal, dateKey);
-        const logged = getCalendarLoggedAmount(goal, dateKey);
-        const checked = required <= 0 || logged >= required || getCalendarGoalValueAtEndOfDate(goal, dateKey) >= goal.targetValue;
+        const checked = isCalendarGoalDailySuccess(goal, dateKey);
 
         return (
           <button
@@ -5162,7 +5160,7 @@ function TodayPeriodOverview({
     const logged = getCalendarLoggedAmount(goal, dateKey);
 
     return {
-      checked: required <= 0 || logged >= required || getCalendarGoalValueAtEndOfDate(goal, dateKey) >= goal.targetValue,
+      checked: isCalendarGoalDailySuccess(goal, dateKey),
       disabled: false,
       detail: { completed: logged, total: required },
     };
@@ -6406,19 +6404,14 @@ function GoalCard({
   const requiredToday = getRequiredToday(goal, today);
   const loggedToday = getTodayLoggedAmount(goal, today);
   const isGoalCompleted = goal.currentValue >= goal.targetValue;
-  const isTodayDone = isGoalCompleted || loggedToday >= requiredToday;
+  const isTodayDone = isGoalCompleted;
   const dueMeta = formatDueMeta(goal.dueTime, today, isTodayDone, goal.completedAtByDate?.[today], goal.lateDates?.includes(today) ?? false, nowMs, copy);
   const progressStyle = { "--goal-progress": `${progressPercent}%`, ...getFillToneStyle(progressPercent) } as CSSProperties;
-  const requiredLine = requiredToday > 0 ? `${formatNumber(requiredToday)} ${goal.unit}` : "";
+  const recommendedLeft = Math.max(requiredToday - loggedToday, 0);
+  const requiredLine = recommendedLeft > 0 ? `${formatNumber(recommendedLeft)} ${goal.unit}` : "";
   const swipeDeleteHandler = periodCells ? undefined : onOpenManual;
   const periodRemaining = Math.max(goal.targetValue - goal.currentValue, 0);
-  const periodPaceLine =
-    periodRemaining > 0
-      ? requiredLine
-        ? `${copy.requiredToday}: ${requiredLine}`
-        : `${copy.toFinishDaily}: ${formatNumber(periodRemaining)}`
-      : copy.goalClosed;
-
+  const recommendedTitleValue = periodRemaining > 0 && requiredLine ? requiredLine : "";
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
@@ -6441,14 +6434,16 @@ function GoalCard({
             <div className="goal-title-row">
               <div className="goal-title-progress">
                 <div className="goal-main-line">
-                  <h3 title={goal.title}>{goal.title}</h3>
+                  <h3 title={recommendedTitleValue ? `${goal.title} (${recommendedTitleValue})` : goal.title}>
+                    <span className="goal-title-text">{goal.title}</span>
+                    {recommendedTitleValue && <span className="goal-title-recommendation">({recommendedTitleValue})</span>}
+                  </h3>
                   {dueMeta && <small className="due-meta">{dueMeta}</small>}
                 </div>
                 <div className="goal-progress-stack">
                   <span className="goal-numbers">
                     {formatNumber(goal.currentValue)} / {formatNumber(goal.targetValue)} ({formatNumber(Math.round(progressPercent))}%)
                   </span>
-                  <small className="goal-period-pace">{periodPaceLine}</small>
                 </div>
               </div>
             </div>
@@ -8259,8 +8254,8 @@ function ProfileScreen({
           <ProfileSegmented
             value={settings.language}
             options={[
-              { value: "en", label: <span className="profile-flag flag-us" aria-hidden="true" />, ariaLabel: "English" },
-              { value: "ru", label: <span className="profile-flag flag-ru" aria-hidden="true" />, ariaLabel: "Русский" },
+              { value: "en", label: <span className="profile-flag" aria-hidden="true">🇺🇸</span>, ariaLabel: "English" },
+              { value: "ru", label: <span className="profile-flag" aria-hidden="true">🇷🇺</span>, ariaLabel: "Русский" },
             ]}
             onChange={(value) => onSettingsChange({ language: value as AppSettings["language"] })}
             compact
@@ -8529,7 +8524,7 @@ function ProgressSheet({
   const todayPercent = requiredToday > 0 ? clampPercent((previewAmount / requiredToday) * 100) : getGoalProgressPercent(goal);
   const progressTitle = capitalizeLabel(copy.progress);
   const targetLabel = copy.save === "Save" ? "target" : "цель";
-  const todayNeedLabel = copy.save === "Save" ? copy.requiredToday : "Сегодня нужно";
+  const todayNeedLabel = copy.requiredToday;
   const periodLabel = copy.save === "Save" ? "period until" : "период до";
   const progressStyle = {
     "--entry-progress": `${todayPercent}%`,
