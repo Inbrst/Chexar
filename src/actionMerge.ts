@@ -78,6 +78,7 @@ function mergeProgressGoals(existing: ProgressGoal, incoming: ProgressGoal): Pro
     targetValue: Math.max(existing.targetValue, incoming.targetValue),
     currentValue,
     unit: existing.unit.trim() || incoming.unit.trim(),
+    periodType: existing.periodType ?? incoming.periodType,
     startDate: minDate(existing.startDate, incoming.startDate),
     endDate: maxDate(existing.endDate, incoming.endDate),
     repeatMode: schedule.repeatMode,

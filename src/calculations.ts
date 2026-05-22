@@ -410,7 +410,7 @@ function getEffectiveEndDate(item: SchedulableItem): string {
     return item.startDate;
   }
 
-  return addDays(item.startDate, 29);
+  return item.startDate;
 }
 
 function countActiveDays(

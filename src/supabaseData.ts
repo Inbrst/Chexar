@@ -2,7 +2,7 @@ import { supabase } from "./lib/supabase";
 import { getTelegramUser, isBrowserFallbackAllowed, isTelegramUserMissing } from "./lib/telegram";
 import { getDailyCompletionPercent } from "./calculations";
 import { addDays, parseDateKey, todayKey } from "./dateUtils";
-import type { ActionSubitem, ActionSubitemStateByDate, ActionSubitemState, AppSettings, AppState, DailyRecord, GoalRepeatMode, ProgressEntry, ProgressGoal, TaskItem, TaskOccurrence, TaskRepeatMode } from "./types";
+import type { ActionSubitem, ActionSubitemStateByDate, ActionSubitemState, AppSettings, AppState, DailyRecord, GoalPeriodType, GoalRepeatMode, ProgressEntry, ProgressGoal, TaskItem, TaskOccurrence, TaskRepeatMode } from "./types";
 
 const BROWSER_USER_KEY = "chexar:browser-user-id";
 
@@ -25,6 +25,7 @@ type RemoteItem = {
   emoji?: string | null;
   icon: string | null;
   tracking_type: "checkbox" | "quantity";
+  period_type?: GoalPeriodType | null;
   repeat_mode: "once" | "daily" | "weekdays" | "selected_days";
   start_date: string;
   end_date: string | null;
@@ -302,6 +303,7 @@ const OPTIONAL_ITEM_COLUMNS = new Set([
   "group_name",
   "note",
   "emoji",
+  "period_type",
   "quick_add_values",
   "subitems",
   "sort_order",
@@ -542,6 +544,7 @@ function rowsToAppState(items: RemoteItem[], entries: RemoteDailyEntry[], occurr
     const itemIcon = normalizeIconValue(item.icon);
 
     if (item.tracking_type === "quantity") {
+      const endDate = getRemoteEffectiveEndDate(item);
       const progressEntries: ProgressEntry[] = itemEntries
         .filter((entry) => Number(entry.value_added ?? 0) > 0)
         .map((entry) => ({
@@ -562,8 +565,9 @@ function rowsToAppState(items: RemoteItem[], entries: RemoteDailyEntry[], occurr
         targetValue: Number(item.target_value ?? 0),
         currentValue: progressEntries.reduce((total, entry) => total + entry.amount, 0),
         unit: item.unit ?? "",
+        periodType: normalizeRemoteGoalPeriodType(item.period_type, item.start_date, endDate),
         startDate: item.start_date,
-        endDate: getRemoteEffectiveEndDate(item),
+        endDate,
         repeatMode: fromRemoteGoalRepeat(item.repeat_mode),
         selectedDays: item.repeat_mode === "selected_days" ? (item.selected_days ?? []) : undefined,
         dueTime: normalizeRemoteDueTime(item.due_time),
@@ -630,6 +634,7 @@ function appStateToItemRows(userId: string, appState: AppState) {
         emoji: goal.emoji ?? icon.emoji ?? null,
         icon: icon.iconKey ?? null,
         tracking_type: "quantity",
+        period_type: goal.periodType,
         repeat_mode: toRemoteRepeat(goal.repeatMode),
         start_date: goal.startDate,
         end_date: goal.endDate,
@@ -656,6 +661,7 @@ function appStateToItemRows(userId: string, appState: AppState) {
         emoji: task.emoji ?? icon.emoji ?? null,
         icon: icon.iconKey ?? null,
         tracking_type: "checkbox",
+        period_type: null,
         repeat_mode: toRemoteRepeat(task.repeatMode),
         start_date: task.startDate,
         end_date: task.endDate,
@@ -837,7 +843,33 @@ function getRemoteEffectiveEndDate(item: RemoteItem): string {
     return item.start_date;
   }
 
-  return addDays(item.start_date, 29);
+  return item.start_date;
+}
+
+function normalizeRemoteGoalPeriodType(value: unknown, startDate: string, endDate: string): GoalPeriodType {
+  if (value === "today" || value === "week" || value === "month" || value === "forever" || value === "custom") {
+    return value;
+  }
+
+  if (startDate === endDate) {
+    return "today";
+  }
+
+  if (endDate === "2099-12-31") {
+    return "forever";
+  }
+
+  if (endDate === addDays(startDate, 6)) {
+    return "week";
+  }
+
+  const start = parseDateKey(startDate);
+  const monthEnd = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+  if (endDate === `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, "0")}-${String(monthEnd.getDate()).padStart(2, "0")}`) {
+    return "month";
+  }
+
+  return "custom";
 }
 
 function normalizeRemoteSubitems(value: unknown): ActionSubitem[] {

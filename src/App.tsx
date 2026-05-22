@@ -79,7 +79,7 @@ import {
   saveOnboardingQuestState,
   saveSettings,
 } from "./storage";
-import type { ActionSubitem, ActionSubitemState, AppScreen, AppSettings, AppState, DailyRecord, GoalRepeatMode, OnboardingQuestState, OnboardingQuestStep, Priority, ProgressEntry, ProgressGoal, TaskItem, TaskOccurrence, TaskRepeatMode } from "./types";
+import type { ActionSubitem, ActionSubitemState, AppScreen, AppSettings, AppState, DailyRecord, GoalPeriodType, GoalRepeatMode, OnboardingQuestState, OnboardingQuestStep, Priority, ProgressEntry, ProgressGoal, TaskItem, TaskOccurrence, TaskRepeatMode } from "./types";
 import { mergeDuplicateActions, normalizeActionTitle } from "./actionMerge";
 import { hasRemotePersistence, loadRemoteData, saveRemoteSnapshot } from "./supabaseData";
 import {
@@ -3941,6 +3941,7 @@ export default function App() {
     targetValue: number;
     currentValue: number;
     unit: string;
+    periodType: GoalPeriodType;
     startDate: string;
     endDate: string;
     repeatMode: GoalRepeatMode;
@@ -3975,6 +3976,7 @@ export default function App() {
           targetValue: goal.targetValue,
           currentValue: goal.currentValue,
           unit,
+          periodType: goal.periodType,
           startDate: goal.startDate,
           endDate: goal.endDate,
           repeatMode: goal.repeatMode,
@@ -4086,6 +4088,7 @@ export default function App() {
         targetValue: normalizedTargetValue,
         currentValue: 0,
         unit,
+        periodType: period,
         startDate: dates.startDate,
         endDate: dates.endDate,
         repeatMode,
@@ -9101,6 +9104,7 @@ function AddSheet({
     targetValue: number;
     currentValue: number;
     unit: string;
+    periodType: GoalPeriodType;
     startDate: string;
     endDate: string;
     repeatMode: GoalRepeatMode;
@@ -9458,6 +9462,7 @@ function AddSheet({
         targetValue: numericTarget,
         currentValue: numericCurrent,
         unit,
+        periodType: period,
         startDate: dates.startDate,
         endDate: dates.endDate,
         repeatMode,
@@ -9506,44 +9511,34 @@ function AddSheet({
   }
 
   return (
-    <BottomSheet title={copy.addSheetTitle} subtitle={copy.addSheetSubtitle} closeLabel={copy.close} onClose={requestClose} closeOnOverlay={!hasUnsavedChanges}>
+    <BottomSheet title={copy.addSheetTitle} closeLabel={copy.close} onClose={requestClose} closeOnOverlay={!hasUnsavedChanges} className="creation-bottom-sheet">
       {templatePickerOpen && <TemplatePicker templates={actionTemplates} copy={copy} language={language} onSelect={applyTemplate} />}
 
       <form className="sheet-form creation-form unified-action-form" onSubmit={submitAction}>
-        <div className="name-template-row">
-          <label>
+        <div className="creation-top-row">
+          <label className="creation-title-field">
             <span>{copy.name}</span>
             <input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder={copy.namePlaceholder} />
           </label>
-          <button type="button" className="template-trigger" onClick={() => setTemplatePickerOpen((open) => !open)}>
+          <button type="button" className="icon-picker-trigger emoji-picker-trigger creation-icon-trigger" onClick={openEmojiInput} aria-label={copy.icon}>
+            <span className="emoji-picker-preview" aria-hidden="true">{selectedEmoji ?? "＋"}</span>
+          </button>
+          <button type="button" className="template-trigger creation-template-trigger" onClick={() => setTemplatePickerOpen((open) => !open)}>
             {copy.templates}
           </button>
         </div>
-
-        <label className="compact-group-field">
-          <span>{copy.group}</span>
-          <input value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder={copy.groupPlaceholder} />
-        </label>
-
-        <div className="field-group">
-          <span>{copy.icon}</span>
-          <button type="button" className="icon-picker-trigger emoji-picker-trigger" onClick={openEmojiInput}>
-            <span className="emoji-picker-preview" aria-hidden="true">{selectedEmoji ?? "＋"}</span>
-            {selectedEmoji ? copy.changeIcon : copy.chooseIcon}
-          </button>
-          {iconPickerOpen && (
-            <EmojiPickerPanel
-              value={emoji}
-              title={title}
-              copy={copy}
-              inputRef={emojiInputRef}
-              onChange={(nextEmoji) => {
-                setEmoji(nextEmoji);
-                setIconKey(undefined);
-              }}
-            />
-          )}
-        </div>
+        {iconPickerOpen && (
+          <EmojiPickerPanel
+            value={emoji}
+            title={title}
+            copy={copy}
+            inputRef={emojiInputRef}
+            onChange={(nextEmoji) => {
+              setEmoji(nextEmoji);
+              setIconKey(undefined);
+            }}
+          />
+        )}
 
         <div className="field-group">
           <span>{copy.tracking}</span>
@@ -9557,78 +9552,20 @@ function AddSheet({
           </div>
         </div>
 
-        {trackingMode === "done" && (
-          <div className={`subitems-builder ${subitemsEnabled ? "open" : ""}`}>
-            <button
-              type="button"
-              className="subitems-toggle"
-              onClick={() => {
-                const nextEnabled = !subitemsEnabled;
-                setSubitemsEnabled(nextEnabled);
-
-                if (nextEnabled && subitemDrafts.length === 0) {
-                  setSubitemDrafts([{ id: createId("subitem"), title: "" }]);
-                }
-
-                if (nextEnabled) {
-                }
-              }}
-            >
-              <span>{subitemCopy.addList}</span>
-              <Plus size={16} aria-hidden="true" />
-            </button>
-            {subitemsEnabled && (
-              <div className="subitems-draft-list">
-                {subitemDrafts.map((subitem) => (
-                  <div key={subitem.id} className="subitem-draft-row">
-                    <input
-                      value={subitem.title}
-                      onChange={(event) => updateSubitemDraft(subitem.id, { title: event.target.value })}
-                      placeholder={subitemCopy.titlePlaceholder}
-                    />
-                    <input
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={subitem.targetCount ?? ""}
-                      onChange={(event) => {
-                        const value = Number(event.target.value);
-                        updateSubitemDraft(subitem.id, { targetCount: Number.isFinite(value) && value > 1 ? Math.floor(value) : undefined });
-                      }}
-                      placeholder={subitemCopy.countPlaceholder}
-                      aria-label={subitemCopy.countPlaceholder}
-                    />
-                    <button type="button" aria-label={subitemCopy.remove} onClick={() => removeSubitemDraft(subitem.id)}>
-                      <X size={15} aria-hidden="true" />
-                    </button>
-                  </div>
-                ))}
-                <button type="button" className="subitem-add-row" onClick={addSubitemDraft}>
-                  <Plus size={15} aria-hidden="true" />
-                  {subitemCopy.addItem}
-                </button>
-              </div>
-            )}
+        {trackingMode === "amount" && (
+          <div className="date-grid compact-two-column creation-quantity-row">
+            <label>
+              <span>{copy.total}</span>
+              <input type="number" min="1" step="any" value={targetValue} onChange={(event) => setTargetValue(event.target.value)} placeholder="50" />
+            </label>
+            <label>
+              <span>{copy.unit}</span>
+              <input value={unit} onChange={(event) => setUnit(event.target.value)} placeholder={copy.unitPlaceholder} />
+            </label>
           </div>
         )}
 
-        <div className="field-group">
-          <span>{copy.repeat}</span>
-          <div className="segmented-control compact-segment segment-three">
-            <button type="button" className={repeatMode === "everyDay" ? "active" : ""} onClick={() => setRepeatMode("everyDay")}>
-              {copy.everyDay}
-            </button>
-            <button type="button" className={repeatMode === "weekdays" ? "active" : ""} onClick={() => setRepeatMode("weekdays")}>
-              {copy.weekdays}
-            </button>
-            <button type="button" className={repeatMode === "selectedDays" ? "active" : ""} onClick={() => setRepeatMode("selectedDays")}>
-              {copy.selectedDays}
-            </button>
-          </div>
-        </div>
-        {repeatMode === "selectedDays" && <WeekdayChips selectedDays={selectedDays} language={language} onToggle={toggleWeekdaySelection} />}
-
-        <div className="field-group">
+        <div className="field-group creation-period-field">
           <span>{copy.period}</span>
           <div className="segmented-control compact-segment segment-five period-segment">
             <button type="button" className={period === "today" ? "active" : ""} onClick={() => setPeriod("today")}>
@@ -9661,52 +9598,112 @@ function AddSheet({
           </div>
         )}
 
-        <div className={`due-time-builder ${dueTimeEnabled ? "open" : ""}`}>
-          <button type="button" className="due-time-toggle" onClick={() => setDueTimeEnabled((enabled) => !enabled)}>
-            <span>{copy.addDueTime}</span>
-            <Clock3 size={16} aria-hidden="true" />
-          </button>
-          {dueTimeEnabled && (
-            <label className="due-time-row">
-              <span>{copy.dueBefore}</span>
-              <input type="time" value={dueTime} onChange={(event) => setDueTime(event.target.value)} />
-            </label>
-          )}
-        </div>
+        <AdvancedSection label={copy.advanced} open={advancedOpen} onToggle={() => setAdvancedOpen((open) => !open)}>
+          <label className="compact-group-field">
+            <span>{copy.group}</span>
+            <input value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder={copy.groupPlaceholder} />
+          </label>
 
-        {trackingMode === "amount" && (
-          <>
+          <div className="field-group">
+            <span>{copy.repeat}</span>
+            <div className="segmented-control compact-segment segment-three">
+              <button type="button" className={repeatMode === "everyDay" ? "active" : ""} onClick={() => setRepeatMode("everyDay")}>
+                {copy.everyDay}
+              </button>
+              <button type="button" className={repeatMode === "weekdays" ? "active" : ""} onClick={() => setRepeatMode("weekdays")}>
+                {copy.weekdays}
+              </button>
+              <button type="button" className={repeatMode === "selectedDays" ? "active" : ""} onClick={() => setRepeatMode("selectedDays")}>
+                {copy.selectedDays}
+              </button>
+            </div>
+          </div>
+          {repeatMode === "selectedDays" && <WeekdayChips selectedDays={selectedDays} language={language} onToggle={toggleWeekdaySelection} />}
+
+          <div className={`due-time-builder ${dueTimeEnabled ? "open" : ""}`}>
+            <button type="button" className="due-time-toggle" onClick={() => setDueTimeEnabled((enabled) => !enabled)}>
+              <span>{copy.addDueTime}</span>
+              <Clock3 size={16} aria-hidden="true" />
+            </button>
+            {dueTimeEnabled && (
+              <label className="due-time-row">
+                <span>{copy.dueBefore}</span>
+                <input type="time" value={dueTime} onChange={(event) => setDueTime(event.target.value)} />
+              </label>
+            )}
+          </div>
+
+          {trackingMode === "done" && (
+            <div className={`subitems-builder ${subitemsEnabled ? "open" : ""}`}>
+              <button
+                type="button"
+                className="subitems-toggle"
+                onClick={() => {
+                  const nextEnabled = !subitemsEnabled;
+                  setSubitemsEnabled(nextEnabled);
+
+                  if (nextEnabled && subitemDrafts.length === 0) {
+                    setSubitemDrafts([{ id: createId("subitem"), title: "" }]);
+                  }
+                }}
+              >
+                <span>{subitemCopy.addList}</span>
+                <Plus size={16} aria-hidden="true" />
+              </button>
+              {subitemsEnabled && (
+                <div className="subitems-draft-list">
+                  {subitemDrafts.map((subitem) => (
+                    <div key={subitem.id} className="subitem-draft-row">
+                      <input
+                        value={subitem.title}
+                        onChange={(event) => updateSubitemDraft(subitem.id, { title: event.target.value })}
+                        placeholder={subitemCopy.titlePlaceholder}
+                      />
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={subitem.targetCount ?? ""}
+                        onChange={(event) => {
+                          const value = Number(event.target.value);
+                          updateSubitemDraft(subitem.id, { targetCount: Number.isFinite(value) && value > 1 ? Math.floor(value) : undefined });
+                        }}
+                        placeholder={subitemCopy.countPlaceholder}
+                        aria-label={subitemCopy.countPlaceholder}
+                      />
+                      <button type="button" aria-label={subitemCopy.remove} onClick={() => removeSubitemDraft(subitem.id)}>
+                        <X size={15} aria-hidden="true" />
+                      </button>
+                    </div>
+                  ))}
+                  <button type="button" className="subitem-add-row" onClick={addSubitemDraft}>
+                    <Plus size={15} aria-hidden="true" />
+                    {subitemCopy.addItem}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {trackingMode === "amount" && (
             <div className="date-grid compact-two-column">
               <label>
-                <span>{copy.total}</span>
-                <input type="number" min="1" step="any" value={targetValue} onChange={(event) => setTargetValue(event.target.value)} placeholder="50" />
+                <span>{copy.alreadyDone}</span>
+                <input type="number" min="0" step="any" value={currentValue} onChange={(event) => setCurrentValue(event.target.value)} placeholder="0" />
               </label>
               <label>
-                <span>{copy.unit}</span>
-                <input value={unit} onChange={(event) => setUnit(event.target.value)} placeholder={copy.unitPlaceholder} />
+                <span>{copy.quickButtons}</span>
+                <input value={quickValues} onChange={(event) => setQuickValues(event.target.value)} placeholder="+1, +5" />
               </label>
             </div>
-            <AdvancedSection label={copy.advanced} open={advancedOpen} onToggle={() => setAdvancedOpen((open) => !open)}>
-              <div className="date-grid">
-                <label>
-                  <span>{copy.alreadyDone}</span>
-                  <input type="number" min="0" step="any" value={currentValue} onChange={(event) => setCurrentValue(event.target.value)} placeholder="0" />
-                </label>
-                <label>
-                  <span>{copy.quickButtons}</span>
-                  <input value={quickValues} onChange={(event) => setQuickValues(event.target.value)} placeholder="+1, +5" />
-                </label>
-              </div>
-            </AdvancedSection>
-          </>
-        )}
+          )}
+        </AdvancedSection>
 
         <div className="sheet-summary preview-card">
           <span>{copy.preview}</span>
           {trackingMode === "amount" ? (
             <>
               <PreviewRow icon={<Flame size={16} />} label={copy.inDay} value={`${formatNumber(goalPreview.neededPerDay)} ${unit || copy.unit}`} />
-              <PreviewRow icon={<CalendarDays size={16} />} label={copy.inWeek} value={`${formatNumber(goalPreview.neededPerWeek)} ${unit || copy.unit}`} />
               <PreviewRow icon={<BarChart3 size={16} />} label={copy.period} value={getPeriodSummary(period, dates.startDate, dates.endDate, language)} />
               {normalizedDueTime && <PreviewRow icon={<Clock3 size={16} />} label={copy.dueBefore} value={normalizedDueTime} />}
             </>
@@ -9714,7 +9711,6 @@ function AddSheet({
             <>
               <PreviewRow icon={<CalendarDays size={16} />} label={copy.period} value={getPeriodSummary(period, dates.startDate, dates.endDate, language)} />
               <PreviewRow icon={<TrendingUp size={16} />} label={copy.repeat} value={getActionRepeatLabel(period, repeatMode, language)} />
-              <PreviewRow icon={<Check size={16} />} label={copy.format} value={copy.doneNotDone} />
               {normalizedDueTime && <PreviewRow icon={<Clock3 size={16} />} label={copy.dueBefore} value={normalizedDueTime} />}
             </>
           )}
@@ -9805,12 +9801,14 @@ function TemplateGroup({
 }
 
 function PreviewRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  const labelText = /[?:]$/.test(label) ? label : `${label}:`;
+
   return (
     <div className="preview-row">
       <span className="preview-icon" aria-hidden="true">
         {icon}
       </span>
-      <span>{label}:</span>
+      <span>{labelText}</span>
       <strong>{value}</strong>
     </div>
   );
@@ -10051,6 +10049,7 @@ function isScheduleDueOnDate(
       targetValue: 1,
       currentValue: 0,
       unit: "",
+      periodType: "custom",
       startDate: schedule.startDate,
       endDate: schedule.endDate,
       repeatMode: schedule.repeatMode,

@@ -1,5 +1,6 @@
 export type IconType = "letter" | "book" | "custom";
 export type GoalRepeatMode = "everyDay" | "weekdays" | "selectedDays";
+export type GoalPeriodType = "today" | "week" | "month" | "forever" | "custom";
 export type TaskRepeatMode = "once" | GoalRepeatMode;
 export type Priority = "low" | "medium" | "high";
 export type AppLanguage = "ru" | "en";
@@ -39,6 +40,7 @@ export type ProgressGoal = {
   targetValue: number;
   currentValue: number;
   unit: string;
+  periodType: GoalPeriodType;
   startDate: string;
   endDate: string;
   repeatMode: GoalRepeatMode;

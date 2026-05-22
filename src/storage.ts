@@ -1,4 +1,4 @@
-import type { ActionSubitem, ActionSubitemStateByDate, AppSettings, AppState, DailyRecord, OnboardingQuestState, OnboardingQuestStep, TaskOccurrence } from "./types";
+import type { ActionSubitem, ActionSubitemStateByDate, AppSettings, AppState, DailyRecord, GoalPeriodType, OnboardingQuestState, OnboardingQuestStep, TaskOccurrence } from "./types";
 import { addDays, todayKey } from "./dateUtils";
 import { mergeDuplicateActions } from "./actionMerge";
 
@@ -63,6 +63,7 @@ export function createSeedState(): AppState {
         targetValue: 50,
         currentValue: 12,
         unit: "урока",
+        periodType: "custom",
         startDate: today,
         endDate,
         repeatMode: "everyDay",
@@ -83,6 +84,7 @@ export function createSeedState(): AppState {
         targetValue: 1000,
         currentValue: 120,
         unit: "страницы",
+        periodType: "custom",
         startDate: today,
         endDate,
         repeatMode: "everyDay",
@@ -177,12 +179,14 @@ function migrateAppState(state: AppState): AppState {
     goals: state.goals.map((goal) => {
       const goalIndex = state.goals.indexOf(goal);
       const startDate = goal.startDate ?? today;
-      const endDate = goal.endDate ?? addDays(today, 29);
+      const endDate = goal.endDate ?? startDate;
+      const periodType = normalizeGoalPeriodType((goal as { periodType?: unknown }).periodType, startDate, endDate);
 
       return {
         ...goal,
         startDate,
         endDate,
+        periodType,
         note: typeof goal.note === "string" && goal.note.trim() ? goal.note.trim() : undefined,
         emoji: normalizeEmoji(goal.emoji),
         iconKey: goal.iconKey ?? (goal.iconType === "book" ? "book" : undefined),
@@ -232,6 +236,32 @@ function migrateAppState(state: AppState): AppState {
     }),
     occurrences: normalizeOccurrences((state as AppState & { occurrences?: unknown }).occurrences),
   });
+}
+
+function normalizeGoalPeriodType(value: unknown, startDate: string, endDate: string): GoalPeriodType {
+  if (value === "today" || value === "week" || value === "month" || value === "forever" || value === "custom") {
+    return value;
+  }
+
+  if (startDate === endDate) {
+    return "today";
+  }
+
+  if (endDate === "2099-12-31") {
+    return "forever";
+  }
+
+  if (endDate === addDays(startDate, 6)) {
+    return "week";
+  }
+
+  const start = new Date(`${startDate}T00:00:00`);
+  const monthEnd = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+  if (endDate === `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, "0")}-${String(monthEnd.getDate()).padStart(2, "0")}`) {
+    return "month";
+  }
+
+  return "custom";
 }
 
 function normalizeOccurrences(value: unknown): TaskOccurrence[] {
