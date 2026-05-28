@@ -12,6 +12,7 @@ export type TelegramWebApp = {
   initDataUnsafe?: {
     user?: TelegramUser;
   };
+  version?: string;
   themeParams?: {
     bg_color?: string;
     text_color?: string;
@@ -92,6 +93,7 @@ export type TelegramWebApp = {
   ) => void;
   ready?: () => void;
   expand?: () => void;
+  isVersionAtLeast?: (version: string) => boolean;
   onEvent?: (eventType: string, eventHandler: () => void) => void;
   offEvent?: (eventType: string, eventHandler: () => void) => void;
   setHeaderColor?: (color: string) => void;
@@ -156,6 +158,37 @@ export function getTelegramConnectionStatus(): TelegramConnectionStatus {
   return "browser";
 }
 
+function compareVersion(left: string, right: string): number {
+  const leftParts = left.split(".").map((part) => Number(part) || 0);
+  const rightParts = right.split(".").map((part) => Number(part) || 0);
+  const length = Math.max(leftParts.length, rightParts.length);
+
+  for (let index = 0; index < length; index += 1) {
+    const diff = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+    if (diff !== 0) {
+      return diff;
+    }
+  }
+
+  return 0;
+}
+
+function isTelegramVersionAtLeast(webApp: TelegramWebApp | null | undefined, version: string): boolean {
+  if (!webApp) {
+    return false;
+  }
+
+  try {
+    if (typeof webApp.isVersionAtLeast === "function") {
+      return webApp.isVersionAtLeast(version);
+    }
+  } catch {
+    return false;
+  }
+
+  return typeof webApp.version === "string" ? compareVersion(webApp.version, version) >= 0 : true;
+}
+
 export function initTelegramWebApp(): void {
   const webApp = getTelegramWebApp();
 
@@ -181,11 +214,13 @@ export function initTelegramWebApp(): void {
   applyTelegramViewport(webApp);
   applyTelegramThemeParams(webApp);
 
-  try {
-    webApp.setHeaderColor?.("#000000");
-    webApp.setBackgroundColor?.("#000000");
-  } catch (error) {
-    console.warn("[telegram] WebApp colors failed", error);
+  if (isTelegramVersionAtLeast(webApp, "6.1")) {
+    try {
+      webApp.setHeaderColor?.("#000000");
+      webApp.setBackgroundColor?.("#000000");
+    } catch (error) {
+      console.warn("[telegram] WebApp colors failed", error);
+    }
   }
 
   try {
@@ -276,9 +311,10 @@ export function hasTelegramMainButton(): boolean {
 }
 
 export function setupTelegramBackButton(visible: boolean, onClick: () => void): () => void {
-  const backButton = getTelegramWebApp()?.BackButton;
+  const webApp = getTelegramWebApp();
+  const backButton = webApp?.BackButton;
 
-  if (!backButton) {
+  if (!backButton || !isTelegramVersionAtLeast(webApp, "6.1")) {
     return () => undefined;
   }
 

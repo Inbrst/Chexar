@@ -2665,6 +2665,36 @@ function useTelegramNativeMainButton({
   return active && available;
 }
 
+const WIDE_LAYOUT_QUERY = "(min-width: 820px)";
+
+function getWideLayoutMatch(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return false;
+  }
+
+  return window.matchMedia(WIDE_LAYOUT_QUERY).matches;
+}
+
+function useWideLayoutMode(): boolean {
+  const [wide, setWide] = useState(getWideLayoutMatch);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return undefined;
+    }
+
+    const mediaQuery = window.matchMedia(WIDE_LAYOUT_QUERY);
+    const update = () => setWide(mediaQuery.matches);
+
+    update();
+    mediaQuery.addEventListener?.("change", update);
+
+    return () => mediaQuery.removeEventListener?.("change", update);
+  }, []);
+
+  return wide;
+}
+
 export default function App() {
   const [today, setToday] = useState(() => todayKey());
   const [appState, setAppState] = useState<AppState>(() => loadAppState());
@@ -2701,6 +2731,10 @@ export default function App() {
     hasRemotePersistence() ? "loading" : import.meta.env.PROD ? "missing-env" : "local",
   );
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const wideLayoutMode = useWideLayoutMode();
+  const shellClassName = `app-shell ${telegramStatus === "connected" ? "is-telegram-shell" : "is-browser-shell"} ${
+    wideLayoutMode ? "is-wide-shell" : "is-compact-shell"
+  }`;
   const activeProfileCopy = profileCopy[settings.language];
   const activeUiCopy = uiCopy[settings.language];
   const activeDate = getActiveDate(selectedDate, today);
@@ -2927,8 +2961,15 @@ export default function App() {
       .filter((group) => group.items.length > 0);
   }, [activeDate, groupedTodayActions, normalizedTodaySearch, periodOverviewActive, settings.language, todayFilterModes, todayGroupMode, todaySortMode]);
   const hasActiveDateItems = actionListGoals.length > 0 || actionListTasks.length > 0;
+  const displayedTodayItemCount = displayedTodayActionGroups.reduce((count, group) => count + group.items.length, 0);
   const hasDisplayedTodayItems = displayedTodayActionGroups.some((group) => group.items.length > 0);
   const hasPeriodGridItems = periodOverviewActive && displayedTodayActionGroups.some((group) => group.items.some((item) => item.type === "task"));
+  const actionCardWidthPercent = hasPeriodGridItems ? 100 : Math.max(78, 90 - Math.max(0, displayedTodayItemCount - 4) * 2);
+  const actionListStyle = {
+    "--action-card-width": `${actionCardWidthPercent}%`,
+    "--action-card-count": displayedTodayItemCount,
+    ...(hasPeriodGridItems ? { "--period-days": inlinePeriodDates.length } : {}),
+  } as CSSProperties;
   const todayListSettingsActive = todaySortMode !== "manual" || todayGroupMode !== "group" || todayFilterModes.length > 0;
 
   useEffect(() => {
@@ -4217,8 +4258,14 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={shellClassName}>
       <div className="background-glow" />
+      {wideLayoutMode && (
+        <div className="layout-mode-badge" aria-label={settings.language === "en" ? "PC mode" : "Режим ПК"}>
+          <Monitor size={12} aria-hidden="true" />
+          <span>{settings.language === "en" ? "PC" : "ПК"}</span>
+        </div>
+      )}
       <SyncBanner status={syncStatus} copy={activeUiCopy} />
       {!settings.onboardingCompleted ? (
         <OnboardingScreen
@@ -4305,7 +4352,7 @@ export default function App() {
               <section className="section-block unified-actions-section">
                 <div
                   className={`action-list ${hasPeriodGridItems ? "with-period" : ""}`}
-                  style={hasPeriodGridItems ? ({ "--period-days": inlinePeriodDates.length } as CSSProperties) : undefined}
+                  style={actionListStyle}
                 >
                   {onboardingQuest.enabled && !onboardingQuest.hidden && (
                     <InteractiveStartQuestBlock
@@ -8743,11 +8790,14 @@ function CarryOverBanner({
   language: AppSettings["language"];
   onReview: () => void;
 }) {
+  const label = language === "en" ? `${count} left` : `${count} перенос`;
+  const actionLabel = language === "en" ? "Open" : "Открыть";
+
   return (
     <section className="carry-over-banner">
-      <span>{language === "en" ? `${count} unfinished items` : `${count} незавершённых пунктов`}</span>
+      <span>{label}</span>
       <button type="button" onClick={onReview}>
-        {language === "en" ? "Review" : "Разобрать"}
+        {actionLabel}
       </button>
     </section>
   );

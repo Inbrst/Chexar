@@ -3964,3 +3964,1240 @@ html[data-resolved-theme="light"] .bottom-sheet .ai-chat-draft {
   margin-top: 6px !important;
   padding: 0 8px !important;
 }
+
+/* Home audit pass: keep the dense layout, but make it stable and readable. */
+html,
+body,
+#root,
+.app-shell {
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+}
+
+body {
+  min-width: 0 !important;
+}
+
+#root,
+.app-shell {
+  width: 100% !important;
+}
+
+.today-screen {
+  max-width: 430px !important;
+  margin-inline: auto !important;
+}
+
+.today-quick-menu-wrap {
+  width: 100% !important;
+  margin: 10px 0 4px !important;
+  padding: 0 14px !important;
+}
+
+.today-quick-menu {
+  justify-content: flex-end !important;
+  gap: 4px !important;
+  overflow: visible !important;
+}
+
+.today-menu-button {
+  height: 30px !important;
+  min-height: 30px !important;
+  min-width: 32px !important;
+  border-radius: 9px !important;
+  border-color: rgba(255, 255, 255, 0.055) !important;
+  background: rgba(255, 255, 255, 0.025) !important;
+}
+
+.today-menu-button.is-active {
+  background: rgba(255, 255, 255, 0.07) !important;
+}
+
+.today-menu-period {
+  min-width: 42px !important;
+  padding: 0 8px !important;
+  font-size: 0.7rem !important;
+  font-weight: 760 !important;
+}
+
+.today-menu-ai {
+  min-width: 36px !important;
+}
+
+.today-menu-add {
+  width: 44px !important;
+  min-width: 44px !important;
+  height: 30px !important;
+  border-radius: 10px 10px 7px 7px !important;
+  background: #7159f5 !important;
+}
+
+.today-screen .action-list,
+.today-screen .action-group {
+  gap: 5px !important;
+}
+
+.action-list .goal-card,
+.today-screen .action-list .goal-card {
+  min-height: 50px !important;
+  padding: 7px 8px !important;
+  border-radius: 12px !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.008)),
+    #08090d !important;
+}
+
+.action-list .goal-card::before,
+.today-screen .action-list .goal-card::before {
+  inset: auto auto 5px 8px !important;
+  width: min(var(--goal-progress, 0%), calc(100% - 16px)) !important;
+  height: 3px !important;
+  border-radius: 999px !important;
+  background: linear-gradient(90deg, #7c5cff, #22c98a) !important;
+}
+
+.action-list .goal-card::after,
+.today-screen .action-list .goal-card::after {
+  display: none !important;
+}
+
+.action-list .goal-top,
+.today-screen .action-list .goal-top {
+  min-height: 34px !important;
+  gap: 8px !important;
+}
+
+.action-list .goal-title-progress,
+.today-screen .action-list .goal-title-progress {
+  grid-template-columns: minmax(0, 1fr) max-content !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.action-list .goal-main-line,
+.today-screen .action-list .goal-main-line {
+  min-width: 0 !important;
+}
+
+.action-list .goal-main-line h3,
+.today-screen .action-list .goal-main-line h3 {
+  max-width: 100% !important;
+  font-size: 0.72rem !important;
+  line-height: 1.08 !important;
+}
+
+.action-list .goal-title-text,
+.today-screen .action-list .goal-title-text {
+  flex: 1 1 auto !important;
+}
+
+.action-list .goal-title-recommendation,
+.today-screen .action-list .goal-title-recommendation {
+  opacity: 0.82 !important;
+}
+
+.action-list .goal-progress-stack,
+.today-screen .action-list .goal-progress-stack {
+  min-width: 72px !important;
+  align-items: end !important;
+}
+
+.action-list .goal-numbers,
+.today-screen .action-list .goal-numbers {
+  max-width: 72px !important;
+  overflow: hidden !important;
+  color: rgba(255, 255, 255, 0.86) !important;
+  font-size: 0.61rem !important;
+  font-weight: 820 !important;
+  line-height: 1.1 !important;
+  text-align: right !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+/* Progress audit pass: readable cards beat squeezing four KPIs into tiny columns. */
+.progress-screen {
+  grid-template-rows: auto auto auto auto auto auto !important;
+  align-content: start !important;
+  gap: 8px !important;
+  overflow-y: auto !important;
+  padding-bottom: calc(var(--bottom-nav-height) + var(--bottom-nav-offset) + 18px) !important;
+  scrollbar-width: none !important;
+}
+
+.progress-screen::-webkit-scrollbar {
+  display: none !important;
+}
+
+.progress-period-tabs {
+  min-height: 34px !important;
+  border-radius: 13px !important;
+}
+
+.progress-kpi-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+}
+
+.progress-kpi-card {
+  grid-template-columns: minmax(0, 1fr) 18px !important;
+  min-height: 58px !important;
+  padding: 8px 9px !important;
+  border-radius: 13px !important;
+}
+
+.progress-kpi-card span {
+  font-size: 0.64rem !important;
+  line-height: 1.05 !important;
+  white-space: normal !important;
+}
+
+.progress-kpi-card strong {
+  margin-top: 4px !important;
+  font-size: 1.05rem !important;
+}
+
+.progress-kpi-card p {
+  margin-top: 3px !important;
+  font-size: 0.58rem !important;
+}
+
+.progress-kpi-card svg {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+.progress-rhythm-card,
+.progress-chart-card,
+.progress-balance-card,
+.progress-best-days-card,
+.progress-best-card {
+  border-radius: 14px !important;
+}
+
+.progress-rhythm-card {
+  min-height: 74px !important;
+}
+
+.progress-chart-card {
+  min-height: 132px !important;
+}
+
+.progress-line-chart {
+  min-height: 98px !important;
+}
+
+.progress-insight-grid {
+  gap: 6px !important;
+}
+
+.progress-best-card {
+  min-height: 92px !important;
+}
+
+/* Requested polish: quantity rows fill behind content, not as a bottom stripe. */
+.action-list .goal-card,
+.today-screen .action-list .goal-card {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.028), rgba(255, 255, 255, 0.006)),
+    #07080b !important;
+}
+
+.action-list .goal-card::before,
+.today-screen .action-list .goal-card::before {
+  inset: 0 auto 0 0 !important;
+  width: var(--goal-progress, 0%) !important;
+  max-width: 100% !important;
+  height: auto !important;
+  border-radius: inherit !important;
+  background:
+    linear-gradient(
+      90deg,
+      hsl(var(--fill-hue) 86% 55% / 0.28),
+      hsl(var(--fill-hue-2) 82% 52% / 0.16)
+    ) !important;
+}
+
+.action-list .goal-card.is-complete::before,
+.today-screen .action-list .goal-card.is-complete::before {
+  background:
+    linear-gradient(
+      90deg,
+      hsl(145 76% 42% / 0.3),
+      hsl(158 72% 42% / 0.18)
+    ) !important;
+}
+
+.action-list .goal-card::after,
+.today-screen .action-list .goal-card::after {
+  display: block !important;
+  inset: 0 !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0) 62%),
+    linear-gradient(90deg, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.2)) !important;
+}
+
+/* Keep the carry-over strip informational, not card-sized. */
+.carry-over-banner {
+  min-height: 30px !important;
+  padding: 3px 5px 3px 10px !important;
+  border-radius: 10px !important;
+  font-size: 0.72rem !important;
+  font-weight: 780 !important;
+}
+
+.carry-over-banner button {
+  min-height: 24px !important;
+  padding: 0 9px !important;
+  font-size: 0.66rem !important;
+}
+
+/* Top action row: quieter icon buttons, plus stays prominent. */
+.today-quick-menu-wrap {
+  display: flex !important;
+  justify-content: flex-end !important;
+  padding-right: 17px !important;
+}
+
+.today-quick-menu {
+  width: max-content !important;
+  gap: 2px !important;
+  transform: translateX(6px) !important;
+}
+
+.today-menu-button:not(.today-menu-add) {
+  min-width: 28px !important;
+  width: 28px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 !important;
+  border-color: transparent !important;
+  background: transparent !important;
+}
+
+.today-menu-button:not(.today-menu-add).is-active {
+  background: rgba(255, 255, 255, 0.055) !important;
+}
+
+.today-menu-button.today-menu-period {
+  width: auto !important;
+  min-width: 38px !important;
+  padding: 0 6px !important;
+}
+
+.today-menu-ai {
+  min-width: 31px !important;
+  width: 31px !important;
+}
+
+.today-menu-add {
+  width: 46px !important;
+  min-width: 46px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  margin-left: 4px !important;
+}
+
+/* Telegram-like bottom bar: translucent pill, icon-only, soft active lens. */
+.bottom-nav {
+  width: min(246px, calc(100vw - 80px)) !important;
+  height: 58px !important;
+  padding: 7px 9px !important;
+  border: 1px solid rgba(255, 255, 255, 0.09) !important;
+  border-radius: 999px !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.035)),
+    rgba(16, 17, 22, 0.68) !important;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38) !important;
+  backdrop-filter: blur(28px) saturate(1.35) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(1.35) !important;
+}
+
+.bottom-nav::before,
+.bottom-nav::after {
+  display: none !important;
+}
+
+.bottom-nav button {
+  width: 42px !important;
+  height: 42px !important;
+  min-height: 42px !important;
+  border-radius: 999px !important;
+  color: rgba(255, 255, 255, 0.78) !important;
+  background: transparent !important;
+}
+
+.bottom-nav button::before {
+  display: none !important;
+}
+
+.bottom-nav button.active {
+  color: #fff !important;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.24), transparent 62%),
+    rgba(255, 255, 255, 0.14) !important;
+}
+
+.bottom-nav svg {
+  width: 22px !important;
+  height: 22px !important;
+}
+
+/* Less copy in dense stats. Details remain available in the data, not repeated in cards. */
+.progress-kpi-card p {
+  display: none !important;
+}
+
+.layout-mode-badge {
+  position: fixed !important;
+  top: calc(env(safe-area-inset-top, 0px) + 12px) !important;
+  right: calc(env(safe-area-inset-right, 0px) + 14px) !important;
+  z-index: 48 !important;
+  display: none !important;
+  align-items: center !important;
+  gap: 4px !important;
+  height: 22px !important;
+  padding: 0 7px !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 999px !important;
+  color: rgba(255, 255, 255, 0.55) !important;
+  background: rgba(12, 13, 18, 0.46) !important;
+  font-size: 0.58rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0 !important;
+  pointer-events: none !important;
+}
+
+.layout-mode-badge svg {
+  width: 12px !important;
+  height: 12px !important;
+}
+
+.app-shell.is-wide-shell .layout-mode-badge {
+  display: inline-flex !important;
+}
+
+/* Desktop mode follows viewport width, so Telegram Desktop can use it too. */
+@media (min-width: 820px) {
+  body {
+    background:
+      radial-gradient(circle at 18% 8%, rgba(124, 92, 255, 0.14), transparent 24rem),
+      radial-gradient(circle at 82% 14%, rgba(34, 201, 138, 0.08), transparent 26rem),
+      #050509 !important;
+  }
+
+  .app-shell.is-wide-shell {
+    display: grid !important;
+    width: min(1120px, 100vw) !important;
+    max-width: none !important;
+    min-height: 100dvh !important;
+    margin: 0 auto !important;
+    padding-left: 92px !important;
+    background: transparent !important;
+    overflow: hidden !important;
+  }
+
+  .app-shell.is-wide-shell .today-screen,
+  .app-shell.is-wide-shell .calendar-screen,
+  .app-shell.is-wide-shell .progress-screen,
+  .app-shell.is-wide-shell .profile-screen {
+    width: min(680px, calc(100vw - 140px)) !important;
+    max-width: 680px !important;
+    justify-self: center !important;
+    padding-left: 24px !important;
+    padding-right: 24px !important;
+  }
+
+  .app-shell.is-wide-shell .bottom-nav {
+    right: auto !important;
+    bottom: 50% !important;
+    left: max(20px, calc(50% - 520px)) !important;
+    width: 58px !important;
+    height: auto !important;
+    min-height: 246px !important;
+    grid-template-columns: 1fr !important;
+    padding: 9px 7px !important;
+    transform: translateY(50%) !important;
+  }
+
+  .app-shell.is-wide-shell .today-quick-menu-wrap {
+    padding-right: 22px !important;
+  }
+
+  .app-shell.is-wide-shell .rhythm-card,
+  .app-shell.is-wide-shell .carry-over-banner,
+  .app-shell.is-wide-shell .section-block,
+  .app-shell.is-wide-shell .calendar-grid-card,
+  .app-shell.is-wide-shell .calendar-legend,
+  .app-shell.is-wide-shell .progress-period-tabs,
+  .app-shell.is-wide-shell .progress-kpi-grid,
+  .app-shell.is-wide-shell .progress-panel,
+  .app-shell.is-wide-shell .profile-card,
+  .app-shell.is-wide-shell .hints-card,
+  .app-shell.is-wide-shell .danger-reset-button {
+    width: 100% !important;
+  }
+}
+
+/* Centered modal/menu system: same visual language as the main screen. */
+.modal-overlay,
+.sheet-overlay,
+.sheet-overlay:not(:has(.progress-entry-bottom-sheet)),
+.sheet-overlay:has(.progress-entry-bottom-sheet) {
+  display: grid !important;
+  align-items: center !important;
+  justify-items: center !important;
+  place-items: center !important;
+  padding: max(14px, env(safe-area-inset-top)) 14px max(14px, env(safe-area-inset-bottom)) !important;
+  background:
+    radial-gradient(circle at 50% 14%, rgba(124, 92, 255, 0.08), transparent 18rem),
+    #050507 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.bottom-sheet,
+.confirm-card,
+.bottom-sheet:not(.progress-entry-bottom-sheet),
+.progress-entry-bottom-sheet,
+.bottom-sheet.creation-bottom-sheet {
+  width: min(430px, calc(100vw - 28px)) !important;
+  max-width: 430px !important;
+  min-height: auto !important;
+  max-height: min(82dvh, 620px) !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  padding: 12px !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 18px !important;
+  color: #fff !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.006)),
+    #0a0b10 !important;
+  box-shadow: 0 20px 54px rgba(0, 0, 0, 0.58) !important;
+  animation: chexar-menu-in 150ms ease-out !important;
+  scrollbar-width: none !important;
+}
+
+.bottom-sheet::-webkit-scrollbar,
+.progress-entry-bottom-sheet::-webkit-scrollbar,
+.creation-bottom-sheet .creation-form::-webkit-scrollbar,
+.ai-chat-body::-webkit-scrollbar {
+  display: none !important;
+}
+
+.bottom-sheet .sheet-handle,
+.progress-entry-bottom-sheet .sheet-handle,
+.creation-bottom-sheet .sheet-handle {
+  display: none !important;
+}
+
+.bottom-sheet .sheet-header,
+.progress-entry-bottom-sheet .sheet-header,
+.creation-bottom-sheet .sheet-header {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 3 !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 30px !important;
+  align-items: center !important;
+  gap: 8px !important;
+  margin: -2px 0 8px !important;
+  padding: 0 0 8px !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07) !important;
+  background:
+    linear-gradient(180deg, #0a0b10 72%, rgba(10, 11, 16, 0)) !important;
+}
+
+.bottom-sheet .sheet-header h2,
+.progress-entry-bottom-sheet .sheet-header h2,
+.creation-bottom-sheet .sheet-header h2,
+.confirm-card h2 {
+  margin: 0 !important;
+  overflow: hidden !important;
+  color: rgba(255, 255, 255, 0.94) !important;
+  font-size: 1rem !important;
+  font-weight: 840 !important;
+  line-height: 1.1 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.bottom-sheet .sheet-header p {
+  max-width: 100% !important;
+  margin: 2px 0 0 !important;
+  overflow: hidden !important;
+  color: rgba(255, 255, 255, 0.54) !important;
+  font-size: 0.7rem !important;
+  line-height: 1.12 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.bottom-sheet .sheet-close,
+.progress-entry-bottom-sheet .sheet-close,
+.creation-bottom-sheet .sheet-close {
+  width: 30px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  color: rgba(255, 255, 255, 0.72) !important;
+  background: rgba(255, 255, 255, 0.055) !important;
+}
+
+.bottom-sheet .sheet-close svg,
+.progress-entry-bottom-sheet .sheet-close svg,
+.creation-bottom-sheet .sheet-close svg {
+  width: 17px !important;
+  height: 17px !important;
+}
+
+.bottom-sheet .sheet-summary,
+.bottom-sheet .template-picker,
+.bottom-sheet .template-button,
+.bottom-sheet .advanced-section,
+.bottom-sheet .empty-sheet-state,
+.bottom-sheet .delete-choice-button,
+.bottom-sheet .sheet-row-action,
+.bottom-sheet .subitems-sheet-list,
+.bottom-sheet .subitem-sheet-row,
+.bottom-sheet .calendar-sheet-row,
+.bottom-sheet .ai-chat-draft,
+.bottom-sheet .today-settings-group,
+.progress-entry-bottom-sheet .progress-entry-task,
+.progress-entry-bottom-sheet .progress-entry-fill,
+.creation-bottom-sheet .sheet-summary,
+.creation-bottom-sheet .advanced-section {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  border-radius: 12px !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.028), rgba(255, 255, 255, 0.006)),
+    #101116 !important;
+  box-shadow: none !important;
+}
+
+.today-list-settings-sheet,
+.ai-chat-sheet,
+.progress-entry-bottom-sheet {
+  max-height: min(82dvh, 620px) !important;
+}
+
+.ai-chat-body,
+.creation-bottom-sheet .creation-form {
+  max-height: calc(min(82dvh, 620px) - 58px) !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+}
+
+.today-settings-body,
+.task-action-sheet,
+.delete-choice-sheet,
+.calendar-sheet-actions,
+.subitems-sheet-list {
+  gap: 8px !important;
+}
+
+.sheet-actions {
+  gap: 7px !important;
+  margin-top: 8px !important;
+}
+
+.primary-sheet-button,
+.ghost-sheet-button,
+.sheet-row-action,
+.delete-choice-button,
+.calendar-sheet-row,
+.today-settings-options button,
+.today-settings-reset {
+  min-height: 36px !important;
+  border-radius: 11px !important;
+}
+
+.primary-sheet-button {
+  border: 0 !important;
+  background: #7159f5 !important;
+}
+
+.ghost-sheet-button {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+.confirm-card {
+  justify-items: stretch !important;
+  gap: 10px !important;
+  max-width: min(340px, calc(100vw - 28px)) !important;
+  padding: 14px !important;
+  text-align: left !important;
+}
+
+.confirm-card .confirm-icon {
+  justify-self: start !important;
+  width: 38px !important;
+  height: 38px !important;
+  border-radius: 12px !important;
+  background: rgba(113, 89, 245, 0.2) !important;
+  color: #fff !important;
+  box-shadow: none !important;
+}
+
+.confirm-description {
+  max-width: none !important;
+  margin: -2px 0 0 !important;
+  color: rgba(255, 255, 255, 0.58) !important;
+  font-size: 0.78rem !important;
+  line-height: 1.25 !important;
+}
+
+html[data-resolved-theme="light"] .modal-overlay,
+html[data-resolved-theme="light"] .sheet-overlay,
+html[data-resolved-theme="light"] .sheet-overlay:not(:has(.progress-entry-bottom-sheet)),
+html[data-resolved-theme="light"] .sheet-overlay:has(.progress-entry-bottom-sheet) {
+  background:
+    radial-gradient(circle at 50% 14%, rgba(113, 89, 245, 0.1), transparent 18rem),
+    #f4f5f7 !important;
+}
+
+html[data-resolved-theme="light"] .bottom-sheet,
+html[data-resolved-theme="light"] .confirm-card,
+html[data-resolved-theme="light"] .bottom-sheet:not(.progress-entry-bottom-sheet),
+html[data-resolved-theme="light"] .progress-entry-bottom-sheet,
+html[data-resolved-theme="light"] .bottom-sheet.creation-bottom-sheet {
+  color: #111318 !important;
+  border-color: rgba(17, 19, 24, 0.1) !important;
+  background: #ffffff !important;
+  box-shadow: 0 18px 42px rgba(17, 19, 24, 0.12) !important;
+}
+
+html[data-resolved-theme="light"] .bottom-sheet .sheet-header,
+html[data-resolved-theme="light"] .progress-entry-bottom-sheet .sheet-header,
+html[data-resolved-theme="light"] .creation-bottom-sheet .sheet-header {
+  border-bottom-color: rgba(17, 19, 24, 0.08) !important;
+  background: linear-gradient(180deg, #ffffff 72%, rgba(255, 255, 255, 0)) !important;
+}
+
+html[data-resolved-theme="light"] .bottom-sheet .sheet-header h2,
+html[data-resolved-theme="light"] .progress-entry-bottom-sheet .sheet-header h2,
+html[data-resolved-theme="light"] .creation-bottom-sheet .sheet-header h2,
+html[data-resolved-theme="light"] .confirm-card h2 {
+  color: #111318 !important;
+}
+
+html[data-resolved-theme="light"] .bottom-sheet .sheet-header p,
+html[data-resolved-theme="light"] .confirm-description {
+  color: rgba(17, 19, 24, 0.58) !important;
+}
+
+html[data-resolved-theme="light"] .bottom-sheet .sheet-summary,
+html[data-resolved-theme="light"] .bottom-sheet .template-picker,
+html[data-resolved-theme="light"] .bottom-sheet .template-button,
+html[data-resolved-theme="light"] .bottom-sheet .advanced-section,
+html[data-resolved-theme="light"] .bottom-sheet .empty-sheet-state,
+html[data-resolved-theme="light"] .bottom-sheet .delete-choice-button,
+html[data-resolved-theme="light"] .bottom-sheet .sheet-row-action,
+html[data-resolved-theme="light"] .bottom-sheet .subitems-sheet-list,
+html[data-resolved-theme="light"] .bottom-sheet .subitem-sheet-row,
+html[data-resolved-theme="light"] .bottom-sheet .calendar-sheet-row,
+html[data-resolved-theme="light"] .bottom-sheet .ai-chat-draft,
+html[data-resolved-theme="light"] .bottom-sheet .today-settings-group,
+html[data-resolved-theme="light"] .progress-entry-bottom-sheet .progress-entry-task,
+html[data-resolved-theme="light"] .progress-entry-bottom-sheet .progress-entry-fill,
+html[data-resolved-theme="light"] .creation-bottom-sheet .sheet-summary,
+html[data-resolved-theme="light"] .creation-bottom-sheet .advanced-section {
+  border-color: rgba(17, 19, 24, 0.08) !important;
+  background: #f6f7f8 !important;
+}
+
+@keyframes chexar-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Softer modal pass: remove hard frames and let surfaces separate by depth. */
+.bottom-sheet,
+.confirm-card,
+.bottom-sheet:not(.progress-entry-bottom-sheet),
+.progress-entry-bottom-sheet,
+.bottom-sheet.creation-bottom-sheet {
+  padding: 14px !important;
+  border: 0 !important;
+  border-radius: 22px !important;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.055), transparent 9rem),
+    linear-gradient(180deg, #101116, #08090d) !important;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.58) !important;
+}
+
+.bottom-sheet .sheet-header,
+.progress-entry-bottom-sheet .sheet-header,
+.creation-bottom-sheet .sheet-header {
+  margin: -1px 0 10px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.bottom-sheet .sheet-header > div,
+.progress-entry-bottom-sheet .sheet-header > div,
+.creation-bottom-sheet .sheet-header > div {
+  min-width: 0 !important;
+}
+
+.bottom-sheet .sheet-header h2,
+.progress-entry-bottom-sheet .sheet-header h2,
+.creation-bottom-sheet .sheet-header h2,
+.confirm-card h2 {
+  max-width: 100% !important;
+  color: rgba(255, 255, 255, 0.94) !important;
+  font-size: 1.05rem !important;
+  font-weight: 820 !important;
+  line-height: 1.12 !important;
+  letter-spacing: 0 !important;
+}
+
+.bottom-sheet .sheet-header p {
+  margin-top: 2px !important;
+  color: rgba(255, 255, 255, 0.46) !important;
+  font-size: 0.68rem !important;
+}
+
+.bottom-sheet .sheet-close,
+.progress-entry-bottom-sheet .sheet-close,
+.creation-bottom-sheet .sheet-close {
+  border: 0 !important;
+  border-radius: 12px !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+.bottom-sheet .sheet-summary,
+.bottom-sheet .template-picker,
+.bottom-sheet .template-button,
+.bottom-sheet .advanced-section,
+.bottom-sheet .empty-sheet-state,
+.bottom-sheet .delete-choice-button,
+.bottom-sheet .sheet-row-action,
+.bottom-sheet .subitems-sheet-list,
+.bottom-sheet .subitem-sheet-row,
+.bottom-sheet .calendar-sheet-row,
+.bottom-sheet .ai-chat-draft,
+.bottom-sheet .today-settings-group,
+.progress-entry-bottom-sheet .progress-entry-task,
+.progress-entry-bottom-sheet .progress-entry-fill,
+.creation-bottom-sheet .sheet-summary,
+.creation-bottom-sheet .advanced-section,
+.creation-bottom-sheet .due-time-toggle,
+.creation-bottom-sheet .subitems-toggle,
+.creation-bottom-sheet .subitem-add-row,
+.creation-bottom-sheet .creation-icon-trigger,
+.creation-bottom-sheet .creation-template-trigger,
+.creation-bottom-sheet .compact-segment,
+.today-settings-options button,
+.today-settings-reset,
+.primary-sheet-button,
+.ghost-sheet-button {
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.bottom-sheet .sheet-summary,
+.bottom-sheet .template-picker,
+.bottom-sheet .template-button,
+.bottom-sheet .advanced-section,
+.bottom-sheet .empty-sheet-state,
+.bottom-sheet .delete-choice-button,
+.bottom-sheet .sheet-row-action,
+.bottom-sheet .subitems-sheet-list,
+.bottom-sheet .subitem-sheet-row,
+.bottom-sheet .calendar-sheet-row,
+.bottom-sheet .ai-chat-draft,
+.bottom-sheet .today-settings-group,
+.progress-entry-bottom-sheet .progress-entry-task,
+.progress-entry-bottom-sheet .progress-entry-fill,
+.creation-bottom-sheet .sheet-summary,
+.creation-bottom-sheet .advanced-section {
+  border-radius: 15px !important;
+  background: rgba(255, 255, 255, 0.045) !important;
+}
+
+.bottom-sheet input,
+.bottom-sheet textarea,
+.bottom-sheet select,
+.progress-entry-bottom-sheet input,
+.progress-entry-bottom-sheet textarea,
+.progress-entry-bottom-sheet select,
+.creation-bottom-sheet input,
+.creation-bottom-sheet textarea,
+.creation-bottom-sheet select {
+  border: 0 !important;
+  border-radius: 13px !important;
+  background: rgba(255, 255, 255, 0.055) !important;
+  box-shadow: none !important;
+}
+
+.bottom-sheet input:focus,
+.bottom-sheet textarea:focus,
+.bottom-sheet select:focus,
+.progress-entry-bottom-sheet input:focus,
+.progress-entry-bottom-sheet textarea:focus,
+.progress-entry-bottom-sheet select:focus,
+.creation-bottom-sheet input:focus,
+.creation-bottom-sheet textarea:focus,
+.creation-bottom-sheet select:focus {
+  box-shadow: 0 0 0 2px rgba(113, 89, 245, 0.24) !important;
+}
+
+.segmented-control,
+.compact-segment,
+.period-segment,
+.today-settings-options button,
+.today-settings-reset {
+  border: 0 !important;
+}
+
+.segmented-control,
+.compact-segment,
+.period-segment {
+  background: rgba(255, 255, 255, 0.045) !important;
+}
+
+.segmented-control button,
+.compact-segment button,
+.period-segment button {
+  border: 0 !important;
+  border-radius: 11px !important;
+  background: transparent !important;
+}
+
+.segmented-control button.active,
+.compact-segment button.active,
+.period-segment button.active,
+.today-settings-options button.is-active {
+  background: rgba(113, 89, 245, 0.7) !important;
+  color: #fff !important;
+}
+
+/* Telegram-style tab bar for compact/mobile shell. */
+.app-shell.is-compact-shell .bottom-nav {
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  height: calc(58px + env(safe-area-inset-bottom, 0px)) !important;
+  padding: 5px max(18px, calc((100vw - 430px) / 2 + 18px)) calc(5px + env(safe-area-inset-bottom, 0px)) !important;
+  gap: 0 !important;
+  border: 0 !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 0 !important;
+  background: rgba(18, 19, 24, 0.86) !important;
+  box-shadow: none !important;
+  backdrop-filter: blur(28px) saturate(1.22) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(1.22) !important;
+}
+
+.app-shell.is-compact-shell .bottom-nav button {
+  width: auto !important;
+  height: 48px !important;
+  min-height: 48px !important;
+  border: 0 !important;
+  border-radius: 14px !important;
+  color: rgba(255, 255, 255, 0.54) !important;
+  background: transparent !important;
+}
+
+.app-shell.is-compact-shell .bottom-nav button.active {
+  color: #2aabee !important;
+  background: transparent !important;
+}
+
+.app-shell.is-compact-shell .bottom-nav button.active svg {
+  stroke-width: 2.35 !important;
+}
+
+.app-shell.is-compact-shell .bottom-nav svg {
+  width: 23px !important;
+  height: 23px !important;
+}
+
+@media (min-width: 820px) {
+  .app-shell.is-wide-shell .bottom-nav {
+    border: 0 !important;
+    border-radius: 20px !important;
+    background: rgba(18, 19, 24, 0.74) !important;
+    box-shadow: none !important;
+  }
+}
+
+html[data-resolved-theme="light"] .bottom-sheet,
+html[data-resolved-theme="light"] .confirm-card,
+html[data-resolved-theme="light"] .bottom-sheet:not(.progress-entry-bottom-sheet),
+html[data-resolved-theme="light"] .progress-entry-bottom-sheet,
+html[data-resolved-theme="light"] .bottom-sheet.creation-bottom-sheet {
+  border: 0 !important;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(17, 19, 24, 0.045), transparent 9rem),
+    #ffffff !important;
+}
+
+html[data-resolved-theme="light"] .bottom-sheet .sheet-header,
+html[data-resolved-theme="light"] .progress-entry-bottom-sheet .sheet-header,
+html[data-resolved-theme="light"] .creation-bottom-sheet .sheet-header {
+  border: 0 !important;
+  background: transparent !important;
+}
+
+html[data-resolved-theme="light"] .bottom-sheet .sheet-summary,
+html[data-resolved-theme="light"] .bottom-sheet .template-picker,
+html[data-resolved-theme="light"] .bottom-sheet .template-button,
+html[data-resolved-theme="light"] .bottom-sheet .advanced-section,
+html[data-resolved-theme="light"] .bottom-sheet .empty-sheet-state,
+html[data-resolved-theme="light"] .bottom-sheet .delete-choice-button,
+html[data-resolved-theme="light"] .bottom-sheet .sheet-row-action,
+html[data-resolved-theme="light"] .bottom-sheet .subitems-sheet-list,
+html[data-resolved-theme="light"] .bottom-sheet .subitem-sheet-row,
+html[data-resolved-theme="light"] .bottom-sheet .calendar-sheet-row,
+html[data-resolved-theme="light"] .bottom-sheet .ai-chat-draft,
+html[data-resolved-theme="light"] .bottom-sheet .today-settings-group,
+html[data-resolved-theme="light"] .progress-entry-bottom-sheet .progress-entry-task,
+html[data-resolved-theme="light"] .progress-entry-bottom-sheet .progress-entry-fill,
+html[data-resolved-theme="light"] .creation-bottom-sheet .sheet-summary,
+html[data-resolved-theme="light"] .creation-bottom-sheet .advanced-section {
+  border: 0 !important;
+  background: rgba(17, 19, 24, 0.045) !important;
+}
+
+html[data-resolved-theme="light"] .app-shell.is-compact-shell .bottom-nav {
+  border-top-color: rgba(17, 19, 24, 0.08) !important;
+  background: rgba(255, 255, 255, 0.86) !important;
+}
+
+html[data-resolved-theme="light"] .app-shell.is-compact-shell .bottom-nav button {
+  color: rgba(17, 19, 24, 0.52) !important;
+}
+
+/* Final specificity pass for old high-specificity form/nav rules. */
+.app-shell.is-compact-shell .bottom-nav {
+  position: fixed !important;
+  left: 0 !important;
+  right: auto !important;
+  transform: none !important;
+  width: 100vw !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  justify-items: center !important;
+}
+
+.app-shell.is-compact-shell .bottom-nav button {
+  justify-self: center !important;
+  width: 52px !important;
+}
+
+.creation-bottom-sheet .sheet-form input,
+.creation-bottom-sheet .sheet-form textarea,
+.creation-bottom-sheet .sheet-form select,
+.bottom-sheet .sheet-form input,
+.bottom-sheet .sheet-form textarea,
+.bottom-sheet .sheet-form select,
+.progress-entry-bottom-sheet .progress-entry-form input {
+  border: 0 !important;
+  border-radius: 13px !important;
+  background: rgba(255, 255, 255, 0.055) !important;
+  box-shadow: none !important;
+}
+
+.creation-bottom-sheet .sheet-form input:focus,
+.creation-bottom-sheet .sheet-form textarea:focus,
+.creation-bottom-sheet .sheet-form select:focus,
+.bottom-sheet .sheet-form input:focus,
+.bottom-sheet .sheet-form textarea:focus,
+.bottom-sheet .sheet-form select:focus,
+.progress-entry-bottom-sheet .progress-entry-form input:focus {
+  border: 0 !important;
+  box-shadow: 0 0 0 2px rgba(113, 89, 245, 0.24) !important;
+}
+
+.creation-bottom-sheet .validation-messages,
+.creation-bottom-sheet .validation-list,
+.bottom-sheet .validation-messages,
+.bottom-sheet .validation-list {
+  border: 0 !important;
+  border-radius: 13px !important;
+  background: rgba(255, 92, 120, 0.12) !important;
+  box-shadow: none !important;
+}
+
+/* Main list cards narrow as the visible list grows, but stop at a readable floor. */
+.today-screen .action-list:not(.with-period) {
+  justify-items: center !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group {
+  width: 100% !important;
+  justify-items: center !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group-title {
+  width: clamp(78%, var(--action-card-width, 90%), 90%) !important;
+  justify-self: center !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item {
+  width: clamp(78%, var(--action-card-width, 90%), 90%) !important;
+  max-width: 100% !important;
+  justify-self: center !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item > .swipe-delete-shell,
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .swipe-delete-content,
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .task-card-inline,
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .task-row,
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-card {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .swipe-edit-backdrop,
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .swipe-delete-backdrop {
+  border-radius: 11px !important;
+}
+
+/* Telegram profile-style floating nav, adapted for Chexar and icon-only. */
+.app-shell.is-compact-shell .bottom-nav {
+  position: fixed !important;
+  left: 50% !important;
+  right: auto !important;
+  bottom: max(8px, env(safe-area-inset-bottom, 0px)) !important;
+  z-index: 42 !important;
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  align-items: center !important;
+  justify-items: center !important;
+  width: min(calc(100vw - 34px), 390px) !important;
+  height: 62px !important;
+  min-height: 62px !important;
+  padding: 6px 8px !important;
+  border: 0 !important;
+  border-radius: 27px !important;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--text) 5%, transparent), color-mix(in srgb, var(--text) 1.8%, transparent)),
+    color-mix(in srgb, var(--card-strong) 82%, #050506 18%) !important;
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.54) !important;
+  transform: translateX(-50%) !important;
+  backdrop-filter: blur(26px) saturate(1.18) !important;
+  -webkit-backdrop-filter: blur(26px) saturate(1.18) !important;
+}
+
+.app-shell.is-compact-shell .bottom-nav::before,
+.app-shell.is-compact-shell .bottom-nav::after {
+  display: none !important;
+}
+
+.app-shell.is-compact-shell .bottom-nav button {
+  display: grid !important;
+  width: 48px !important;
+  height: 48px !important;
+  min-height: 48px !important;
+  place-items: center !important;
+  border: 0 !important;
+  border-radius: 21px !important;
+  color: color-mix(in srgb, var(--text) 78%, transparent) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.app-shell.is-compact-shell .bottom-nav button.active {
+  width: 54px !important;
+  color: color-mix(in srgb, var(--telegram-button-color, #7c5cff) 74%, var(--text) 26%) !important;
+  background:
+    radial-gradient(circle at 52% 18%, color-mix(in srgb, var(--telegram-button-color, #7c5cff) 22%, transparent), transparent 58%),
+    color-mix(in srgb, var(--telegram-button-color, #7c5cff) 16%, var(--card-strong) 84%) !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--telegram-button-color, #7c5cff) 10%, transparent),
+    0 0 18px color-mix(in srgb, var(--telegram-button-color, #7c5cff) 18%, transparent) !important;
+}
+
+.app-shell.is-compact-shell .bottom-nav button span {
+  display: none !important;
+}
+
+.app-shell.is-compact-shell .bottom-nav svg {
+  width: 26px !important;
+  height: 26px !important;
+  stroke-width: 2.8 !important;
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+  filter: none !important;
+}
+
+.app-shell.is-compact-shell .bottom-nav button.active svg {
+  stroke-width: 3 !important;
+  filter: none !important;
+}
+
+@media (max-width: 360px) {
+  .app-shell.is-compact-shell .bottom-nav {
+    width: min(calc(100vw - 24px), 390px) !important;
+    height: 58px !important;
+    min-height: 58px !important;
+    padding: 5px 7px !important;
+    border-radius: 24px !important;
+  }
+
+  .app-shell.is-compact-shell .bottom-nav button {
+    width: 44px !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    border-radius: 19px !important;
+  }
+
+  .app-shell.is-compact-shell .bottom-nav button.active {
+    width: 50px !important;
+  }
+
+  .app-shell.is-compact-shell .bottom-nav svg {
+    width: 24px !important;
+    height: 24px !important;
+  }
+}
+
+@media (min-width: 820px) {
+  .app-shell.is-wide-shell .bottom-nav {
+    border-radius: 28px !important;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--text) 5%, transparent), color-mix(in srgb, var(--text) 1.8%, transparent)),
+      color-mix(in srgb, var(--card-strong) 82%, #050506 18%) !important;
+  }
+
+  .app-shell.is-wide-shell .bottom-nav button.active {
+    color: color-mix(in srgb, var(--telegram-button-color, #7c5cff) 74%, var(--text) 26%) !important;
+    background: color-mix(in srgb, var(--telegram-button-color, #7c5cff) 16%, var(--card-strong) 84%) !important;
+    box-shadow: 0 0 18px color-mix(in srgb, var(--telegram-button-color, #7c5cff) 16%, transparent) !important;
+  }
+}
+
+html[data-resolved-theme="light"] .app-shell.is-compact-shell .bottom-nav {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--text) 4%, transparent), transparent),
+    color-mix(in srgb, var(--card) 88%, #f6f7f8 12%) !important;
+  box-shadow: 0 14px 36px rgba(17, 19, 24, 0.12) !important;
+}
+
+html[data-resolved-theme="light"] .app-shell.is-compact-shell .bottom-nav button {
+  color: rgba(17, 19, 24, 0.66) !important;
+}
+
+html[data-resolved-theme="light"] .app-shell.is-compact-shell .bottom-nav button.active {
+  color: var(--telegram-button-color, #7c5cff) !important;
+  background: color-mix(in srgb, var(--telegram-button-color, #7c5cff) 12%, var(--card) 88%) !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--telegram-button-color, #7c5cff) 10%, transparent),
+    0 0 16px color-mix(in srgb, var(--telegram-button-color, #7c5cff) 14%, transparent) !important;
+}
