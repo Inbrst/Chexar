@@ -953,6 +953,13 @@ async function sendMessage(config: BotConfig, chatId: number | string, text: str
   });
 }
 
+async function sendChatAction(config: BotConfig, chatId: number | string, action = "typing"): Promise<void> {
+  await sendTelegram(config, "sendChatAction", {
+    chat_id: chatId,
+    action,
+  }).catch(() => undefined);
+}
+
 async function answerCallback(config: BotConfig, callbackId: string | undefined, text?: string): Promise<void> {
   if (!callbackId) {
     return;
@@ -964,23 +971,59 @@ async function answerCallback(config: BotConfig, callbackId: string | undefined,
   });
 }
 
+function openChexarButton(config: BotConfig) {
+  return {
+    text: "Open Chexar",
+    web_app: {
+      url: config.appUrl,
+    },
+  };
+}
+
 function openChexarMarkup(config: BotConfig) {
   return {
     inline_keyboard: [
       [
-        {
-          text: "Open Chexar",
-          web_app: {
-            url: config.appUrl,
-          },
-        },
+        openChexarButton(config),
       ],
     ],
   };
 }
 
-function todayListMarkup(items: RemoteItem[]) {
-  const rows = items.slice(0, 12).map((item) => {
+function mainMenuMarkup(config: BotConfig) {
+  return {
+    inline_keyboard: [
+      [
+        openChexarButton(config),
+      ],
+      [
+        { text: "📋 Сегодня", callback_data: "menu:today" },
+        { text: "✨ Создать", callback_data: "menu:create" },
+      ],
+      [
+        { text: "❔ Помощь", callback_data: "menu:help" },
+        { text: "⚙️ Профиль", callback_data: "menu:settings" },
+      ],
+    ],
+  };
+}
+
+function secondaryMenuMarkup(config: BotConfig) {
+  return {
+    inline_keyboard: [
+      [
+        { text: "📋 Сегодня", callback_data: "menu:today" },
+        { text: "🏠 Меню", callback_data: "menu:home" },
+      ],
+      [
+        openChexarButton(config),
+      ],
+    ],
+  };
+}
+
+function todayListMarkup(config: BotConfig, items: RemoteItem[]) {
+  const rows: Array<Array<Record<string, unknown>>> = items.slice(0, 12).map((item) => {
     if (item.tracking_type === "quantity") {
       const quick = (item.quick_add_values ?? [1, 5]).slice(0, 2).filter((value) => Number.isFinite(Number(value)) && Number(value) > 0);
       const buttons = quick.length > 0 ? quick : [1];
@@ -997,6 +1040,14 @@ function todayListMarkup(items: RemoteItem[]) {
       },
     ];
   });
+
+  rows.push([
+    { text: "🔄 Обновить", callback_data: "menu:today" },
+    { text: "🏠 Меню", callback_data: "menu:home" },
+  ]);
+  rows.push([
+    openChexarButton(config),
+  ]);
 
   return {
     inline_keyboard: rows,
@@ -1028,7 +1079,7 @@ async function getQuantityStatus(config: BotConfig, userId: string, item: Remote
 
 async function formatTodayList(config: BotConfig, userId: string, items: RemoteItem[], entries: RemoteDailyEntry[], dateKey: string): Promise<{ text: string; actionable: RemoteItem[] }> {
   const entriesMap = entryByItem(entries);
-  const lines = [`Задачи на сегодня (${dateKey}):`];
+  const lines = [`📋 Сегодня · ${dateKey}`, ""];
   const actionable: RemoteItem[] = [];
 
   for (const item of items) {
@@ -1056,7 +1107,7 @@ async function formatTodayList(config: BotConfig, userId: string, items: RemoteI
 
   if (items.length === 0) {
     return {
-      text: "На сегодня задач нет. Можешь написать боту: «Создай задачу выпить воду» или открыть Chexar.",
+      text: "📋 Сегодня пусто.\n\nМожно написать: «Создай задачу выпить воду» или открыть Chexar.",
       actionable: [],
     };
   }
@@ -1096,7 +1147,20 @@ function getLanguage(settings: RemoteSettings | null): string {
 }
 
 async function sendWelcome(ctx: BotContext): Promise<void> {
-  await sendMessage(ctx.config, ctx.chatId, WELCOME_MESSAGE, openChexarMarkup(ctx.config));
+  await sendMessage(
+    ctx.config,
+    ctx.chatId,
+    [
+      WELCOME_MESSAGE,
+      "",
+      "Мини-пульт для ритма дня:",
+      "• открыть Chexar внутри Telegram",
+      "• посмотреть задачи на сегодня",
+      "• отметить чекбокс или добавить прогресс",
+      "• создать задачу обычным сообщением",
+    ].join("\n"),
+    mainMenuMarkup(ctx.config),
+  );
 }
 
 async function sendHelp(ctx: BotContext): Promise<void> {
@@ -1104,13 +1168,50 @@ async function sendHelp(ctx: BotContext): Promise<void> {
     ctx.config,
     ctx.chatId,
     [
-      "Команды Chexar:",
-      "/today — показать задачи на сегодня",
-      "«Отметь вода» — отметить чекбокс",
-      "«+10 чтение» или «прочитал 20 страниц» — добавить прогресс",
-      "«Создай задачи: 1. Вода 2. Чтение 20 страниц» — создать задачи через AI",
+      "❔ Chexar bot",
       "",
-      "Бот включается и выключается в профиле Chexar.",
+      "/menu — открыть кнопки",
+      "/today — задачи на сегодня",
+      "/help — подсказки",
+      "",
+      "Примеры:",
+      "• Отметь вода",
+      "• +10 чтение",
+      "• Прочитал 2 урока немецкого",
+      "• Создай задачи: вода, тренировка, чтение 20 страниц",
+      "",
+      "Бот включается в профиле Chexar.",
+    ].join("\n"),
+    secondaryMenuMarkup(ctx.config),
+  );
+}
+
+async function sendCreateGuide(ctx: BotContext): Promise<void> {
+  await sendMessage(
+    ctx.config,
+    ctx.chatId,
+    [
+      "✨ Создание через чат",
+      "",
+      "Напиши задачу обычным текстом. Я разберу название, эмодзи, период и формат.",
+      "",
+      "Примеры:",
+      "• Создай немецкий 50 уроков на месяц",
+      "• Добавь воду каждый день",
+      "• Создай список: уборка, спорт, чтение 20 страниц",
+    ].join("\n"),
+    secondaryMenuMarkup(ctx.config),
+  );
+}
+
+async function sendSettingsGuide(ctx: BotContext): Promise<void> {
+  await sendMessage(
+    ctx.config,
+    ctx.chatId,
+    [
+      "⚙️ Профиль",
+      "",
+      "Настройки бота, напоминания и связь аккаунта находятся в профиле Chexar.",
     ].join("\n"),
     openChexarMarkup(ctx.config),
   );
@@ -1118,7 +1219,7 @@ async function sendHelp(ctx: BotContext): Promise<void> {
 
 async function handleToday(ctx: BotContext): Promise<void> {
   if (!ctx.user) {
-    await sendMessage(ctx.config, ctx.chatId, "Я пока не вижу твой Chexar-профиль. Открой Mini App через кнопку ниже.", openChexarMarkup(ctx.config));
+    await sendMessage(ctx.config, ctx.chatId, "Открой Chexar внутри Telegram, чтобы связать профиль.", mainMenuMarkup(ctx.config));
     return;
   }
 
@@ -1132,7 +1233,7 @@ async function handleToday(ctx: BotContext): Promise<void> {
   const entries = await getEntriesForDate(ctx.config, ctx.user.id, dateKey);
   const list = await formatTodayList(ctx.config, ctx.user.id, items, entries, dateKey);
 
-  await sendMessage(ctx.config, ctx.chatId, list.text, list.actionable.length > 0 ? todayListMarkup(list.actionable) : openChexarMarkup(ctx.config));
+  await sendMessage(ctx.config, ctx.chatId, list.text, list.actionable.length > 0 ? todayListMarkup(ctx.config, list.actionable) : secondaryMenuMarkup(ctx.config));
 }
 
 async function completeItem(ctx: BotContext, itemId: string): Promise<string> {
@@ -1194,7 +1295,7 @@ async function addProgress(ctx: BotContext, itemId: string, amount: number): Pro
 
 async function handleActionText(ctx: BotContext, text: string): Promise<void> {
   if (!ctx.user) {
-    await sendMessage(ctx.config, ctx.chatId, "Я пока не вижу твой Chexar-профиль. Открой Mini App через кнопку ниже.", openChexarMarkup(ctx.config));
+    await sendMessage(ctx.config, ctx.chatId, "Открой Chexar внутри Telegram, чтобы связать профиль.", mainMenuMarkup(ctx.config));
     return;
   }
 
@@ -1202,6 +1303,8 @@ async function handleActionText(ctx: BotContext, text: string): Promise<void> {
     await sendMessage(ctx.config, ctx.chatId, "Бот выключен в профиле Chexar. Включи его в настройках профиля.", openChexarMarkup(ctx.config));
     return;
   }
+
+  await sendChatAction(ctx.config, ctx.chatId);
 
   const dateKey = todayKey(ctx.config);
   const todayItems = (await getItems(ctx.config, ctx.user.id)).filter((item) => isItemActiveOnDate(item, dateKey));
@@ -1227,15 +1330,15 @@ async function handleActionText(ctx: BotContext, text: string): Promise<void> {
   const created = await createItemsFromDrafts(ctx.config, ctx.user.id, drafts);
 
   if (created.length === 0) {
-    await sendMessage(ctx.config, ctx.chatId, "Не смог разобрать сообщение. Попробуй: «Создай задачу выпить воду» или /today.");
+    await sendMessage(ctx.config, ctx.chatId, "Не разобрал сообщение. Попробуй: «Создай задачу выпить воду» или открой /help.", secondaryMenuMarkup(ctx.config));
     return;
   }
 
   await sendMessage(
     ctx.config,
     ctx.chatId,
-    [`Создал в Chexar:`, ...created.map((item) => `${getEmoji(item)} ${item.title}`)].join("\n"),
-    openChexarMarkup(ctx.config),
+    [`✨ Создал в Chexar:`, "", ...created.map((item) => `${getEmoji(item)} ${item.title}`)].join("\n"),
+    secondaryMenuMarkup(ctx.config),
   );
 }
 
@@ -1247,12 +1350,42 @@ async function handleCallback(config: BotConfig, callback: TelegramCallbackQuery
   }
 
   const ctx = await getContext(config, chatId, callback.from ?? null);
+  const [kind, itemId, rawAmount] = (callback.data ?? "").split(":");
+
+  if (kind === "menu") {
+    await answerCallback(config, callback.id);
+
+    if (itemId === "home") {
+      await sendWelcome(ctx);
+      return;
+    }
+
+    if (itemId === "help") {
+      await sendHelp(ctx);
+      return;
+    }
+
+    if (itemId === "create") {
+      await sendCreateGuide(ctx);
+      return;
+    }
+
+    if (itemId === "settings") {
+      await sendSettingsGuide(ctx);
+      return;
+    }
+
+    if (itemId === "today") {
+      await handleToday(ctx);
+      return;
+    }
+  }
+
   if (!isBotEnabled(ctx.settings)) {
     await answerCallback(config, callback.id, "Бот выключен в профиле.");
     return;
   }
 
-  const [kind, itemId, rawAmount] = (callback.data ?? "").split(":");
   if (kind === "done" && itemId) {
     const message = await completeItem(ctx, itemId);
     await answerCallback(config, callback.id, message);
@@ -1288,13 +1421,23 @@ export async function handleTelegramWebhook(update: TelegramUpdate): Promise<voi
   const ctx = await getContext(config, chatId, message?.from ?? null);
   const command = getCommand(message?.text);
 
-  if (command === "start") {
+  if (command === "start" || command === "menu") {
     await sendWelcome(ctx);
     return;
   }
 
   if (command === "help") {
     await sendHelp(ctx);
+    return;
+  }
+
+  if (command === "create") {
+    await sendCreateGuide(ctx);
+    return;
+  }
+
+  if (command === "settings") {
+    await sendSettingsGuide(ctx);
     return;
   }
 
@@ -1305,6 +1448,22 @@ export async function handleTelegramWebhook(update: TelegramUpdate): Promise<voi
 
   const text = message?.text?.trim();
   if (text) {
+    const normalized = normalizeSearchText(text);
+    if (normalized === "меню" || normalized === "menu") {
+      await sendWelcome(ctx);
+      return;
+    }
+
+    if (normalized === "сегодня" || normalized === "today") {
+      await handleToday(ctx);
+      return;
+    }
+
+    if (normalized === "помощь" || normalized === "help") {
+      await sendHelp(ctx);
+      return;
+    }
+
     await handleActionText(ctx, text);
   }
 }
@@ -1364,7 +1523,7 @@ export async function sendDailyReminders(): Promise<{ sent: number; skipped: num
         continue;
       }
 
-      await sendMessage(config, chatId, `Напоминание Chexar\n\n${list.text}`, list.actionable.length > 0 ? todayListMarkup(list.actionable) : openChexarMarkup(config));
+      await sendMessage(config, chatId, `Напоминание Chexar\n\n${list.text}`, list.actionable.length > 0 ? todayListMarkup(config, list.actionable) : secondaryMenuMarkup(config));
       sent += 1;
     } catch {
       skipped += 1;

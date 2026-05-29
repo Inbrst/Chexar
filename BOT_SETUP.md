@@ -36,11 +36,21 @@ https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=https://chexar.v
 
 1. Open Chexar through the Telegram Mini App.
 2. Go to Profile and enable `Telegram-бот`.
-3. In the bot chat, send `/today`.
+3. In the bot chat, send `/menu` or `/today`.
 4. Try:
    - `Отметь вода`
    - `+10 чтение`
    - `Создай задачи: 1. Вода 2. Чтение 20 страниц`
+
+## Bot menu
+
+The bot exposes:
+
+- `/menu` — main button menu
+- `/today` — today's tasks and quick action buttons
+- `/create` — creation examples
+- `/help` — short help
+- `/settings` — profile/settings entry
 
 ## Reminders
 
