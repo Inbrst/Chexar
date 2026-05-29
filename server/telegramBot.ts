@@ -19,6 +19,7 @@ type TelegramChat = {
 };
 
 type TelegramMessage = {
+  message_id?: number;
   chat?: TelegramChat;
   from?: TelegramUser;
   text?: string;
@@ -960,6 +961,22 @@ async function sendChatAction(config: BotConfig, chatId: number | string, action
   }).catch(() => undefined);
 }
 
+async function deleteMessage(config: BotConfig, chatId: number | string, messageId: number | undefined): Promise<void> {
+  if (!messageId) {
+    return;
+  }
+
+  await sendTelegram(config, "deleteMessage", {
+    chat_id: chatId,
+    message_id: messageId,
+  }).catch((error: unknown) => {
+    logInfo("Could not delete Telegram message", {
+      messageId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+}
+
 async function answerCallback(config: BotConfig, callbackId: string | undefined, text?: string): Promise<void> {
   if (!callbackId) {
     return;
@@ -1022,23 +1039,39 @@ function secondaryMenuMarkup(config: BotConfig) {
   };
 }
 
+function shortButtonTitle(value: string): string {
+  const trimmed = value.replace(/\s+/g, " ").trim();
+  return trimmed.length > 28 ? `${trimmed.slice(0, 27)}…` : trimmed;
+}
+
 function todayListMarkup(config: BotConfig, items: RemoteItem[]) {
-  const rows: Array<Array<Record<string, unknown>>> = items.slice(0, 12).map((item) => {
+  const rows: Array<Array<Record<string, unknown>>> = [];
+
+  items.slice(0, 12).forEach((item) => {
+    const title = shortButtonTitle(item.title);
+
     if (item.tracking_type === "quantity") {
       const quick = (item.quick_add_values ?? [1, 5]).slice(0, 2).filter((value) => Number.isFinite(Number(value)) && Number(value) > 0);
       const buttons = quick.length > 0 ? quick : [1];
-      return buttons.map((amount) => ({
+      rows.push([
+        {
+          text: `➕ ${getEmoji(item)} ${title}`,
+          callback_data: `hint:${item.id}`,
+        },
+      ]);
+      rows.push(buttons.map((amount) => ({
         text: `+${amount} ${item.unit ?? ""}`.trim(),
         callback_data: `progress:${item.id}:${amount}`,
-      }));
+      })));
+      return;
     }
 
-    return [
+    rows.push([
       {
-        text: `✅ ${item.title}`,
+        text: `✓ Отметить · ${getEmoji(item)} ${title}`,
         callback_data: `done:${item.id}`,
       },
-    ];
+    ]);
   });
 
   rows.push([
@@ -1354,6 +1387,8 @@ async function handleCallback(config: BotConfig, callback: TelegramCallbackQuery
 
   if (kind === "menu") {
     await answerCallback(config, callback.id);
+    await sendChatAction(config, chatId);
+    await deleteMessage(config, chatId, callback.message?.message_id);
 
     if (itemId === "home") {
       await sendWelcome(ctx);
@@ -1381,6 +1416,11 @@ async function handleCallback(config: BotConfig, callback: TelegramCallbackQuery
     }
   }
 
+  if (kind === "hint") {
+    await answerCallback(config, callback.id, "Выбери количество на кнопках ниже.");
+    return;
+  }
+
   if (!isBotEnabled(ctx.settings)) {
     await answerCallback(config, callback.id, "Бот выключен в профиле.");
     return;
@@ -1389,7 +1429,9 @@ async function handleCallback(config: BotConfig, callback: TelegramCallbackQuery
   if (kind === "done" && itemId) {
     const message = await completeItem(ctx, itemId);
     await answerCallback(config, callback.id, message);
-    await sendMessage(config, chatId, message);
+    await sendChatAction(config, chatId);
+    await deleteMessage(config, chatId, callback.message?.message_id);
+    await handleToday(ctx);
     return;
   }
 
@@ -1397,7 +1439,9 @@ async function handleCallback(config: BotConfig, callback: TelegramCallbackQuery
     const amount = Number(rawAmount);
     const message = await addProgress(ctx, itemId, Number.isFinite(amount) && amount > 0 ? amount : 1);
     await answerCallback(config, callback.id, message);
-    await sendMessage(config, chatId, message);
+    await sendChatAction(config, chatId);
+    await deleteMessage(config, chatId, callback.message?.message_id);
+    await handleToday(ctx);
     return;
   }
 
