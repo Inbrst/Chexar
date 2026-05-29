@@ -525,6 +525,7 @@ function normalizeSettings(row: RemoteSettings | null, fallback: AppSettings): A
     hintsEnabled: typeof row?.tips_enabled === "boolean" ? row.tips_enabled : fallback.hintsEnabled,
     onboardingCompleted: typeof row?.onboarding_completed === "boolean" ? row.onboarding_completed : fallback.onboardingCompleted,
     telegramBotEnabled: typeof row?.telegram_bot_enabled === "boolean" ? row.telegram_bot_enabled : fallback.telegramBotEnabled,
+    carryOversEnabled: fallback.carryOversEnabled,
   };
 }
 

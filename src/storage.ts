@@ -13,6 +13,7 @@ const defaultSettings: AppSettings = {
   hintsEnabled: true,
   onboardingCompleted: false,
   telegramBotEnabled: false,
+  carryOversEnabled: true,
 };
 
 const onboardingSteps: OnboardingQuestStep[] = [
@@ -485,6 +486,10 @@ export function loadSettings(): AppSettings {
         typeof parsed.telegramBotEnabled === "boolean"
           ? parsed.telegramBotEnabled
           : defaultSettings.telegramBotEnabled,
+      carryOversEnabled:
+        typeof parsed.carryOversEnabled === "boolean"
+          ? parsed.carryOversEnabled
+          : defaultSettings.carryOversEnabled,
     };
   } catch {
     return defaultSettings;

@@ -32,8 +32,35 @@ type ApiResponse = {
 };
 
 const TELEGRAM_API_BASE = "https://api.telegram.org";
-const START_REPLY = "Chexar bot connected";
+const CHEXAR_APP_URL = "https://chexar.vercel.app";
+const START_REPLY = "Chexar connected ✅";
 const ALIVE_REPLY = "Telegram webhook alive";
+
+function safeLogPayload(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function logInfo(message: string, details?: unknown): void {
+  if (details === undefined) {
+    console.log(`[telegram:webhook] ${message}`);
+    return;
+  }
+
+  console.log(`[telegram:webhook] ${message}`, safeLogPayload(details));
+}
+
+function logError(message: string, details?: unknown): void {
+  if (details === undefined) {
+    console.error(`[telegram:webhook] ${message}`);
+    return;
+  }
+
+  console.error(`[telegram:webhook] ${message}`, safeLogPayload(details));
+}
 
 function sendJson(res: ApiResponse, statusCode: number, body: Record<string, unknown>): void {
   res.setHeader?.("Content-Type", "application/json; charset=utf-8");
@@ -99,7 +126,20 @@ function getCommand(text: string | undefined): string | null {
   return firstToken.slice(1).split("@", 1)[0]?.toLowerCase() ?? null;
 }
 
-async function sendTelegramMessage(token: string, chatId: number | string, text: string): Promise<void> {
+function openChexarKeyboard(): Record<string, unknown> {
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: "Open Chexar",
+          url: CHEXAR_APP_URL,
+        },
+      ],
+    ],
+  };
+}
+
+async function sendTelegramMessage(token: string, chatId: number | string, text: string, replyMarkup?: Record<string, unknown>): Promise<void> {
   const response = await fetch(`${TELEGRAM_API_BASE}/bot${token}/sendMessage`, {
     method: "POST",
     headers: {
@@ -108,11 +148,24 @@ async function sendTelegramMessage(token: string, chatId: number | string, text:
     body: JSON.stringify({
       chat_id: chatId,
       text,
+      disable_web_page_preview: true,
+      ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
     }),
+  });
+  const responseText = await response.text().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    return `Failed to read Telegram response body: ${message}`;
+  });
+
+  logInfo("Telegram API response", {
+    method: "sendMessage",
+    status: response.status,
+    ok: response.ok,
+    body: responseText.slice(0, 1200),
   });
 
   if (!response.ok) {
-    throw new Error(`Telegram sendMessage failed with status ${response.status}`);
+    throw new Error(`Telegram sendMessage failed with status ${response.status}: ${responseText.slice(0, 300)}`);
   }
 }
 
@@ -121,6 +174,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     const method = (req.method ?? "GET").toUpperCase();
 
     if (method === "GET") {
+      logInfo("GET alive check");
       sendText(res, 200, ALIVE_REPLY);
       return;
     }
@@ -132,6 +186,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
     const token = process.env.TELEGRAM_BOT_TOKEN;
     if (!token) {
+      logError("Missing TELEGRAM_BOT_TOKEN");
       sendJson(res, 500, { ok: false, error: "TELEGRAM_BOT_TOKEN is not configured" });
       return;
     }
@@ -139,15 +194,25 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     const update = parseUpdate(req.body);
     const message = update.message;
     const chatId = message?.chat?.id;
+    const text = message?.text;
     const command = getCommand(message?.text);
+
+    logInfo("Incoming update", update);
+    logInfo("Parsed message", {
+      chatId,
+      text,
+      command,
+      hasToken: Boolean(token),
+    });
 
     if (command === "start") {
       if (chatId === undefined || chatId === null) {
+        logError("Missing chat id for /start", update);
         sendJson(res, 200, { ok: true, handled: false, reason: "Missing chat id" });
         return;
       }
 
-      await sendTelegramMessage(token, chatId, START_REPLY);
+      await sendTelegramMessage(token, chatId, START_REPLY, openChexarKeyboard());
       sendJson(res, 200, { ok: true, handled: true, command: "start" });
       return;
     }
@@ -155,6 +220,10 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     sendJson(res, 200, { ok: true, handled: false });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Telegram webhook failed";
+    logError("Unhandled webhook error", {
+      message,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     sendJson(res, 500, { ok: false, error: message });
   }
 }

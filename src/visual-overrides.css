@@ -4239,17 +4239,29 @@ body {
 
 /* Keep the carry-over strip informational, not card-sized. */
 .carry-over-banner {
+  grid-template-columns: minmax(0, 1fr) !important;
+  width: calc(100% - 28px) !important;
+  margin-right: auto !important;
+  margin-left: auto !important;
   min-height: 30px !important;
   padding: 3px 5px 3px 10px !important;
+  border: 0 !important;
   border-radius: 10px !important;
+  cursor: pointer !important;
   font-size: 0.72rem !important;
   font-weight: 780 !important;
+  text-align: left !important;
 }
 
-.carry-over-banner button {
-  min-height: 24px !important;
-  padding: 0 9px !important;
-  font-size: 0.66rem !important;
+.carry-over-banner span {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.carry-over-banner:active {
+  transform: translateY(1px) !important;
 }
 
 /* Top action row: quieter icon buttons, plus stays prominent. */
@@ -4735,6 +4747,7 @@ html[data-resolved-theme="light"] .creation-bottom-sheet .advanced-section {
   background:
     radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.055), transparent 9rem),
     linear-gradient(180deg, #101116, #08090d) !important;
+  background-color: #08090d !important;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.58) !important;
 }
 
@@ -4946,6 +4959,7 @@ html[data-resolved-theme="light"] .bottom-sheet.creation-bottom-sheet {
   background:
     radial-gradient(circle at 50% 0%, rgba(17, 19, 24, 0.045), transparent 9rem),
     #ffffff !important;
+  background-color: #ffffff !important;
 }
 
 html[data-resolved-theme="light"] .bottom-sheet .sheet-header,
@@ -5200,4 +5214,1251 @@ html[data-resolved-theme="light"] .app-shell.is-compact-shell .bottom-nav button
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--telegram-button-color, #7c5cff) 10%, transparent),
     0 0 16px color-mix(in srgb, var(--telegram-button-color, #7c5cff) 14%, transparent) !important;
+}
+
+/* Compact tappable rhythm bar: percent view toggles into ring + weekly success bars. */
+.today-screen > .rhythm-card {
+  display: block !important;
+  width: min(326px, calc(100% - 34px)) !important;
+  height: 56px !important;
+  min-height: 56px !important;
+  margin: 0 auto 6px !important;
+  padding: 0 !important;
+  cursor: pointer !important;
+  appearance: none !important;
+  border-radius: 17px !important;
+  text-align: left !important;
+  transition:
+    background 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease !important;
+}
+
+.today-screen > .rhythm-card .rhythm-fill {
+  transition: width 180ms ease, opacity 180ms ease, transform 180ms ease !important;
+}
+
+.today-screen > .rhythm-card .rhythm-percent {
+  font-size: clamp(1.72rem, 8.4vw, 2.16rem) !important;
+  animation: rhythmFadeIn 180ms ease both !important;
+}
+
+.today-screen > .rhythm-card > .rhythm-chart {
+  right: 11px !important;
+  bottom: 8px !important;
+  width: 62px !important;
+  height: 19px !important;
+  opacity: 0.68 !important;
+  animation: rhythmSoftIn 220ms ease both !important;
+}
+
+.today-screen > .rhythm-card.is-bars-view {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.today-screen > .rhythm-card.is-bars-view .rhythm-fill {
+  width: 100% !important;
+  opacity: 0 !important;
+  transform: scaleX(0.98) !important;
+}
+
+.rhythm-bars-layout {
+  position: relative !important;
+  z-index: 1 !important;
+  display: grid !important;
+  grid-template-columns: 58px minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: 7px !important;
+  width: 100% !important;
+  height: 100% !important;
+  padding: 2px 10px 2px 5px !important;
+  animation: rhythmBarsIn 240ms cubic-bezier(0.2, 0.78, 0.24, 1) both !important;
+}
+
+.rhythm-ring {
+  display: grid !important;
+  width: 52px !important;
+  height: 52px !important;
+  place-items: center !important;
+  border-radius: 999px !important;
+  background:
+    radial-gradient(circle, color-mix(in srgb, var(--card-strong) 92%, #050506 8%) 0 48%, transparent 50%),
+    conic-gradient(
+      hsl(var(--fill-hue-2, 142) 74% 56% / 0.9) var(--rhythm-ring-percent, 0%),
+      rgba(255, 255, 255, 0.075) 0
+    ) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.055),
+    0 0 18px hsl(var(--fill-hue-2, 142) 76% 52% / 0.09) !important;
+  animation: rhythmRingPop 280ms cubic-bezier(0.16, 0.9, 0.26, 1.12) both !important;
+}
+
+.rhythm-ring-percent {
+  color: color-mix(in srgb, var(--text) 82%, transparent) !important;
+  font-size: 0.74rem !important;
+  font-weight: 820 !important;
+  line-height: 1 !important;
+  letter-spacing: 0 !important;
+}
+
+.rhythm-week-bars {
+  display: grid !important;
+  grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+  align-items: stretch !important;
+  gap: 3px !important;
+  height: 42px !important;
+  min-width: 0 !important;
+  padding: 0 1px !important;
+}
+
+.rhythm-week-column {
+  display: grid !important;
+  grid-template-rows: 16px minmax(0, 1fr) !important;
+  justify-items: center !important;
+  min-width: 0 !important;
+  animation: rhythmBarColumnIn 220ms ease both !important;
+}
+
+.rhythm-week-column:nth-child(2) {
+  animation-delay: 18ms !important;
+}
+
+.rhythm-week-column:nth-child(3) {
+  animation-delay: 36ms !important;
+}
+
+.rhythm-week-column:nth-child(4) {
+  animation-delay: 54ms !important;
+}
+
+.rhythm-week-column:nth-child(5) {
+  animation-delay: 72ms !important;
+}
+
+.rhythm-week-column:nth-child(6) {
+  animation-delay: 90ms !important;
+}
+
+.rhythm-week-column:nth-child(7) {
+  animation-delay: 108ms !important;
+}
+
+.rhythm-week-label {
+  display: grid !important;
+  justify-items: center !important;
+  gap: 0 !important;
+  min-width: 0 !important;
+  color: color-mix(in srgb, var(--text) 58%, transparent) !important;
+  line-height: 0.88 !important;
+  text-align: center !important;
+}
+
+.rhythm-week-label b,
+.rhythm-week-label small {
+  display: block !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  letter-spacing: 0 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.rhythm-week-label b {
+  font-size: 0.48rem !important;
+  font-weight: 710 !important;
+}
+
+.rhythm-week-label small {
+  color: color-mix(in srgb, var(--text) 36%, transparent) !important;
+  font-size: 0.44rem !important;
+  font-weight: 520 !important;
+}
+
+.rhythm-week-bar {
+  display: block !important;
+  align-self: end !important;
+  width: 4px !important;
+  min-width: 4px !important;
+  max-width: 4px !important;
+  height: clamp(3px, var(--rhythm-bar-height, 0%), 100%) !important;
+  border-radius: 999px 999px 4px 4px !important;
+  background:
+    linear-gradient(
+      180deg,
+      hsl(var(--fill-hue-2, 142) 82% 62% / 0.92),
+      hsl(var(--fill-hue, 118) 78% 48% / 0.58)
+    ) !important;
+  box-shadow: 0 0 12px hsl(var(--fill-hue-2, 142) 78% 54% / 0.1) !important;
+}
+
+.app-shell.is-wide-shell .today-screen > .rhythm-card {
+  width: min(360px, 72vw) !important;
+}
+
+html[data-resolved-theme="light"] .rhythm-ring {
+  background:
+    radial-gradient(circle, color-mix(in srgb, var(--card) 94%, #fff 6%) 0 48%, transparent 50%),
+    conic-gradient(
+      hsl(var(--fill-hue-2, 142) 72% 48% / 0.86) var(--rhythm-ring-percent, 0%),
+      rgba(17, 19, 24, 0.08) 0
+    ) !important;
+}
+
+@keyframes rhythmFadeIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -46%) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes rhythmBarsIn {
+  from {
+    opacity: 0;
+    transform: translateY(5px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes rhythmSoftIn {
+  from {
+    opacity: 0;
+    transform: translateY(3px) scale(0.98);
+  }
+
+  to {
+    opacity: 0.68;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes rhythmRingPop {
+  from {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes rhythmBarColumnIn {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Final bottom nav polish: smaller, quieter, monotone, and hidden behind overlays. */
+.app-shell.is-compact-shell .bottom-nav {
+  width: min(calc(100vw - 72px), 306px) !important;
+  height: 52px !important;
+  min-height: 52px !important;
+  padding: 5px 7px !important;
+  border: 0 !important;
+  border-radius: 23px !important;
+  background: color-mix(in srgb, var(--card-strong) 64%, transparent) !important;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.24) !important;
+  backdrop-filter: blur(20px) saturate(1.05) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(1.05) !important;
+  transition: opacity 160ms ease, transform 160ms ease !important;
+}
+
+.app-shell.is-compact-shell .bottom-nav button {
+  width: 42px !important;
+  height: 42px !important;
+  min-height: 42px !important;
+  border-radius: 18px !important;
+  color: color-mix(in srgb, var(--text) 68%, transparent) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transition:
+    width 150ms ease,
+    color 150ms ease,
+    background 150ms ease,
+    transform 120ms ease !important;
+}
+
+.app-shell.is-compact-shell .bottom-nav button.active {
+  width: 54px !important;
+  color: color-mix(in srgb, var(--text) 84%, transparent) !important;
+  background: rgba(255, 255, 255, 0.075) !important;
+  box-shadow: none !important;
+}
+
+.app-shell.is-compact-shell .bottom-nav button:active {
+  width: 54px !important;
+  background: rgba(255, 255, 255, 0.095) !important;
+  transform: translateY(1px) !important;
+}
+
+.app-shell.is-compact-shell .bottom-nav svg {
+  width: 22px !important;
+  height: 22px !important;
+  stroke-width: 2.15 !important;
+  filter: none !important;
+}
+
+.app-shell.is-compact-shell .bottom-nav button.active svg {
+  stroke-width: 2.25 !important;
+  filter: none !important;
+}
+
+.app-shell.has-nav-suppressed .bottom-nav {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.app-shell.is-compact-shell.has-nav-suppressed .bottom-nav {
+  transform: translateX(-50%) translateY(10px) !important;
+}
+
+@media (max-width: 360px) {
+  .app-shell.is-compact-shell .bottom-nav {
+    width: min(calc(100vw - 62px), 300px) !important;
+    height: 50px !important;
+    min-height: 50px !important;
+    padding: 5px 6px !important;
+    border-radius: 22px !important;
+  }
+
+  .app-shell.is-compact-shell .bottom-nav button {
+    width: 40px !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    border-radius: 17px !important;
+  }
+
+  .app-shell.is-compact-shell .bottom-nav button.active,
+  .app-shell.is-compact-shell .bottom-nav button:active {
+    width: 52px !important;
+  }
+
+  .app-shell.is-compact-shell .bottom-nav svg {
+    width: 21px !important;
+    height: 21px !important;
+  }
+}
+
+@media (min-width: 820px) {
+  .app-shell.is-wide-shell .bottom-nav {
+    width: 50px !important;
+    min-height: 218px !important;
+    padding: 7px 5px !important;
+    border: 0 !important;
+    border-radius: 23px !important;
+    background: color-mix(in srgb, var(--card-strong) 64%, transparent) !important;
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22) !important;
+    backdrop-filter: blur(20px) saturate(1.05) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(1.05) !important;
+    transition: opacity 160ms ease, transform 160ms ease !important;
+  }
+
+  .app-shell.is-wide-shell .bottom-nav button {
+    width: 40px !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    border-radius: 17px !important;
+    color: color-mix(in srgb, var(--text) 68%, transparent) !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .app-shell.is-wide-shell .bottom-nav button.active,
+  .app-shell.is-wide-shell .bottom-nav button:active {
+    width: 40px !important;
+    color: color-mix(in srgb, var(--text) 84%, transparent) !important;
+    background: rgba(255, 255, 255, 0.075) !important;
+    box-shadow: none !important;
+  }
+
+  .app-shell.is-wide-shell .bottom-nav svg {
+    width: 21px !important;
+    height: 21px !important;
+    stroke-width: 2.1 !important;
+    filter: none !important;
+  }
+
+  .app-shell.is-wide-shell.has-nav-suppressed .bottom-nav {
+    transform: translateY(50%) translateX(-10px) !important;
+  }
+}
+
+html[data-resolved-theme="light"] .app-shell.is-compact-shell .bottom-nav,
+html[data-resolved-theme="light"] .app-shell.is-wide-shell .bottom-nav {
+  background: rgba(255, 255, 255, 0.58) !important;
+  box-shadow: 0 10px 24px rgba(17, 19, 24, 0.08) !important;
+}
+
+html[data-resolved-theme="light"] .app-shell.is-compact-shell .bottom-nav button,
+html[data-resolved-theme="light"] .app-shell.is-wide-shell .bottom-nav button {
+  color: rgba(17, 19, 24, 0.62) !important;
+}
+
+html[data-resolved-theme="light"] .app-shell.is-compact-shell .bottom-nav button.active,
+html[data-resolved-theme="light"] .app-shell.is-wide-shell .bottom-nav button.active {
+  color: rgba(17, 19, 24, 0.82) !important;
+  background: rgba(17, 19, 24, 0.075) !important;
+  box-shadow: none !important;
+}
+
+/* Missed-actions sheet: compact rows with real checkbox affordances. */
+.carry-review-sheet {
+  width: min(372px, calc(100vw - 24px)) !important;
+  padding: 12px 12px 13px !important;
+}
+
+.carry-review-sheet .sheet-header {
+  margin-bottom: 7px !important;
+  padding-bottom: 7px !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.carry-review-sheet .sheet-header h2 {
+  font-size: 0.95rem !important;
+}
+
+.carry-review-sheet .sheet-header p {
+  font-size: 0.66rem !important;
+}
+
+.carry-review-sheet .sheet-close {
+  border-radius: 11px !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.carry-review-toolbar,
+.carry-review-list,
+.carry-review-actions {
+  width: min(100%, 326px) !important;
+  margin-right: auto !important;
+  margin-left: auto !important;
+}
+
+.carry-review-toolbar {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto auto !important;
+  align-items: center !important;
+  gap: 5px !important;
+  margin-bottom: 6px !important;
+  padding: 0 2px !important;
+}
+
+.carry-review-toolbar span {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  color: color-mix(in srgb, var(--text) 45%, transparent) !important;
+  font-size: 0.61rem !important;
+  font-weight: 780 !important;
+  line-height: 1 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.carry-review-toolbar button {
+  min-height: 24px !important;
+  padding: 0 8px !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  color: color-mix(in srgb, var(--text) 68%, transparent) !important;
+  background: rgba(255, 255, 255, 0.055) !important;
+  font-size: 0.62rem !important;
+  font-weight: 780 !important;
+}
+
+.carry-review-list {
+  display: grid !important;
+  gap: 9px !important;
+  max-height: min(38dvh, 270px) !important;
+  padding: 0 !important;
+  overflow-y: auto !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+.carry-review-group {
+  display: grid !important;
+  gap: 5px !important;
+  min-width: 0 !important;
+}
+
+.carry-review-group-title {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 8px !important;
+  min-height: 14px !important;
+  padding: 0 2px 0 3px !important;
+}
+
+.carry-review-group-title span {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  color: color-mix(in srgb, var(--text) 48%, transparent) !important;
+  font-size: 0.6rem !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+  text-transform: uppercase !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.carry-review-group-title small {
+  display: grid !important;
+  min-width: 16px !important;
+  height: 16px !important;
+  place-items: center !important;
+  border-radius: 999px !important;
+  color: color-mix(in srgb, var(--text) 48%, transparent) !important;
+  background: rgba(255, 255, 255, 0.045) !important;
+  font-size: 0.55rem !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+}
+
+.carry-review-group-items {
+  display: grid !important;
+  gap: 6px !important;
+  min-width: 0 !important;
+}
+
+.carry-review-row {
+  display: grid !important;
+  grid-template-columns: 25px minmax(0, 1fr) 22px !important;
+  min-height: 38px !important;
+  align-items: center !important;
+  padding: 5px 7px 5px 8px !important;
+  gap: 7px !important;
+  border: 0 !important;
+  border-radius: 11px !important;
+  color: var(--text) !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.026), rgba(255, 255, 255, 0.006)),
+    #101116 !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.045) !important;
+  text-align: left !important;
+}
+
+.carry-review-row.selected {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.042), rgba(255, 255, 255, 0.012)),
+    #12131a !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+    0 8px 20px rgba(0, 0, 0, 0.12) !important;
+}
+
+.carry-review-row .action-emoji {
+  display: grid !important;
+  width: 25px !important;
+  height: 25px !important;
+  place-items: center !important;
+  border-radius: 8px !important;
+  background: rgba(255, 255, 255, 0.052) !important;
+  font-size: 0.82rem !important;
+}
+
+.carry-checkbox {
+  display: grid !important;
+  justify-self: end !important;
+  width: 18px !important;
+  height: 18px !important;
+  place-items: center !important;
+  border: 1px solid rgba(150, 153, 162, 0.3) !important;
+  border-radius: 7px !important;
+  color: rgba(205, 207, 214, 0.82) !important;
+  background: rgba(150, 153, 162, 0.055) !important;
+}
+
+.carry-checkbox.checked {
+  border-color: rgba(174, 177, 186, 0.42) !important;
+  color: rgba(226, 228, 234, 0.9) !important;
+  background: rgba(150, 153, 162, 0.16) !important;
+}
+
+.carry-checkbox svg {
+  width: 11px !important;
+  height: 11px !important;
+  stroke-width: 1.75 !important;
+}
+
+.carry-review-copy {
+  display: grid !important;
+  min-width: 0 !important;
+  gap: 2px !important;
+}
+
+.carry-review-row strong {
+  display: block !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  color: color-mix(in srgb, var(--text) 88%, transparent) !important;
+  font-size: 0.73rem !important;
+  font-weight: 760 !important;
+  line-height: 1.04 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.carry-review-row small {
+  display: block !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  color: color-mix(in srgb, var(--text) 42%, transparent) !important;
+  font-size: 0.58rem !important;
+  font-weight: 650 !important;
+  line-height: 1 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.carry-review-actions {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+  margin-top: 8px !important;
+}
+
+.carry-review-actions .primary-sheet-button {
+  grid-column: 1 / -1 !important;
+}
+
+.carry-review-actions button {
+  min-height: 34px !important;
+  padding: 0 10px !important;
+  border-radius: 11px !important;
+  font-size: 0.7rem !important;
+  font-weight: 800 !important;
+}
+
+html[data-resolved-theme="light"] .carry-review-toolbar button,
+html[data-resolved-theme="light"] .carry-review-row .action-emoji {
+  background: rgba(17, 19, 24, 0.045) !important;
+}
+
+html[data-resolved-theme="light"] .carry-review-group-title small {
+  background: rgba(17, 19, 24, 0.045) !important;
+}
+
+html[data-resolved-theme="light"] .carry-review-row {
+  background:
+    linear-gradient(180deg, rgba(17, 19, 24, 0.028), rgba(17, 19, 24, 0.008)),
+    #ffffff !important;
+  box-shadow: inset 0 0 0 1px rgba(17, 19, 24, 0.06) !important;
+}
+
+html[data-resolved-theme="light"] .carry-review-row.selected {
+  background:
+    linear-gradient(180deg, rgba(17, 19, 24, 0.042), rgba(17, 19, 24, 0.012)),
+    #ffffff !important;
+}
+
+html[data-resolved-theme="light"] .carry-checkbox {
+  border-color: rgba(106, 110, 120, 0.28) !important;
+  color: rgba(64, 68, 76, 0.76) !important;
+  background: rgba(106, 110, 120, 0.05) !important;
+}
+
+html[data-resolved-theme="light"] .carry-checkbox.checked {
+  border-color: rgba(86, 90, 100, 0.38) !important;
+  color: rgba(44, 48, 56, 0.86) !important;
+  background: rgba(86, 90, 100, 0.13) !important;
+}
+
+/* Final compact action rows: narrower cards and less vertical air. */
+.today-screen .action-list:not(.with-period) {
+  gap: 4px !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group {
+  gap: 3px !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group-title {
+  width: clamp(70%, var(--action-card-width, 84%), 84%) !important;
+  min-height: 14px !important;
+  padding: 0 4px !important;
+  font-size: 0.58rem !important;
+  line-height: 1 !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item {
+  width: clamp(70%, var(--action-card-width, 84%), 84%) !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .task-row {
+  min-height: 34px !important;
+  padding: 1px 5px 1px 7px !important;
+  grid-template-columns: minmax(0, 1fr) 25px !important;
+  border-radius: 10px !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .task-row-main {
+  min-height: 28px !important;
+  gap: 5px !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .task-check-button {
+  width: 25px !important;
+  height: 25px !important;
+  min-height: 25px !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .task-check,
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .task-row.completed .task-check {
+  width: 20px !important;
+  height: 20px !important;
+  border-radius: 7px !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .action-emoji {
+  width: 25px !important;
+  height: 25px !important;
+  min-width: 25px !important;
+  border-radius: 8px !important;
+  font-size: 0.9rem !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .task-text {
+  gap: 0 !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .task-title-row,
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .task-title {
+  line-height: 1.08 !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .task-meta {
+  margin-top: 0 !important;
+  line-height: 1 !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-card {
+  min-height: 43px !important;
+  padding: 4px 7px !important;
+  border-radius: 10px !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-top {
+  min-height: 29px !important;
+  gap: 6px !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-title-progress {
+  gap: 4px !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-main-line,
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-progress-stack {
+  gap: 1px !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-main-line h3 {
+  line-height: 1.08 !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-period-pace,
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-numbers {
+  line-height: 1 !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .swipe-edit-backdrop,
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .swipe-delete-backdrop {
+  border-radius: 10px !important;
+}
+
+/* Global checkbox tone: every checkbox-like control stays neutral gray. */
+:root {
+  --chexar-check-border: rgba(150, 153, 162, 0.32);
+  --chexar-check-fill: transparent;
+  --chexar-check-fill-strong: transparent;
+  --chexar-check-mark: rgba(226, 228, 234, 0.9);
+}
+
+html[data-resolved-theme="light"] {
+  --chexar-check-border: rgba(90, 94, 104, 0.3);
+  --chexar-check-fill: transparent;
+  --chexar-check-fill-strong: transparent;
+  --chexar-check-mark: rgba(44, 48, 56, 0.88);
+}
+
+input[type="checkbox"] {
+  accent-color: rgba(130, 133, 142, 0.9) !important;
+}
+
+.action-list .task-check,
+.action-list .task-row.completed .task-check,
+.today-screen .task-check,
+.today-screen .task-row.completed .task-check,
+.start-menu-demo-check-button .task-check,
+.start-menu-demo-check-button.checked .task-check,
+.start-quest-check-button .task-check,
+.onboarding-chexar-checkbox {
+  border-color: var(--chexar-check-border) !important;
+  color: var(--chexar-check-mark) !important;
+  background: var(--chexar-check-fill) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.025) !important;
+}
+
+.action-list .task-check::before,
+.action-list .task-row.completed .task-check::before,
+.today-screen .task-check::before,
+.today-screen .task-row.completed .task-check::before {
+  background:
+    linear-gradient(
+      135deg,
+      rgba(150, 153, 162, 0.58),
+      rgba(207, 209, 216, 0.42)
+    ) !important;
+}
+
+.action-list .task-row.completed .task-check,
+.today-screen .task-row.completed .task-check,
+.start-menu-demo-check-button.checked .task-check {
+  border-color: rgba(174, 177, 186, 0.44) !important;
+  background: var(--chexar-check-fill-strong) !important;
+}
+
+.action-list .task-x-mark span,
+.action-list .task-x-mark span:first-child,
+.action-list .task-x-mark span:nth-child(2),
+.start-menu-demo-check-button .task-x-mark span,
+.start-menu-demo-check-button .task-x-mark span:first-child,
+.start-menu-demo-check-button .task-x-mark span:nth-child(2),
+.onboarding-chexar-checkbox .task-x-mark span {
+  height: 1.55px !important;
+  background: var(--chexar-check-mark) !important;
+}
+
+.action-list .inline-subitem-check,
+.action-list .inline-subitem-row.completed .inline-subitem-check,
+.inline-subitem-check,
+.inline-subitem-row.completed .inline-subitem-check,
+.period-inline-check span,
+.period-inline-check.checked span,
+.period-inline-check.partial span,
+.ai-chat-draft-check,
+.ai-chat-draft-check[aria-pressed="true"],
+.carry-checkbox,
+.carry-checkbox.checked {
+  border-color: var(--chexar-check-border) !important;
+  color: var(--chexar-check-mark) !important;
+  background: var(--chexar-check-fill) !important;
+  box-shadow: none !important;
+}
+
+.action-list .inline-subitem-row.completed .inline-subitem-check,
+.inline-subitem-row.completed .inline-subitem-check,
+.period-inline-check.checked span,
+.period-inline-check.partial span,
+.ai-chat-draft-check[aria-pressed="true"],
+.carry-checkbox.checked {
+  border-color: rgba(174, 177, 186, 0.44) !important;
+  background: var(--chexar-check-fill-strong) !important;
+}
+
+.period-inline-check.partial span {
+  color: var(--chexar-check-mark) !important;
+}
+
+.period-inline-check.off::before {
+  background: rgba(150, 153, 162, 0.24) !important;
+}
+
+.ai-chat-draft-check span,
+.ai-chat-draft-check[aria-pressed="true"] span {
+  background: var(--chexar-check-mark) !important;
+}
+
+html[data-resolved-theme="light"] .action-list .task-check::before,
+html[data-resolved-theme="light"] .action-list .task-row.completed .task-check::before,
+html[data-resolved-theme="light"] .today-screen .task-check::before,
+html[data-resolved-theme="light"] .today-screen .task-row.completed .task-check::before {
+  background:
+    linear-gradient(
+      135deg,
+      rgba(86, 90, 100, 0.5),
+      rgba(130, 133, 142, 0.36)
+    ) !important;
+}
+
+/* Transparent home rows: no frames, only content and subtle goal fill. */
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .task-row,
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-card {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .task-row::before,
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .task-row::after {
+  display: none !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-card::before {
+  inset: 0 auto 0 0 !important;
+  width: var(--goal-progress, 0%) !important;
+  max-width: 100% !important;
+  border-radius: 10px !important;
+  opacity: 0.58 !important;
+  background:
+    linear-gradient(
+      90deg,
+      hsl(var(--fill-hue) 80% 48% / 0.22),
+      hsl(var(--fill-hue-2) 76% 50% / 0.1)
+    ) !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-card::after {
+  display: none !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-title-progress {
+  grid-template-columns: minmax(0, 1fr) minmax(66px, max-content) !important;
+  align-items: center !important;
+  gap: 7px !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-main-line {
+  display: grid !important;
+  align-content: center !important;
+  gap: 0 !important;
+  min-height: 28px !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-main-line h3 {
+  display: grid !important;
+  grid-template-rows: auto auto !important;
+  align-content: center !important;
+  gap: 1px !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  line-height: 1.02 !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-title-text,
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-title-recommendation {
+  display: block !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-title-recommendation {
+  margin: 0 !important;
+  color: color-mix(in srgb, var(--text) 56%, transparent) !important;
+  font-size: 0.58rem !important;
+  font-weight: 720 !important;
+  line-height: 1 !important;
+}
+
+/* Final plus button polish: symmetric, muted, aligned with the compact toolbar. */
+.today-quick-menu .today-menu-add {
+  display: inline-flex !important;
+  width: 42px !important;
+  min-width: 42px !important;
+  max-width: 42px !important;
+  height: 29px !important;
+  min-height: 29px !important;
+  margin-left: 4px !important;
+  padding: 0 !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  color: color-mix(in srgb, var(--text) 92%, transparent) !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.016)),
+    color-mix(in srgb, var(--telegram-button-color, #7c5cff) 48%, var(--card-strong) 52%) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.045),
+    0 7px 18px rgba(0, 0, 0, 0.12) !important;
+  transform: translateY(0) !important;
+}
+
+.today-quick-menu .today-menu-add span {
+  display: block !important;
+  width: 12px !important;
+  height: 12px !important;
+  color: inherit !important;
+  font-size: 0 !important;
+  line-height: 1 !important;
+  position: relative !important;
+}
+
+.today-quick-menu .today-menu-add span::before,
+.today-quick-menu .today-menu-add span::after {
+  content: "" !important;
+  position: absolute !important;
+  left: 50% !important;
+  top: 50% !important;
+  width: 12px !important;
+  height: 1.7px !important;
+  border-radius: 999px !important;
+  background: currentColor !important;
+  transform: translate(-50%, -50%) !important;
+}
+
+.today-quick-menu .today-menu-add span::after {
+  transform: translate(-50%, -50%) rotate(90deg) !important;
+}
+
+.today-quick-menu .today-menu-add:active {
+  transform: translateY(1px) !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.044), rgba(255, 255, 255, 0.012)),
+    color-mix(in srgb, var(--telegram-button-color, #7c5cff) 42%, var(--card-strong) 58%) !important;
+}
+
+html[data-resolved-theme="light"] .today-quick-menu .today-menu-add {
+  color: rgba(255, 255, 255, 0.94) !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.025)),
+    color-mix(in srgb, var(--telegram-button-color, #7c5cff) 54%, #31343d 46%) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.16),
+    0 7px 16px rgba(17, 19, 24, 0.1) !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-progress-stack {
+  align-self: center !important;
+  justify-self: end !important;
+  min-width: 66px !important;
+  max-width: 82px !important;
+}
+
+html[data-resolved-theme="light"] .today-screen .action-list:not(.with-period) .action-group > .reorderable-item .task-row,
+html[data-resolved-theme="light"] .today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-card {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Main home alignment pass: one centered rail for the top bar, controls and rows. */
+.today-screen {
+  --home-rail-width: min(326px, calc(100vw - 68px));
+  display: grid !important;
+  grid-template-rows: auto auto auto minmax(0, 1fr) !important;
+  align-content: stretch !important;
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+  overflow: hidden !important;
+  row-gap: 0 !important;
+}
+
+.today-screen > .rhythm-card {
+  width: var(--home-rail-width) !important;
+  margin-right: auto !important;
+  margin-left: auto !important;
+}
+
+.today-quick-menu-wrap {
+  display: flex !important;
+  width: var(--home-rail-width) !important;
+  max-width: var(--home-rail-width) !important;
+  margin: 4px auto 6px !important;
+  padding: 0 !important;
+  justify-content: flex-end !important;
+}
+
+.today-quick-menu {
+  width: auto !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  justify-content: flex-end !important;
+}
+
+.today-menu-button {
+  flex: 0 0 auto !important;
+}
+
+.unified-actions-section {
+  width: var(--home-rail-width) !important;
+  max-width: var(--home-rail-width) !important;
+  min-height: 0 !important;
+  height: auto !important;
+  margin: 8px auto 0 !important;
+  overflow-y: auto !important;
+  overflow-x: visible !important;
+  scrollbar-width: none !important;
+}
+
+.unified-actions-section::-webkit-scrollbar {
+  display: none !important;
+}
+
+.today-screen .action-list:not(.with-period),
+.today-screen .action-list:not(.with-period) .action-group {
+  width: 100% !important;
+  justify-items: stretch !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group-title,
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item {
+  width: 100% !important;
+  max-width: 100% !important;
+  justify-self: stretch !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item > .swipe-delete-shell,
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .swipe-delete-content,
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .task-card-inline,
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .task-row,
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-card {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .task-row,
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-card {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.024), rgba(255, 255, 255, 0.004)),
+    rgba(8, 9, 13, 0.82) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.026) !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-card::before {
+  opacity: 0.72 !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-card::after {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.026), rgba(255, 255, 255, 0) 64%),
+    linear-gradient(90deg, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.14)) !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-top {
+  grid-template-columns: 25px minmax(0, 1fr) !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-title-progress {
+  grid-template-columns: minmax(0, 1fr) minmax(64px, max-content) !important;
+  align-items: center !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-progress-stack {
+  min-width: 64px !important;
+  max-width: 82px !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .task-title,
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-main-line h3 {
+  font-size: 0.7rem !important;
+}
+
+html[data-resolved-theme="light"] .today-screen .action-list:not(.with-period) .action-group > .reorderable-item .task-row,
+html[data-resolved-theme="light"] .today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-card {
+  background:
+    linear-gradient(180deg, rgba(17, 19, 24, 0.024), rgba(17, 19, 24, 0.004)),
+    rgba(255, 255, 255, 0.86) !important;
+  box-shadow: inset 0 0 0 1px rgba(17, 19, 24, 0.04) !important;
+}
+
+.today-screen .unified-actions-section .task-check-button {
+  display: grid !important;
+  width: 25px !important;
+  min-width: 25px !important;
+  max-width: 25px !important;
+  height: 25px !important;
+  min-height: 25px !important;
+  grid-template-columns: 25px !important;
+  justify-self: end !important;
+  place-items: center !important;
+}
+
+.today-screen .unified-actions-section .task-check {
+  justify-self: center !important;
+}
+
+@media (max-width: 360px) {
+  .today-screen {
+    --home-rail-width: min(304px, calc(100vw - 42px));
+  }
+}
+
+/* Final home row request: transparent rows, no frames, recommendation as a straight subtitle. */
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .task-row,
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-card,
+html[data-resolved-theme="light"] .today-screen .action-list:not(.with-period) .action-group > .reorderable-item .task-row,
+html[data-resolved-theme="light"] .today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-card {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .task-row::before,
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .task-row::after {
+  display: none !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-card::before {
+  inset: 0 auto 0 0 !important;
+  width: var(--goal-progress, 0%) !important;
+  max-width: 100% !important;
+  border-radius: 10px !important;
+  opacity: 0.56 !important;
+  background:
+    linear-gradient(
+      90deg,
+      hsl(var(--fill-hue) 80% 48% / 0.2),
+      hsl(var(--fill-hue-2) 76% 50% / 0.08)
+    ) !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-card::after {
+  display: none !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-title-progress {
+  grid-template-columns: minmax(0, 1fr) minmax(66px, max-content) !important;
+  align-items: center !important;
+  gap: 7px !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-main-line,
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-main-line h3 {
+  display: grid !important;
+  align-content: center !important;
+  gap: 1px !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  line-height: 1.02 !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-title-text,
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-title-recommendation {
+  display: block !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.today-screen .action-list:not(.with-period) .action-group > .reorderable-item .goal-title-recommendation {
+  margin: 0 !important;
+  color: color-mix(in srgb, var(--text) 56%, transparent) !important;
+  font-size: 0.58rem !important;
+  font-weight: 720 !important;
+  line-height: 1 !important;
 }

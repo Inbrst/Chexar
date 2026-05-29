@@ -367,18 +367,6 @@ function getRequiredForDate(goal: ProgressGoal, dateKey: string): number {
   return getGoalDailyRecommendation(goal, dateKey);
 }
 
-function getGoalValueBeforeDate(goal: ProgressGoal, dateKey: string): number {
-  return getGoalBaseline(goal) + getEntriesTotal(goal, (entryDate) => entryDate < dateKey);
-}
-
-function getGoalValueAtEndOfDate(goal: ProgressGoal, dateKey: string): number {
-  if (dateKey === todayKey()) {
-    return goal.currentValue;
-  }
-
-  return getGoalHistoricalValueAtEndOfDate(goal, dateKey);
-}
-
 function getGoalHistoricalValueAtEndOfDate(goal: ProgressGoal, dateKey: string): number {
   return getGoalBaseline(goal) + getEntriesTotal(goal, (entryDate) => entryDate <= dateKey);
 }

@@ -108,6 +108,7 @@ export type AppSettings = {
   hintsEnabled: boolean;
   onboardingCompleted: boolean;
   telegramBotEnabled: boolean;
+  carryOversEnabled: boolean;
 };
 
 export type OnboardingQuestStep =

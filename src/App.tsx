@@ -1,38 +1,19 @@
 import {
   ArrowLeft,
   BarChart3,
-  BookOpen,
   CalendarDays,
   Check,
   ChevronLeft,
   ChevronRight,
-  CirclePlus,
   Clock3,
-  Droplet,
-  Dumbbell,
   Filter,
   Flame,
-  Footprints,
-  GraduationCap,
-  Globe2,
-  Home,
   Infinity as InfinityIcon,
-  Info,
-  Languages,
-  Lightbulb,
-  Mail,
   Monitor,
-  Moon,
-  Phone,
-  Pill,
   Plus,
-  Shield,
-  ShoppingCart,
   Search,
   SlidersHorizontal,
   Sun,
-  Star,
-  Target,
   TrendingUp,
   Trash2,
   UserRound,
@@ -40,23 +21,20 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { CSSProperties, FormEvent, KeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode, RefObject } from "react";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   calculateDailyProgress,
   clampPercent,
   getCurrentStreak,
-  getDailyCompletionPercent,
   getGoalSchedulePreview,
   getGoalProgressPercent,
   getGoalDailyMetrics,
   getLastNDaysCompletionTrend,
   getMonthRange,
-  getMonthAverageCompletion,
   getRequiredToday,
   getTaskSubitemProgress,
   getTodayLoggedAmount,
   getWeekRange,
-  getWeekAverageCompletion,
   hasTaskSubitems,
   isGoalDueOnDate,
   isTaskCompletedOnDate,
@@ -79,7 +57,7 @@ import {
   saveOnboardingQuestState,
   saveSettings,
 } from "./storage";
-import type { ActionSubitem, ActionSubitemState, AppScreen, AppSettings, AppState, DailyRecord, GoalPeriodType, GoalRepeatMode, OnboardingQuestState, OnboardingQuestStep, Priority, ProgressEntry, ProgressGoal, TaskItem, TaskOccurrence, TaskRepeatMode } from "./types";
+import type { ActionSubitem, ActionSubitemState, AppScreen, AppSettings, AppState, GoalPeriodType, GoalRepeatMode, OnboardingQuestState, OnboardingQuestStep, Priority, ProgressEntry, ProgressGoal, TaskItem, TaskOccurrence, TaskRepeatMode } from "./types";
 import { mergeDuplicateActions, normalizeActionTitle } from "./actionMerge";
 import { hasRemotePersistence, loadRemoteData, saveRemoteSnapshot } from "./supabaseData";
 import {
@@ -321,6 +299,9 @@ const profileCopy = {
     telegramBotOn: "Telegram bot enabled",
     telegramBotOff: "Telegram bot disabled",
     telegramBotText: "AI chat, task reminders, checkboxes, and quantity progress in Telegram.",
+    carryOversOn: "Missed actions enabled",
+    carryOversOff: "Missed actions hidden",
+    carryOversText: "Show a small banner when previous days have unfinished actions.",
     restartQuest: "Open Start Quest",
     restartQuestText: "Show the onboarding checklist again.",
     resetTitle: "Reset data?",
@@ -361,7 +342,7 @@ const profileCopy = {
     telegram: "Telegram Mini App",
     connected: "Подключено",
     notFound: "Не найдено",
-    browserMode: "Browser mode",
+    browserMode: "Браузерный режим",
     resetData: "Сбросить данные",
     hintsOn: "Подсказки включены",
     hintsOff: "Подсказки выключены",
@@ -369,6 +350,9 @@ const profileCopy = {
     telegramBotOn: "Telegram-бот включен",
     telegramBotOff: "Telegram-бот выключен",
     telegramBotText: "AI-чат, напоминания, чекбоксы и количественный прогресс в Telegram.",
+    carryOversOn: "Пропущенные включены",
+    carryOversOff: "Пропущенные скрыты",
+    carryOversText: "Показывать короткий баннер, если в прошлые дни остались незакрытые задачи.",
     restartQuest: "Открыть старт-квест",
     restartQuestText: "Показать обучающий чек-лист ещё раз.",
     resetTitle: "Сбросить данные?",
@@ -460,7 +444,7 @@ const calendarCopy = {
     emptyMonthText: "Отмечай действия — здесь появится ритм по дням.",
     bestDay: "Лучший день",
     average: "Среднее",
-    streak: "Streak",
+    streak: "Серия",
     progress: "прогресс",
     emptyDay: "На этот день действий нет",
   },
@@ -511,7 +495,7 @@ const progressCopy = {
     period: "Период",
     completion: "Выполнение",
     comparedToPrevious: (delta: number) => `${delta >= 0 ? "+" : ""}${delta}% к прошлому периоду`,
-    streak: "Streak",
+    streak: "Серия",
     streakCaption: "дня подряд",
     onTrack: "В графике",
     days: "дня",
@@ -687,7 +671,7 @@ const uiCopy = {
     pastDay: "Прошлый день",
     week: "Неделя",
     month: "Месяц",
-    streak: "Streak",
+    streak: "Серия",
     progress: "прогресс",
     miniStatsAria: "Статистика недели, месяца и серии",
     todayLabel: "Сегодня",
@@ -818,17 +802,6 @@ type AiActionDraft = {
   missing_fields?: string[];
   clarifying_question?: string | null;
 };
-
-type AiPreviewState =
-  | {
-      type: "action";
-      draft: AiActionDraft;
-    }
-  | {
-      type: "subitems";
-      subitems: AiSubitemDraft[];
-    }
-  | null;
 
 type ProgressSheetState = {
   goal: ProgressGoal;
@@ -1565,48 +1538,6 @@ function normalizeAiSubitems(value: unknown, title: string): AiSubitemDraft[] {
     .slice(0, 12);
 }
 
-function getAiLabels(language: AppSettings["language"]) {
-  return language === "en"
-    ? {
-        parse: "Parse with AI",
-        suggestList: "Suggest list",
-        loading: "Thinking...",
-        understood: "I understood it as:",
-        apply: "Apply",
-        edit: "Edit",
-        cancel: "Cancel",
-        failed: "AI could not parse the action. Try a simpler phrase.",
-        describeFirst: "Type a phrase first.",
-        tracking: "Tracking",
-        quantity: "Quantity",
-        checkbox: "Done / not done",
-        target: "Target",
-        period: "Period",
-        repeat: "Repeat",
-        due: "Do before",
-        subitems: "List",
-      }
-    : {
-        parse: "Разобрать через ИИ",
-        suggestList: "Предложить список",
-        loading: "Думаю...",
-        understood: "Я понял так:",
-        apply: "Применить",
-        edit: "Изменить",
-        cancel: "Отмена",
-        failed: "ИИ не смог разобрать действие. Попробуй проще.",
-        describeFirst: "Сначала введи описание.",
-        tracking: "Формат",
-        quantity: "Количество",
-        checkbox: "Готово / не готово",
-        target: "Цель",
-        period: "Период",
-        repeat: "Повтор",
-        due: "Сделать до",
-        subitems: "Список",
-      };
-}
-
 function EmojiPickerPanel({
   value,
   title,
@@ -1746,25 +1677,21 @@ function getEffectiveStateForDate(state: AppState, dateKey: string): AppState {
   };
 }
 
-function getCarryOverGoalRequired(goal: ProgressGoal, dateKey: string): number {
-  const scheduledRequired = getCalendarRequiredForDate(goal, dateKey);
-
-  if (scheduledRequired > 0) {
-    return scheduledRequired;
-  }
-
-  const valueBeforeDate = getCalendarGoalValueBeforeDate(goal, dateKey);
-  return Math.max(goal.targetValue - valueBeforeDate, 0);
-}
-
 function isCarryOverGoalCompleted(goal: ProgressGoal, dateKey: string): boolean {
   return isCalendarGoalCompletedByTarget(goal, dateKey);
+}
+
+const carryOverLookbackDays = 30;
+
+function getCarryOverLookbackDates(todayDateKey: string): string[] {
+  return Array.from({ length: carryOverLookbackDays }, (_, index) => addDays(todayDateKey, -(index + 1)));
 }
 
 function getCarryOverCandidates(state: AppState, todayDateKey: string, language: AppSettings["language"]): CarryOverCandidate[] {
   const yesterday = addDays(todayDateKey, -1);
   const yesterdayDate = parseDateKey(yesterday);
   const todayDate = parseDateKey(todayDateKey);
+  const pastDates = getCarryOverLookbackDates(todayDateKey);
   const alreadyCarried = new Set(
     (state.occurrences ?? [])
       .filter((occurrence) => occurrence.date === todayDateKey && occurrence.status !== "skipped")
@@ -1785,12 +1712,13 @@ function getCarryOverCandidates(state: AppState, todayDateKey: string, language:
   };
 
   (state.occurrences ?? [])
-    .filter((occurrence) => occurrence.date === yesterday && occurrence.source === "carry_over" && occurrence.status === "active")
+    .filter((occurrence) => occurrence.date < todayDateKey && occurrence.source === "carry_over" && occurrence.status === "active")
+    .sort((left, right) => right.date.localeCompare(left.date))
     .forEach((occurrence) => {
       if (occurrence.itemType === "task") {
         const task = state.tasks.find((item) => item.id === occurrence.itemId);
 
-        if (!task || isTaskDueOnDate(task, todayDate, todayDateKey) || isTaskCompletedOnDate(task, yesterday)) {
+        if (!task || isTaskDueOnDate(task, todayDate, todayDateKey) || isTaskCompletedOnDate(task, occurrence.date)) {
           return;
         }
 
@@ -1805,11 +1733,11 @@ function getCarryOverCandidates(state: AppState, todayDateKey: string, language:
 
       const goal = state.goals.find((item) => item.id === occurrence.itemId);
 
-      if (!goal || isGoalDueOnDate(goal, todayDate, todayDateKey) || isCarryOverGoalCompleted(goal, yesterday)) {
+      if (!goal || isGoalDueOnDate(goal, todayDate, todayDateKey) || isCarryOverGoalCompleted(goal, occurrence.date)) {
         return;
       }
 
-      const remaining = Math.max(goal.targetValue - getCalendarGoalValueAtEndOfDate(goal, yesterday), 0);
+      const remaining = Math.max(goal.targetValue - getCalendarGoalValueAtEndOfDate(goal, occurrence.date), 0);
       const displayUnit = getGoalDisplayUnit(goal, language);
       addCandidate({
         type: "goal",
@@ -1841,21 +1769,7 @@ function getCarryOverCandidates(state: AppState, todayDateKey: string, language:
   });
 
   state.goals.forEach((goal) => {
-    const periodRemaining = Math.max(goal.targetValue - goal.currentValue, 0);
     const displayUnit = getGoalDisplayUnit(goal, language);
-
-    if (!alreadyCarried.has(`goal:${goal.id}`) && goal.endDate < todayDateKey && periodRemaining > 0) {
-      addCandidate({
-        type: "goal",
-        goal,
-        movedFromDate: goal.endDate,
-        detail:
-          language === "en"
-            ? `${formatGoalAmount(periodRemaining, displayUnit)} left from the period`
-            : `Осталось ${formatGoalAmount(periodRemaining, displayUnit)} за период`,
-      });
-      return;
-    }
 
     if (alreadyCarried.has(`goal:${goal.id}`) || !isGoalDueOnDate(goal, yesterdayDate, yesterday) || isGoalDueOnDate(goal, todayDate, todayDateKey)) {
       return;
@@ -1876,6 +1790,53 @@ function getCarryOverCandidates(state: AppState, todayDateKey: string, language:
       detail: `${formatNumber(logged)} / ${formatNumber(required)} ${displayUnit}`,
     });
   });
+
+  pastDates
+    .filter((dateKey) => dateKey !== yesterday)
+    .forEach((dateKey) => {
+      const date = parseDateKey(dateKey);
+
+      state.tasks.forEach((task) => {
+        if (
+          alreadyCarried.has(`task:${task.id}`) ||
+          !isTaskDueOnDate(task, date, dateKey) ||
+          isTaskDueOnDate(task, todayDate, todayDateKey) ||
+          isTaskCompletedOnDate(task, dateKey)
+        ) {
+          return;
+        }
+
+        addCandidate({
+          type: "task",
+          task,
+          movedFromDate: dateKey,
+          detail: language === "en" ? "not done" : "не выполнено",
+        });
+      });
+
+      state.goals.forEach((goal) => {
+        const displayUnit = getGoalDisplayUnit(goal, language);
+
+        if (alreadyCarried.has(`goal:${goal.id}`) || !isGoalDueOnDate(goal, date, dateKey) || isGoalDueOnDate(goal, todayDate, todayDateKey)) {
+          return;
+        }
+
+        const required = getRequiredToday(goal, dateKey);
+        const logged = getTodayLoggedAmount(goal, dateKey);
+        const completed = isCalendarGoalCompletedByTarget(goal, dateKey);
+
+        if (completed) {
+          return;
+        }
+
+        addCandidate({
+          type: "goal",
+          goal,
+          movedFromDate: dateKey,
+          detail: `${formatNumber(logged)} / ${formatNumber(required)} ${displayUnit}`,
+        });
+      });
+    });
 
   return candidates;
 }
@@ -1953,12 +1914,9 @@ function formatDateLabel(dateKey: string): string {
 const ruWeekdaysShort = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
 const ruMonthsShort = ["янв.", "февр.", "мар.", "апр.", "мая", "июн.", "июл.", "авг.", "сент.", "окт.", "нояб.", "дек."];
 const ruMonthsLong = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
-const ruMonthsGenitive = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
-const ruWeekdaysLower = ["воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота"];
 const enWeekdaysShort = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const enMonthsShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec"];
 const enMonthsLong = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const enWeekdaysLong = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 function formatTodayDate(date: Date, language: AppSettings["language"]): string {
   if (language === "en") {
@@ -1974,22 +1932,6 @@ function formatCalendarMonth(date: Date, language: AppSettings["language"]): str
   }
 
   return `${ruMonthsLong[date.getMonth()]} ${date.getFullYear()}`;
-}
-
-function formatCalendarSelectedDate(date: Date, language: AppSettings["language"]): string {
-  if (language === "en") {
-    return `${enMonthsLong[date.getMonth()]} ${date.getDate()}`;
-  }
-
-  return `${date.getDate()} ${ruMonthsGenitive[date.getMonth()]}`;
-}
-
-function formatCalendarBestWeekday(date: Date | null, language: AppSettings["language"]): string {
-  if (!date) {
-    return "—";
-  }
-
-  return language === "en" ? enWeekdaysLong[date.getDay()].toLowerCase() : ruWeekdaysLower[date.getDay()];
 }
 
 function getCalendarWeekdayLabels(language: AppSettings["language"]): string[] {
@@ -2079,7 +2021,7 @@ function getCalendarDayDetails(
 
   const completedActions = completed.length;
   const totalActions = dueGoals.length + dueTasks.length;
-  const percent = totalActions === 0 ? 0 : clampPercent((completedActions / totalActions) * 100);
+  const percent = dateKey === today ? clampPercent(todayPercent) : totalActions === 0 ? 0 : clampPercent((completedActions / totalActions) * 100);
   const hasActivity =
     appState.goals.some((goal) => goal.progressEntries.some((entry) => entry.date === dateKey)) ||
     appState.tasks.some((task) => isTaskCompletedOnDate(task, dateKey));
@@ -2173,41 +2115,6 @@ function getCalendarFilterMatch(mode: CalendarFilterMode, details: CalendarDayDe
   }
 
   return tone === "missed" || details.missed.length > 0;
-}
-
-function getCalendarMonthStats(
-  monthDate: Date,
-  appState: AppState,
-  dayRecords: Array<{ date: string; percent: number }>,
-  today: string,
-  todayPercent: number,
-) {
-  const days = Array.from(
-    { length: new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate() },
-    (_, index) => new Date(monthDate.getFullYear(), monthDate.getMonth(), index + 1),
-  );
-  const summaries = days
-    .filter((date) => toDateKey(date) <= today)
-    .map((date) => ({
-      date,
-      ...getCalendarDayDetails(date, appState, dayRecords, today, todayPercent),
-    }))
-    .filter((summary) => summary.hasData);
-
-  if (summaries.length === 0) {
-    return {
-      average: 0,
-      bestDay: null as Date | null,
-    };
-  }
-
-  const best = summaries.reduce((currentBest, summary) => (summary.percent > currentBest.percent ? summary : currentBest), summaries[0]);
-  const total = summaries.reduce((sum, summary) => sum + summary.percent, 0);
-
-  return {
-    average: Math.round(total / summaries.length),
-    bestDay: best.date,
-  };
 }
 
 function getProgressRange(period: ProgressPeriod, date: Date): Date[] {
@@ -2486,28 +2393,6 @@ function getProgressRhythmTitle(percent: number, language: AppSettings["language
   return copy.justStart;
 }
 
-function getLocalizedDayStatus(percent: number, language: AppSettings["language"]): string {
-  const statuses = uiCopy[language].dayStatuses;
-
-  if (percent === 0) {
-    return statuses[0];
-  }
-
-  if (percent < 40) {
-    return statuses[1];
-  }
-
-  if (percent < 70) {
-    return statuses[2];
-  }
-
-  if (percent < 100) {
-    return statuses[3];
-  }
-
-  return statuses[4];
-}
-
 function dedupeTodayTasks(tasks: TaskItem[], dateKey: string): TaskItem[] {
   const seen = new Set<string>();
 
@@ -2718,7 +2603,9 @@ export default function App() {
   const [carryOverOpen, setCarryOverOpen] = useState(false);
   const [viewAllSheet, setViewAllSheet] = useState<ViewAllState>(null);
   const [activeScreen, setActiveScreen] = useState<AppScreen>("today");
+  const [carryOverMessageIndex, setCarryOverMessageIndex] = useState(0);
   const previousScreenRef = useRef<AppScreen>("today");
+  const carryOverScreenRef = useRef<AppScreen>("today");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
   const [onboardingQuest, setOnboardingQuest] = useState<OnboardingQuestState>(() => loadOnboardingQuestState());
@@ -2732,9 +2619,22 @@ export default function App() {
   );
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const wideLayoutMode = useWideLayoutMode();
+  const bottomNavSuppressed = Boolean(
+    resetConfirmOpen ||
+      progressSheet ||
+      actionSheet ||
+      deleteState ||
+      editState ||
+      addSheetOpen ||
+      aiCreateOpen ||
+      todayListSettingsOpen ||
+      carryOverOpen ||
+      viewAllSheet ||
+      subitemsSheetTaskId,
+  );
   const shellClassName = `app-shell ${telegramStatus === "connected" ? "is-telegram-shell" : "is-browser-shell"} ${
     wideLayoutMode ? "is-wide-shell" : "is-compact-shell"
-  }`;
+  } ${bottomNavSuppressed ? "has-nav-suppressed" : ""}`;
   const activeProfileCopy = profileCopy[settings.language];
   const activeUiCopy = uiCopy[settings.language];
   const activeDate = getActiveDate(selectedDate, today);
@@ -2759,7 +2659,6 @@ export default function App() {
     },
     [activeDateDate, todayOverviewMode],
   );
-  const inlinePeriodDateKeys = useMemo(() => inlinePeriodDates.map((date) => toDateKey(date)), [inlinePeriodDates]);
   const periodSourceDateKeys = useMemo(() => {
     if (todayOverviewMode === "day") {
       return [];
@@ -2964,7 +2863,7 @@ export default function App() {
   const displayedTodayItemCount = displayedTodayActionGroups.reduce((count, group) => count + group.items.length, 0);
   const hasDisplayedTodayItems = displayedTodayActionGroups.some((group) => group.items.length > 0);
   const hasPeriodGridItems = periodOverviewActive && displayedTodayActionGroups.some((group) => group.items.some((item) => item.type === "task"));
-  const actionCardWidthPercent = hasPeriodGridItems ? 100 : Math.max(78, 90 - Math.max(0, displayedTodayItemCount - 4) * 2);
+  const actionCardWidthPercent = hasPeriodGridItems ? 100 : Math.max(78, 84 - Math.max(0, displayedTodayItemCount - 4) * 2);
   const actionListStyle = {
     "--action-card-width": `${actionCardWidthPercent}%`,
     "--action-card-count": displayedTodayItemCount,
@@ -2984,18 +2883,41 @@ export default function App() {
     return () => window.clearTimeout(timeoutId);
   }, [subitemsPanelActivity, subitemsSheetTaskId]);
 
+  useEffect(() => {
+    const previousScreen = carryOverScreenRef.current;
+
+    if (previousScreen !== activeScreen && activeScreen === "today") {
+      setCarryOverMessageIndex((current) => current + 1);
+    }
+
+    carryOverScreenRef.current = activeScreen;
+  }, [activeScreen]);
+
   const viewAllGoals = useMemo(
     () => activeDateState.goals.filter((goal) => isGoalDueOnDate(goal, activeDateDate, activeDate) || goal.currentValue >= goal.targetValue),
     [activeDate, activeDateDate, activeDateState.goals],
   );
   const carryOverCandidates = useMemo(
-    () => (activeDate === today ? getCarryOverCandidates(appState, today, settings.language) : []),
-    [activeDate, appState, settings.language, today],
+    () => (activeDate === today && settings.carryOversEnabled ? getCarryOverCandidates(appState, today, settings.language) : []),
+    [activeDate, appState, settings.carryOversEnabled, settings.language, today],
   );
   const rhythmTrend = useMemo(
     () => getLastNDaysCompletionTrend(7, dayRecords, daily.percent, activeDate),
     [activeDate, daily.percent, dayRecords],
   );
+  const rhythmWeekTrend = useMemo(() => {
+    const recordMap = new Map(dayRecords.map((record) => [record.date, clampPercent(record.percent)]));
+
+    return getWeekRange(activeDateDate).map((date) => {
+      const dateKey = toDateKey(date);
+
+      if (dateKey === activeDate) {
+        return daily.percent;
+      }
+
+      return recordMap.get(dateKey) ?? 0;
+    });
+  }, [activeDate, activeDateDate, daily.percent, dayRecords]);
   const telegramBackVisible =
     settings.onboardingCompleted &&
     Boolean(
@@ -3889,34 +3811,6 @@ export default function App() {
     }
   }
 
-  function reorderTasks(sourceId: string, targetId: string, placement: ReorderPlacement = "before") {
-    if (sourceId === targetId) {
-      return;
-    }
-
-    setAppState((state) => ({
-      ...state,
-      tasks: reorderById(state.tasks, sourceId, targetId, placement).map((task, index) => ({
-        ...task,
-        sortOrder: index + 1,
-      })),
-    }));
-  }
-
-  function reorderGoals(sourceId: string, targetId: string, placement: ReorderPlacement = "before") {
-    if (sourceId === targetId) {
-      return;
-    }
-
-    setAppState((state) => ({
-      ...state,
-      goals: reorderById(state.goals, sourceId, targetId, placement).map((goal, index) => ({
-        ...goal,
-        sortOrder: index + 1,
-      })),
-    }));
-  }
-
   function reorderTodayActions(sourceId: string, targetId: string, placement: ReorderPlacement = "before") {
     if (sourceId === targetId) {
       return;
@@ -4323,7 +4217,10 @@ export default function App() {
               <RhythmCard
                 daily={daily}
                 trend={rhythmTrend}
+                weekTrend={rhythmWeekTrend}
                 copy={activeUiCopy}
+                activeDate={activeDate}
+                language={settings.language}
               />
               <TodayQuickMenu
                 language={settings.language}
@@ -4346,6 +4243,7 @@ export default function App() {
                 <CarryOverBanner
                   count={carryOverCandidates.length}
                   language={settings.language}
+                  messageIndex={carryOverMessageIndex}
                   onReview={() => setCarryOverOpen(true)}
                 />
               )}
@@ -4826,21 +4724,6 @@ function StartMenuSprite({ type }: { type: StartMenuSpriteType }) {
   return <span className="start-menu-sprite start-menu-sprite-emoji">➕</span>;
 }
 
-function BrandLogo({ size = "compact", ariaLabel = "Chexar" }: { size?: "compact" | "hero"; ariaLabel?: string }) {
-  return (
-    <div className={`brand brand-logo brand-logo-${size}`} aria-label={ariaLabel}>
-      <span className="brand-logo-text">Che</span>
-      <span className="brand-logo-box" aria-hidden="true">
-        <span className="task-x-mark brand-logo-x">
-          <span />
-          <span />
-        </span>
-      </span>
-      <span className="brand-logo-text">ar</span>
-    </div>
-  );
-}
-
 function SyncBanner({ status, copy }: { status: SyncStatus; copy: UiCopy }) {
   if (status === "ready") {
     return null;
@@ -5163,184 +5046,6 @@ function PeriodInlineCells({
           </button>
         );
       })}
-    </div>
-  );
-}
-
-function TodayPeriodOverview({
-  mode,
-  activeDate,
-  appState,
-  today,
-  language,
-  onSelectDate,
-  onToggleTaskDate,
-  onToggleGoalDate,
-}: {
-  mode: TodayOverviewMode;
-  activeDate: string;
-  appState: AppState;
-  today: string;
-  language: AppSettings["language"];
-  onSelectDate: (dateKey: string) => void;
-  onToggleTaskDate: (taskId: string, dateKey: string, completed: boolean) => void;
-  onToggleGoalDate: (goalId: string, dateKey: string, completed: boolean) => void;
-}) {
-  const activeDateObject = parseDateKey(activeDate);
-  const weeks = getPeriodOverviewWeeks(activeDateObject, mode);
-  const dates = weeks.flat();
-  const dateKeys = dates.map((date) => toDateKey(date));
-  const labels = getCalendarWeekdayLabels(language);
-  const title =
-    mode === "day"
-      ? language === "en" ? "Day overview" : "Обзор дня"
-      : mode === "week"
-        ? language === "en" ? "Week overview" : "Обзор недели"
-        : language === "en" ? "Month overview" : "Обзор месяца";
-  const periodLabel =
-    mode === "day"
-      ? formatTodayDate(activeDateObject, language)
-      : mode === "week"
-        ? formatTodayHeaderLabel(activeDateObject, language, "week")
-        : formatCalendarMonth(activeDateObject, language);
-  const rows = Array.from(
-    dateKeys.reduce((items, dateKey) => {
-      getScheduledTasksForDate(appState, dateKey).forEach((task) => {
-        const key = `task:${task.id}`;
-
-        if (!items.has(key)) {
-          items.set(key, {
-            key,
-            id: task.id,
-            type: "task" as const,
-            title: task.title,
-            emoji: getActionEmoji(task),
-            sortOrder: task.sortOrder ?? items.size + 1,
-          });
-        }
-      });
-      getScheduledGoalsForDate(appState, dateKey).forEach((goal) => {
-        const key = `goal:${goal.id}`;
-
-        if (!items.has(key)) {
-          items.set(key, {
-            key,
-            id: goal.id,
-            type: "goal" as const,
-            title: goal.title,
-            emoji: getActionEmoji(goal, "📈"),
-            sortOrder: goal.sortOrder ?? items.size + 1,
-          });
-        }
-      });
-
-      return items;
-    }, new Map<string, { key: string; id: string; type: "task" | "goal"; title: string; emoji: string; sortOrder: number }>()),
-  ).map(([, row]) => row).sort((first, second) => first.sortOrder - second.sortOrder || first.title.localeCompare(second.title));
-
-  function getCellState(row: (typeof rows)[number], dateKey: string) {
-    if (row.type === "task") {
-      const task = getScheduledTasksForDate(appState, dateKey).find((item) => item.id === row.id);
-
-      if (!task) {
-        return null;
-      }
-
-      return {
-        checked: isTaskCompletedOnDate(task, dateKey),
-        disabled: hasTaskSubitems(task),
-        detail: hasTaskSubitems(task) ? getTaskSubitemProgress(task, dateKey) : null,
-      };
-    }
-
-    const goal = getScheduledGoalsForDate(appState, dateKey).find((item) => item.id === row.id);
-
-    if (!goal) {
-      return null;
-    }
-
-    const metrics = getGoalDailyMetrics(goal, dateKey);
-
-    return {
-      checked: isCalendarGoalDailySuccess(goal, dateKey),
-      disabled: false,
-      detail: { completed: metrics.todayCompleted, total: metrics.dailyPlan },
-    };
-  }
-
-  return (
-    <div className={`today-period-overview period-matrix mode-${mode}`} aria-label={title}>
-      <div className="today-period-overview-head">
-        <strong>{title}</strong>
-        <span>{periodLabel}</span>
-      </div>
-      <div className="period-matrix-scroll">
-        <div className="period-matrix-grid" style={{ "--period-days": dates.length } as CSSProperties}>
-          <div className="period-matrix-corner">{language === "en" ? "Tasks" : "Задачи"}</div>
-          {dates.map((date) => {
-            const dateKey = toDateKey(date);
-            const weekday = labels[(date.getDay() + 6) % 7];
-
-            return (
-              <button
-                key={`head-${dateKey}`}
-                type="button"
-                className={`period-matrix-day-head ${dateKey === activeDate ? "active" : ""} ${dateKey > today ? "future" : ""}`}
-                onClick={() => onSelectDate(dateKey)}
-              >
-                {mode === "month" && <span>{language === "en" ? `W${getWeekOfMonth(date)}` : `Н${getWeekOfMonth(date)}`}</span>}
-                <strong>{date.getDate()}</strong>
-                <small>{weekday}</small>
-              </button>
-            );
-          })}
-          {rows.length > 0 ? rows.map((row) => (
-            <Fragment key={row.key}>
-              <div className="period-matrix-task-cell">
-                <span aria-hidden="true">{row.emoji}</span>
-                <strong>{row.title}</strong>
-              </div>
-              {dateKeys.map((dateKey) => {
-                const cell = getCellState(row, dateKey);
-                const isFuture = dateKey > today;
-                const titleText = `${row.title} · ${formatDateLabel(dateKey)}`;
-
-                if (!cell) {
-                  return <span key={`${row.key}-${dateKey}`} className="period-matrix-check-cell off" aria-hidden="true" />;
-                }
-
-                return (
-                  <button
-                    key={`${row.key}-${dateKey}`}
-                    type="button"
-                    className={`period-matrix-check-cell ${cell.checked ? "checked" : ""} ${isFuture ? "future" : ""} ${cell.disabled ? "readonly" : ""}`}
-                    aria-pressed={cell.checked}
-                    aria-label={titleText}
-                    title={titleText}
-                    onClick={() => {
-                      if (cell.disabled) {
-                        onSelectDate(dateKey);
-                        return;
-                      }
-
-                      if (row.type === "task") {
-                        onToggleTaskDate(row.id, dateKey, !cell.checked);
-                        return;
-                      }
-
-                      onToggleGoalDate(row.id, dateKey, !cell.checked);
-                    }}
-                  >
-                    <span aria-hidden="true">{cell.checked ? "✓" : ""}</span>
-                  </button>
-                );
-              })}
-            </Fragment>
-          )) : (
-            <div className="period-matrix-empty">{language === "en" ? "No tasks in this range" : "Нет задач в этом периоде"}</div>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
@@ -5945,27 +5650,92 @@ function AiCreationSheet({
 function RhythmCard({
   daily,
   trend,
+  weekTrend,
   copy,
+  activeDate,
+  language,
 }: {
   daily: ReturnType<typeof calculateDailyProgress>;
   trend: number[];
+  weekTrend: number[];
   copy: UiCopy;
+  activeDate: string;
+  language: AppSettings["language"];
 }) {
+  const [showWeeklyBars, setShowWeeklyBars] = useState(false);
+  const dailyPercent = clampPercent(daily.percent);
   const cardStyle = {
-    "--daily-percent": `${daily.percent}%`,
-    ...getFillToneStyle(daily.percent),
+    "--daily-percent": `${dailyPercent}%`,
+    "--rhythm-ring-percent": `${dailyPercent}%`,
+    ...getFillToneStyle(dailyPercent),
   } as CSSProperties;
 
   return (
-    <section
-      className="rhythm-card"
+    <button
+      type="button"
+      className={`rhythm-card ${showWeeklyBars ? "is-bars-view" : "is-percent-view"}`}
       style={cardStyle}
-      aria-label={`${copy.rhythmAria}: ${daily.percent}%`}
+      aria-label={`${showWeeklyBars ? copy.rhythmTrendAria : copy.rhythmAria}: ${dailyPercent}%`}
+      aria-pressed={showWeeklyBars}
+      onClick={() => setShowWeeklyBars((value) => !value)}
     >
       <div className="rhythm-fill" />
-      <strong className="rhythm-percent">{daily.percent}%</strong>
-      <MiniRhythmChart values={trend} ariaLabel={copy.rhythmTrendAria} />
-    </section>
+      {showWeeklyBars ? (
+        <div className="rhythm-bars-layout">
+          <span className="rhythm-ring" aria-hidden="true">
+            <span className="rhythm-ring-percent">{dailyPercent}%</span>
+          </span>
+          <RhythmWeekBars values={weekTrend} activeDate={activeDate} language={language} ariaLabel={copy.rhythmTrendAria} />
+        </div>
+      ) : (
+        <>
+          <strong className="rhythm-percent">{dailyPercent}%</strong>
+          <MiniRhythmChart values={trend} ariaLabel={copy.rhythmTrendAria} />
+        </>
+      )}
+    </button>
+  );
+}
+
+function RhythmWeekBars({
+  values,
+  activeDate,
+  language,
+  ariaLabel,
+}: {
+  values: number[];
+  activeDate: string;
+  language: AppSettings["language"];
+  ariaLabel: string;
+}) {
+  const weekDates = getWeekRange(parseDateKey(activeDate));
+  const weekdayLabels = getCalendarWeekdayLabels(language);
+  const safeValues = weekDates.map((date, index) => {
+    const value = values[index] ?? 0;
+
+    return {
+      value: clampPercent(Number.isFinite(value) ? value : 0),
+      dateKey: toDateKey(date),
+      day: weekdayLabels[(date.getDay() + 6) % 7],
+      date: String(date.getDate()),
+    };
+  });
+
+  return (
+    <div className="rhythm-week-bars" role="img" aria-label={ariaLabel}>
+      {safeValues.map((day) => (
+        <span key={day.dateKey} className="rhythm-week-column">
+          <span className="rhythm-week-label">
+            <b>{day.day}</b>
+            <small>{day.date}</small>
+          </span>
+          <span
+            className="rhythm-week-bar"
+            style={{ "--rhythm-bar-height": `${day.value}%`, ...getFillToneStyle(day.value) } as CSSProperties}
+          />
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -6007,20 +5777,6 @@ function MiniRhythmChart({ values, ariaLabel }: { values: number[]; ariaLabel: s
       <circle className="rhythm-chart-dot-glow" cx={lastPoint.x} cy={lastPoint.y} r="6" />
       <circle className="rhythm-chart-dot" cx={lastPoint.x} cy={lastPoint.y} r="3.2" />
     </svg>
-  );
-}
-
-function SectionHeader({ title, viewAllLabel, onViewAll }: { title: string; viewAllLabel?: string; onViewAll?: () => void }) {
-  return (
-    <div className="section-header">
-      <h2>{title}</h2>
-      {onViewAll && viewAllLabel && (
-        <button type="button" className="view-all" onClick={onViewAll}>
-          {viewAllLabel}
-          <ChevronRight size={18} />
-        </button>
-      )}
-    </div>
   );
 }
 
@@ -6700,93 +6456,6 @@ function TaskRow({
   );
 }
 
-function SubitemsSheet({
-  task,
-  dateKey,
-  language,
-  onClose,
-  onChange,
-}: {
-  task: TaskItem;
-  dateKey: string;
-  language: AppSettings["language"];
-  onClose: () => void;
-  onChange: (taskId: string, subitemId: string, state: ActionSubitemState) => void;
-}) {
-  const copy = getSubitemCopy(language);
-  const subitems = [...(task.subitems ?? [])].sort((first, second) => (first.sortOrder ?? 0) - (second.sortOrder ?? 0));
-  const progress = getTaskSubitemProgress(task, dateKey);
-  const dayState = task.subitemStateByDate?.[dateKey] ?? {};
-
-  function isComplete(subitem: ActionSubitem): boolean {
-    const state = dayState[subitem.id];
-
-    if (subitem.targetCount && subitem.targetCount > 1) {
-      return Number(state?.count ?? 0) >= subitem.targetCount;
-    }
-
-    return state?.completed === true;
-  }
-
-  return (
-    <BottomSheet
-      title={task.title}
-      subtitle={language === "en" ? `${progress.completed} of ${progress.total} ${copy.progress}` : `${progress.completed} из ${progress.total} ${copy.progress}`}
-      closeLabel={language === "en" ? "Close" : "Закрыть"}
-      onClose={onClose}
-    >
-      <div className="subitems-sheet-list">
-        {subitems.map((subitem) => {
-          const state = dayState[subitem.id] ?? {};
-          const target = subitem.targetCount && subitem.targetCount > 1 ? subitem.targetCount : undefined;
-          const count = Math.min(Number(state.count ?? 0), target ?? 1);
-          const completed = isComplete(subitem);
-
-          return (
-            <div key={subitem.id} className={`subitem-sheet-row ${completed ? "completed" : ""}`}>
-              <button
-                type="button"
-                className="subitem-toggle"
-                onClick={() =>
-                  onChange(task.id, subitem.id, target ? { count: completed ? 0 : target, completed: !completed } : { completed: !completed })
-                }
-              >
-                <span className="task-check" aria-hidden="true">
-                  {completed && (
-                    <span className="task-x-mark">
-                      <span />
-                      <span />
-                    </span>
-                  )}
-                </span>
-                <strong>{subitem.title}</strong>
-              </button>
-              {target && (
-                <div className="subitem-counter">
-                  <span>
-                    {count}/{target}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onChange(task.id, subitem.id, {
-                        count: Math.min(count + 1, target),
-                        completed: count + 1 >= target,
-                      })
-                    }
-                  >
-                    <Plus size={15} aria-hidden="true" />
-                  </button>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </BottomSheet>
-  );
-}
-
 function ReorderableItem({
   id,
   scope,
@@ -7202,13 +6871,6 @@ function ActionIconBadge({
   );
 }
 
-function ActionIconGlyph({ iconKey, size = 18 }: { iconKey: string; size?: number }) {
-  const icon = getActionIcon(iconKey);
-  const Icon = icon.Icon;
-
-  return <Icon size={size} aria-hidden="true" />;
-}
-
 function EditActionSheet({
   state,
   copy,
@@ -7465,10 +7127,6 @@ function EditActionSheet({
   );
 }
 
-function getTitleFallbackLetter(title: string): string {
-  return title.trim().slice(0, 1).toLocaleUpperCase("ru-RU") || "•";
-}
-
 function ViewAllSheet({
   type,
   today,
@@ -7532,43 +7190,6 @@ function ViewAllSheet({
         )}
       </div>
     </BottomSheet>
-  );
-}
-
-function MiniStatsPanel({
-  weekPercent,
-  monthPercent,
-  streak,
-  copy,
-  language,
-}: {
-  weekPercent: number;
-  monthPercent: number;
-  streak: number;
-  copy: UiCopy;
-  language: AppSettings["language"];
-}) {
-  return (
-    <section className="mini-stats-panel" aria-label={copy.miniStatsAria}>
-      <div className="mini-stat-item">
-        <CalendarDays size={17} aria-hidden="true" />
-        <span>{copy.week}</span>
-        <strong>{weekPercent}%</strong>
-        <p>{copy.progress}</p>
-      </div>
-      <div className="mini-stat-item">
-        <BarChart3 size={17} aria-hidden="true" />
-        <span>{copy.month}</span>
-        <strong>{monthPercent}%</strong>
-        <p>{copy.progress}</p>
-      </div>
-      <div className="mini-stat-item">
-        <Flame size={17} aria-hidden="true" />
-        <span>{copy.streak}</span>
-        <strong>{streak}</strong>
-        <p>{getDayPlural(streak, language)}</p>
-      </div>
-    </section>
   );
 }
 
@@ -8065,31 +7686,7 @@ function CalendarScreen({
   function jumpToToday() {
     setVisibleMonth(new Date(todayDate.getFullYear(), todayDate.getMonth(), 1));
     setSelectedDateKey(today);
-  }
-
-  const calendarMenuItems = [
-    {
-      label: copy.today,
-      icon: Sun,
-      onClick: jumpToToday,
-    },
-    {
-      label: language === "en" ? "This month" : "Этот месяц",
-      icon: CalendarDays,
-      onClick: () => setVisibleMonth(new Date(todayDate.getFullYear(), todayDate.getMonth(), 1)),
-    },
-    {
-      label: copy.previousMonth,
-      icon: ChevronLeft,
-      onClick: () => shiftMonth(-1),
-    },
-    {
-      label: copy.nextMonth,
-      icon: ChevronRight,
-      onClick: () => shiftMonth(1),
-    },
-  ];
-  const filterItems: Array<{ value: CalendarFilterMode; label: string; icon: LucideIcon }> = [
+  }  const filterItems: Array<{ value: CalendarFilterMode; label: string; icon: LucideIcon }> = [
     { value: "all", label: language === "en" ? "All days" : "Все дни", icon: CalendarDays },
     { value: "activity", label: language === "en" ? "With activity" : "Только с активностью", icon: BarChart3 },
     { value: "closed", label: language === "en" ? "Completed" : "Закрытые", icon: Check },
@@ -8228,88 +7825,6 @@ function CalendarLegendItem({ className, label }: { className: string; label: st
   );
 }
 
-function CalendarProgressRing({ percent }: { percent: number }) {
-  const radius = 21;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (Math.min(Math.max(percent, 0), 100) / 100) * circumference;
-
-  return (
-    <div className="calendar-progress-ring" aria-label={`${percent}%`}>
-      <svg viewBox="0 0 56 56" aria-hidden="true">
-        <circle cx="28" cy="28" r={radius} />
-        <circle cx="28" cy="28" r={radius} style={{ strokeDasharray: circumference, strokeDashoffset: offset }} />
-      </svg>
-      <strong>{percent}%</strong>
-    </div>
-  );
-}
-
-function CalendarDetailColumn({
-  title,
-  icon: Icon,
-  tone,
-  items,
-  emptyText,
-}: {
-  title: string;
-  icon: LucideIcon;
-  tone: "done" | "partial" | "missed";
-  items: CalendarDayDetail[];
-  emptyText: string;
-}) {
-  return (
-    <div className={`calendar-detail-column tone-${tone}`}>
-      <h3>{title}</h3>
-      <div className="calendar-detail-list">
-        {items.length > 0 ? items.map((item) => (
-          <div className="calendar-detail-row" key={item.id}>
-            <span aria-hidden="true">
-              <Icon size={13} />
-            </span>
-            <p>
-              {item.title}
-              {item.detail && <small>{item.detail}</small>}
-            </p>
-          </div>
-        )) : (
-          <p className="calendar-detail-empty">{emptyText}</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function CalendarProgressEntrySection({
-  title,
-  items,
-  emptyText,
-}: {
-  title: string;
-  items: CalendarDayDetail[];
-  emptyText: string;
-}) {
-  return (
-    <div className="calendar-progress-entry-section">
-      <h3>{title}</h3>
-      <div className="calendar-progress-entry-list">
-        {items.length > 0 ? items.map((item) => (
-          <div className="calendar-progress-entry-row" key={item.id}>
-            <span aria-hidden="true">
-              <TrendingUp size={14} />
-            </span>
-            <p>
-              {item.title}
-              {item.detail && <small>{item.detail}</small>}
-            </p>
-          </div>
-        )) : (
-          <p className="calendar-detail-empty">{emptyText}</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function ProfileScreen({
   settings,
   telegramUser,
@@ -8393,6 +7908,24 @@ function ProfileScreen({
         </span>
         <span className="toggle-switch" aria-hidden="true">
           <span>{settings.telegramBotEnabled && <Check size={18} />}</span>
+        </span>
+      </button>
+
+      <button
+        type="button"
+        className={`hints-card ${settings.carryOversEnabled ? "enabled" : ""}`}
+        aria-pressed={settings.carryOversEnabled}
+        onClick={() => onSettingsChange({ carryOversEnabled: !settings.carryOversEnabled })}
+      >
+        <span className="profile-row-icon accent-violet" aria-hidden="true">
+          ↩
+        </span>
+        <span>
+          <strong>{settings.carryOversEnabled ? copy.carryOversOn : copy.carryOversOff}</strong>
+          <small>{copy.carryOversText}</small>
+        </span>
+        <span className="toggle-switch" aria-hidden="true">
+          <span>{settings.carryOversEnabled && <Check size={18} />}</span>
         </span>
       </button>
 
@@ -8784,23 +8317,35 @@ function TaskActionSheet({
 function CarryOverBanner({
   count,
   language,
+  messageIndex,
   onReview,
 }: {
   count: number;
   language: AppSettings["language"];
+  messageIndex: number;
   onReview: () => void;
 }) {
-  const label = language === "en" ? `${count} left` : `${count} перенос`;
-  const actionLabel = language === "en" ? "Open" : "Открыть";
+  const messages = useMemo(() => getCarryOverBannerMessages(count, language), [count, language]);
+  const message = messages[messageIndex % messages.length] ?? messages[0];
+  const countLabel = language === "en" ? `${count} missed` : `${count} пропущено`;
 
   return (
-    <section className="carry-over-banner">
-      <span>{label}</span>
-      <button type="button" onClick={onReview}>
-        {actionLabel}
-      </button>
-    </section>
+    <button type="button" className="carry-over-banner" onClick={onReview} aria-label={`${message}. ${countLabel}`}>
+      <span>{message}</span>
+    </button>
   );
+}
+
+function getCarryOverBannerMessages(count: number, language: AppSettings["language"]): string[] {
+  if (language === "en") {
+    return count === 1
+      ? ["Missed earlier", "You skipped something", "One action is still open"]
+      : ["Missed earlier", "You skipped something", "Some actions are still open"];
+  }
+
+  return count === 1
+    ? ["Пропущено раньше", "Ты что-то пропустил", "Осталась незакрытая задача"]
+    : ["Пропущено раньше", "Ты что-то пропустил", "Остались незакрытые задачи"];
 }
 
 function CarryOverReviewSheet({
@@ -8816,11 +8361,33 @@ function CarryOverReviewSheet({
   onMove: (selected: CarryOverCandidate[]) => void;
   onCreateNextPeriod: (selected: CarryOverCandidate[]) => void;
 }) {
-  const [selectedIds, setSelectedIds] = useState(() => new Set(candidates.map((candidate) => (candidate.type === "goal" ? candidate.goal.id : candidate.task.id))));
-
   function getCandidateId(candidate: CarryOverCandidate): string {
-    return candidate.type === "goal" ? candidate.goal.id : candidate.task.id;
+    return `${candidate.type}:${candidate.type === "goal" ? candidate.goal.id : candidate.task.id}`;
   }
+
+  const uniqueCandidates = useMemo(() => {
+    const byId = new Map<string, CarryOverCandidate>();
+
+    candidates.forEach((candidate) => {
+      const id = getCandidateId(candidate);
+
+      if (!byId.has(id)) {
+        byId.set(id, candidate);
+      }
+    });
+
+    return Array.from(byId.values());
+  }, [candidates]);
+  const [selectedIds, setSelectedIds] = useState(() => new Set(uniqueCandidates.map(getCandidateId)));
+
+  useEffect(() => {
+    setSelectedIds((current) => {
+      const validIds = new Set(uniqueCandidates.map(getCandidateId));
+      const next = new Set(Array.from(current).filter((id) => validIds.has(id)));
+
+      return next.size > 0 ? next : validIds;
+    });
+  }, [uniqueCandidates]);
 
   function toggleCandidate(candidate: CarryOverCandidate) {
     const id = getCandidateId(candidate);
@@ -8837,42 +8404,98 @@ function CarryOverReviewSheet({
     });
   }
 
-  const selected = candidates.filter((candidate) => selectedIds.has(getCandidateId(candidate)));
+  function selectAll() {
+    setSelectedIds(new Set(uniqueCandidates.map(getCandidateId)));
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  const selected = uniqueCandidates.filter((candidate) => selectedIds.has(getCandidateId(candidate)));
   const selectedGoals = selected.filter((candidate) => candidate.type === "goal");
+  const selectedCountLabel = language === "en" ? `${selected.length}/${uniqueCandidates.length} selected` : `${selected.length}/${uniqueCandidates.length} выбрано`;
+  const yesterdayKey = addDays(todayKey(), -1);
+  const groupedCandidates = useMemo(() => {
+    const yesterdayCandidates = uniqueCandidates.filter((candidate) => candidate.movedFromDate === yesterdayKey);
+    const periodCandidates = uniqueCandidates.filter((candidate) => candidate.movedFromDate !== yesterdayKey);
+
+    return [
+      {
+        key: "yesterday",
+        title: language === "en" ? "Yesterday" : "Вчера",
+        items: yesterdayCandidates,
+      },
+      {
+        key: "period",
+        title: language === "en" ? "Whole period" : "Весь период",
+        items: periodCandidates,
+      },
+    ].filter((group) => group.items.length > 0);
+  }, [language, uniqueCandidates, yesterdayKey]);
 
   return (
     <BottomSheet
-      title={language === "en" ? "Move missed tasks?" : "Перенести пропущенное?"}
-      subtitle={language === "en" ? "Create one-time items for today." : "Создадим разовые пункты на сегодня."}
+      title={language === "en" ? "Missed actions" : "Пропущенные"}
+      subtitle={language === "en" ? "Choose what to bring back." : "Выбери, что вернуть."}
       closeLabel={language === "en" ? "Close" : "Закрыть"}
       onClose={onClose}
+      className="carry-review-sheet"
     >
-      <div className="carry-review-list">
-        {candidates.map((candidate) => {
-          const action = candidate.type === "goal" ? candidate.goal : candidate.task;
-          const id = getCandidateId(candidate);
-
-          return (
-            <button key={id} type="button" className={`carry-review-row ${selectedIds.has(id) ? "selected" : ""}`} onClick={() => toggleCandidate(candidate)}>
-              <span className="action-emoji" aria-hidden="true">{getActionEmoji(action)}</span>
-              <span>
-                <strong>{action.title}</strong>
-                <small>{candidate.detail}</small>
-              </span>
-              <span className="carry-check" aria-hidden="true">{selectedIds.has(id) ? "✓" : ""}</span>
-            </button>
-          );
-        })}
+      <div className="carry-review-toolbar">
+        <span>{selectedCountLabel}</span>
+        <button type="button" onClick={selectAll}>
+          {language === "en" ? "All" : "Все"}
+        </button>
+        <button type="button" onClick={clearSelection}>
+          {language === "en" ? "None" : "Снять"}
+        </button>
       </div>
-      <div className="sheet-actions">
+      <div className="carry-review-list">
+        {groupedCandidates.map((group) => (
+          <section key={group.key} className="carry-review-group" aria-label={group.title}>
+            <div className="carry-review-group-title">
+              <span>{group.title}</span>
+              <small>{group.items.length}</small>
+            </div>
+            <div className="carry-review-group-items">
+              {group.items.map((candidate) => {
+                const action = candidate.type === "goal" ? candidate.goal : candidate.task;
+                const id = getCandidateId(candidate);
+                const selectedCandidate = selectedIds.has(id);
+
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    className={`carry-review-row ${selectedCandidate ? "selected" : ""}`}
+                    aria-pressed={selectedCandidate}
+                    onClick={() => toggleCandidate(candidate)}
+                  >
+                    <span className="action-emoji" aria-hidden="true">{getActionEmoji(action)}</span>
+                    <span className="carry-review-copy">
+                      <strong>{action.title}</strong>
+                      <small>{formatDateLabel(candidate.movedFromDate)} · {candidate.detail}</small>
+                    </span>
+                    <span className={`carry-checkbox ${selectedCandidate ? "checked" : ""}`} aria-hidden="true">
+                      {selectedCandidate && <X size={11} />}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+      <div className="sheet-actions carry-review-actions">
         <button type="button" className="primary-sheet-button" disabled={selected.length === 0} onClick={() => onMove(selected)}>
-          {language === "en" ? "Move selected to today" : "Перенести выбранное"}
+          {language === "en" ? "Move to today" : "На сегодня"}
         </button>
         <button type="button" className="ghost-sheet-button" disabled={selectedGoals.length === 0} onClick={() => onCreateNextPeriod(selected)}>
-          {language === "en" ? "New period with remainder" : "Новый период с остатком"}
+          {language === "en" ? "New period" : "Новый период"}
         </button>
         <button type="button" className="ghost-sheet-button" onClick={onClose}>
-          {language === "en" ? "Skip" : "Пропустить"}
+          {language === "en" ? "Later" : "Позже"}
         </button>
       </div>
     </BottomSheet>
@@ -8922,12 +8545,6 @@ type ActionPeriod = "today" | "week" | "month" | "forever" | "custom";
 type GoalPeriod = ActionPeriod;
 type TaskPeriod = ActionPeriod;
 
-type ActionIconOption = {
-  key: string;
-  title: string;
-  Icon: LucideIcon;
-};
-
 type ActionTemplate = {
   group: "progress" | "checklist";
   title: string;
@@ -8965,28 +8582,6 @@ const weekdaysEn = [
 ];
 
 const defaultGoalSelectedDays = [1, 2, 3, 4, 5];
-
-const actionIcons: ActionIconOption[] = [
-  { key: "book", title: "Книга", Icon: BookOpen },
-  { key: "target", title: "Фокус", Icon: Target },
-  { key: "dumbbell", title: "Тренировка", Icon: Dumbbell },
-  { key: "run", title: "Бег", Icon: Footprints },
-  { key: "home", title: "Дом", Icon: Home },
-  { key: "cart", title: "Покупки", Icon: ShoppingCart },
-  { key: "language", title: "Язык", Icon: Languages },
-  { key: "star", title: "Звезда", Icon: Star },
-  { key: "fire", title: "Огонь", Icon: Flame },
-  { key: "plus", title: "Плюс", Icon: CirclePlus },
-  { key: "graduation", title: "Учеба", Icon: GraduationCap },
-  { key: "droplet", title: "Вода", Icon: Droplet },
-  { key: "clock", title: "Время", Icon: Clock3 },
-  { key: "calendar", title: "Календарь", Icon: CalendarDays },
-  { key: "moon", title: "Сон", Icon: Moon },
-  { key: "pill", title: "Здоровье", Icon: Pill },
-  { key: "shield", title: "Защита", Icon: Shield },
-  { key: "phone", title: "Созвон", Icon: Phone },
-  { key: "mail", title: "Почта", Icon: Mail },
-];
 
 const actionTemplates: ActionTemplate[] = [
   { group: "progress", title: "Уроки за месяц", iconKey: "graduation", trackingMode: "amount", targetValue: 40, unit: "уроков", period: "month", repeatMode: "everyDay", quickValues: [1, 2] },
@@ -9062,75 +8657,6 @@ function translateTemplateSubitem(title: string): string {
   return copy[title] ?? title;
 }
 
-function AiDraftPreview({
-  state,
-  labels,
-  language,
-  onApply,
-  onEdit,
-  onCancel,
-}: {
-  state: Exclude<AiPreviewState, null>;
-  labels: ReturnType<typeof getAiLabels>;
-  language: AppSettings["language"];
-  onApply: () => void;
-  onEdit: () => void;
-  onCancel: () => void;
-}) {
-  const periodLabel = (period: AiPeriod) => {
-    if (period === "today") return language === "en" ? "Today" : "Сегодня";
-    if (period === "week") return language === "en" ? "Week" : "Неделя";
-    if (period === "month") return language === "en" ? "Month" : "Месяц";
-    return language === "en" ? "Custom" : "Свой";
-  };
-  const repeatLabel = (repeat: AiRepeatMode) => {
-    if (repeat === "once") return language === "en" ? "Once" : "Один раз";
-    if (repeat === "weekdays") return language === "en" ? "Weekdays" : "Будни";
-    if (repeat === "selected_days") return language === "en" ? "Selected days" : "Выбранные дни";
-    return language === "en" ? "Every day" : "Каждый день";
-  };
-  const trackingLabel = (draft: AiActionDraft) => (draft.tracking_type === "quantity" ? labels.quantity : labels.checkbox);
-  const actionMeta = (draft: AiActionDraft) =>
-    [
-      draft.tracking_type === "quantity" && draft.target_value ? `${formatNumber(Number(draft.target_value))} ${draft.unit ?? ""}`.trim() : trackingLabel(draft),
-      periodLabel(draft.period).toLocaleLowerCase(),
-      repeatLabel(draft.repeat_mode).toLocaleLowerCase(),
-      draft.due_time ? `${labels.due}: ${draft.due_time}` : "",
-      draft.subitems?.length ? `${labels.subitems}: ${draft.subitems.length}` : "",
-    ]
-      .filter(Boolean)
-      .join(" · ");
-
-  return (
-    <div className="ai-preview-card">
-      <strong>{labels.understood}</strong>
-      {state.type === "action" ? (
-        <div className="ai-preview-action-card">
-          <span className="action-emoji" aria-hidden="true">{state.draft.icon ?? inferAiEmoji(state.draft.title)}</span>
-          <span className="ai-preview-action-copy">
-            <b>{state.draft.title}</b>
-            <small>{actionMeta(state.draft)}</small>
-          </span>
-        </div>
-      ) : (
-        <div className="ai-preview-fields">
-          {state.subitems.map((subitem) => (
-            <span key={`${subitem.title}-${subitem.target ?? ""}`}>
-              {subitem.title}
-              {subitem.target && subitem.target > 1 ? <small>{subitem.target}</small> : null}
-            </span>
-          ))}
-        </div>
-      )}
-      <div className="ai-preview-actions">
-        <button type="button" onClick={onApply}>{labels.apply}</button>
-        <button type="button" onClick={onEdit}>{labels.edit}</button>
-        <button type="button" onClick={onCancel}>{labels.cancel}</button>
-      </div>
-    </div>
-  );
-}
-
 function AddSheet({
   today,
   language,
@@ -9198,14 +8724,10 @@ function AddSheet({
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
-  const [aiLoading, setAiLoading] = useState<"action" | "subitems" | null>(null);
-  const [aiPreview, setAiPreview] = useState<AiPreviewState>(null);
-  const [aiError, setAiError] = useState("");
   const emojiInputRef = useRef<HTMLInputElement>(null);
 
   const selectedEmoji = emoji ?? getIconEmoji(iconKey) ?? inferEmojiFromTitle(title);
   const subitemCopy = getSubitemCopy(language);
-  const aiLabels = getAiLabels(language);
   const dates = getPeriodDates(today, period, startDate, endDate);
   const numericTarget = Number(targetValue);
   const numericCurrent = Number(currentValue) || 0;
@@ -9221,19 +8743,6 @@ function AddSheet({
     repeatMode,
     selectedDays: activeSelectedDays,
   });
-  const taskPreviewItem: TaskItem = {
-    id: "preview-task",
-    title: title || (language === "en" ? "Action" : "Действие"),
-    priority: "medium",
-    startDate: dates.startDate,
-    endDate: dates.endDate,
-    repeatMode: taskRepeatMode,
-    selectedDays: taskRepeatMode === "selectedDays" ? selectedDays : undefined,
-    date: dates.startDate,
-    completed: false,
-    completedDates: [],
-  };
-  const taskAppearsToday = isTaskDueOnDate(taskPreviewItem, parseDateKey(today), today);
   const baseErrors =
     trackingMode === "amount"
       ? getGoalValidationErrors({
@@ -9363,139 +8872,7 @@ function AddSheet({
 
   function toggleWeekdaySelection(day: number) {
     setSelectedDays((days) => toggleWeekday(days, day));
-  }
-
-  async function requestAiJson(body: Record<string, unknown>): Promise<unknown> {
-    const response = await fetch("/api/ai/parse-action", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...body, language }),
-    });
-
-    if (!response.ok) {
-      throw new Error("AI request failed");
-    }
-
-    return response.json();
-  }
-
-  async function parseActionWithAi() {
-    const text = title.trim();
-
-    if (!text) {
-      setAiError(aiLabels.describeFirst);
-      return;
-    }
-
-    setAiLoading("action");
-    setAiError("");
-
-    try {
-      const payload = await requestAiJson({ text });
-      const draft = normalizeAiActionDraft(payload, text);
-
-      if ((draft.intent && draft.intent !== "create_action") || (draft.missing_fields && draft.missing_fields.length > 0)) {
-        setAiPreview(null);
-        setAiError(draft.clarifying_question || (language === "en" ? "What should I create?" : "Что создать?"));
-        return;
-      }
-
-      setAiPreview({ type: "action", draft });
-    } catch {
-      const draft = buildLocalAiDraft(text);
-
-      if (draft.missing_fields && draft.missing_fields.length > 0) {
-        setAiPreview(null);
-        setAiError(draft.clarifying_question || (language === "en" ? "What should I create?" : "Что создать?"));
-        return;
-      }
-
-      setAiPreview({ type: "action", draft });
-    } finally {
-      setAiLoading(null);
-    }
-  }
-
-  async function suggestSubitemsWithAi() {
-    const sourceTitle = title.trim();
-
-    if (!sourceTitle) {
-      setAiError(aiLabels.describeFirst);
-      return;
-    }
-
-    setAiLoading("subitems");
-    setAiError("");
-
-    try {
-      const payload = await requestAiJson({ title: sourceTitle });
-      setAiPreview({ type: "subitems", subitems: normalizeAiSubitems(payload, sourceTitle) });
-    } catch {
-      setAiPreview({ type: "subitems", subitems: buildLocalSubitems(sourceTitle) });
-    } finally {
-      setAiLoading(null);
-    }
-  }
-
-  function applyAiActionDraft(draft: AiActionDraft) {
-    const nextTrackingMode: ActionTrackingMode = draft.tracking_type === "quantity" ? "amount" : "done";
-    const nextPeriod: ActionPeriod = draft.period === "custom" ? "month" : draft.period;
-    const nextRepeatMode: GoalRepeatMode =
-      draft.repeat_mode === "weekdays" ? "weekdays" : draft.repeat_mode === "selected_days" ? "selectedDays" : "everyDay";
-    const nextTargetValue = Number(draft.target_value && draft.target_value > 0 ? draft.target_value : 50);
-    const nextUnit = normalizeSemanticQuantityUnit({
-      title: draft.title,
-      unit: draft.unit?.trim() || unit,
-      sourceText: `${draft.title} ${draft.unit ?? ""}`,
-      fallbackUnit: language === "en" ? "times" : "раз",
-      targetValue: nextTargetValue,
-      language,
-      mode: "draft",
-    });
-    const normalizedEmoji = normalizeEmojiChoice(draft.icon ?? "") ?? inferAiEmoji(`${draft.title} ${draft.unit ?? ""}`);
-    const nextSubitems = normalizeAiSubitems({ subitems: draft.subitems ?? [] }, draft.title).map((subitem, index) => ({
-      id: createId("subitem"),
-      title: subitem.title,
-      targetCount: subitem.target && subitem.target > 1 ? subitem.target : undefined,
-      sortOrder: index + 1,
-    }));
-
-    setTitle(draft.title);
-    setEmoji(normalizedEmoji);
-    setIconKey(undefined);
-    setTrackingMode(nextTrackingMode);
-    setPeriod(nextPeriod);
-    setRepeatMode(nextRepeatMode);
-    setSelectedDays(defaultGoalSelectedDays);
-    setTargetValue(nextTrackingMode === "amount" ? String(nextTargetValue) : "");
-    setUnit(nextTrackingMode === "amount" ? nextUnit : "");
-    setCurrentValue("0");
-    setQuickValues(nextTrackingMode === "amount" ? getDefaultQuickValues(nextUnit).join(", ") : "");
-    setDueTimeEnabled(Boolean(draft.due_time));
-    setDueTime(draft.due_time ?? "11:00");
-    setSubitemsEnabled(nextTrackingMode === "done" && nextSubitems.length > 0);
-    setSubitemDrafts(nextTrackingMode === "done" ? nextSubitems : []);
-    setAdvancedOpen(false);
-    setTemplatePickerOpen(false);
-    setIconPickerOpen(false);
-    setAiPreview(null);
-  }
-
-  function applyAiSubitems(subitems: AiSubitemDraft[]) {
-    setTrackingMode("done");
-    setSubitemsEnabled(true);
-    setSubitemDrafts(
-      subitems.map((subitem, index) => ({
-        id: createId("subitem"),
-        title: subitem.title,
-        targetCount: subitem.target && subitem.target > 1 ? subitem.target : undefined,
-        sortOrder: index + 1,
-      })),
-    );
-    setAiPreview(null);
-  }
-
-  function submitAction(event?: FormEvent<HTMLFormElement>) {
+  }  function submitAction(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
 
     if (errors.length > 0) {
@@ -9562,7 +8939,7 @@ function AddSheet({
 
   return (
     <BottomSheet title={copy.addSheetTitle} closeLabel={copy.close} onClose={requestClose} closeOnOverlay={!hasUnsavedChanges} className="creation-bottom-sheet">
-      {templatePickerOpen && <TemplatePicker templates={actionTemplates} copy={copy} language={language} onSelect={applyTemplate} />}
+      {templatePickerOpen && <TemplatePicker templates={actionTemplates} language={language} onSelect={applyTemplate} />}
 
       <form className="sheet-form creation-form unified-action-form" onSubmit={submitAction}>
         <div className="creation-top-row">
@@ -9781,12 +9158,10 @@ function AddSheet({
 
 function TemplatePicker({
   templates,
-  copy,
   language,
   onSelect,
 }: {
   templates: ActionTemplate[];
-  copy: UiCopy;
   language: AppSettings["language"];
   onSelect: (template: ActionTemplate) => void;
 }) {
@@ -10130,24 +9505,6 @@ function getRepeatLabel(repeatMode: TaskRepeatMode | GoalRepeatMode, language: A
   return copy.everyDay;
 }
 
-function getPriorityLabel(priority: Priority, language: AppSettings["language"] = "ru"): string {
-  const copy = uiCopy[language];
-
-  if (priority === "low") {
-    return copy.lowPriority;
-  }
-
-  if (priority === "high") {
-    return copy.highPriority;
-  }
-
-  return copy.mediumPriority;
-}
-
-function getActionIcon(iconKey: string): ActionIconOption {
-  return actionIcons.find((icon) => icon.key === iconKey) ?? actionIcons[actionIcons.length - 1];
-}
-
 function getActionRepeatLabel(period: ActionPeriod, repeatMode: GoalRepeatMode, language: AppSettings["language"] = "ru"): string {
   const copy = uiCopy[language];
 
@@ -10213,41 +9570,6 @@ function getPeriodDates(today: string, period: GoalPeriod, customStart: string, 
     return {
       startDate: today,
       endDate: toDateKey(new Date(start.getFullYear(), start.getMonth() + 1, 0)),
-    };
-  }
-
-  if (period === "forever") {
-    return {
-      startDate: today,
-      endDate: "2099-12-31",
-    };
-  }
-
-  return {
-    startDate: customStart,
-    endDate: customEnd,
-  };
-}
-
-function getTaskPeriodDates(today: string, period: TaskPeriod, customStart: string, customEnd: string) {
-  if (period === "today") {
-    return {
-      startDate: today,
-      endDate: today,
-    };
-  }
-
-  if (period === "week") {
-    return {
-      startDate: today,
-      endDate: addDays(today, 6),
-    };
-  }
-
-  if (period === "month") {
-    return {
-      startDate: today,
-      endDate: addDays(today, 29),
     };
   }
 
