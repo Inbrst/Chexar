@@ -1007,21 +1007,24 @@ function openChexarMarkup(config: BotConfig) {
   };
 }
 
-function mainMenuMarkup(config: BotConfig) {
+function messagePanelMarkup(config: BotConfig) {
   return {
-    inline_keyboard: [
+    keyboard: [
       [
         openChexarButton(config),
       ],
       [
-        { text: "📋 Сегодня", callback_data: "menu:today" },
-        { text: "✨ Создать", callback_data: "menu:create" },
+        { text: "📋 Сегодня" },
+        { text: "✨ Создать" },
       ],
       [
-        { text: "❔ Помощь", callback_data: "menu:help" },
-        { text: "⚙️ Профиль", callback_data: "menu:settings" },
+        { text: "❔ Помощь" },
+        { text: "⚙️ Профиль" },
       ],
     ],
+    resize_keyboard: true,
+    is_persistent: true,
+    input_field_placeholder: "Напиши задачу или выбери действие",
   };
 }
 
@@ -1186,13 +1189,10 @@ async function sendWelcome(ctx: BotContext): Promise<void> {
     [
       WELCOME_MESSAGE,
       "",
-      "Мини-пульт для ритма дня:",
-      "• открыть Chexar внутри Telegram",
-      "• посмотреть задачи на сегодня",
-      "• отметить чекбокс или добавить прогресс",
-      "• создать задачу обычным сообщением",
+      "Кнопки теперь закреплены у поля сообщения.",
+      "Выбери действие внизу или напиши задачу обычным текстом.",
     ].join("\n"),
-    mainMenuMarkup(ctx.config),
+    messagePanelMarkup(ctx.config),
   );
 }
 
@@ -1215,7 +1215,7 @@ async function sendHelp(ctx: BotContext): Promise<void> {
       "",
       "Бот включается в профиле Chexar.",
     ].join("\n"),
-    secondaryMenuMarkup(ctx.config),
+    messagePanelMarkup(ctx.config),
   );
 }
 
@@ -1233,7 +1233,7 @@ async function sendCreateGuide(ctx: BotContext): Promise<void> {
       "• Добавь воду каждый день",
       "• Создай список: уборка, спорт, чтение 20 страниц",
     ].join("\n"),
-    secondaryMenuMarkup(ctx.config),
+    messagePanelMarkup(ctx.config),
   );
 }
 
@@ -1246,18 +1246,18 @@ async function sendSettingsGuide(ctx: BotContext): Promise<void> {
       "",
       "Настройки бота, напоминания и связь аккаунта находятся в профиле Chexar.",
     ].join("\n"),
-    openChexarMarkup(ctx.config),
+    messagePanelMarkup(ctx.config),
   );
 }
 
 async function handleToday(ctx: BotContext): Promise<void> {
   if (!ctx.user) {
-    await sendMessage(ctx.config, ctx.chatId, "Открой Chexar внутри Telegram, чтобы связать профиль.", mainMenuMarkup(ctx.config));
+    await sendMessage(ctx.config, ctx.chatId, "Открой Chexar внутри Telegram, чтобы связать профиль.", messagePanelMarkup(ctx.config));
     return;
   }
 
   if (!isBotEnabled(ctx.settings)) {
-    await sendMessage(ctx.config, ctx.chatId, "Бот выключен в профиле Chexar. Включи его в настройках профиля.", openChexarMarkup(ctx.config));
+    await sendMessage(ctx.config, ctx.chatId, "Бот выключен в профиле Chexar. Включи его в настройках профиля.", messagePanelMarkup(ctx.config));
     return;
   }
 
@@ -1328,12 +1328,12 @@ async function addProgress(ctx: BotContext, itemId: string, amount: number): Pro
 
 async function handleActionText(ctx: BotContext, text: string): Promise<void> {
   if (!ctx.user) {
-    await sendMessage(ctx.config, ctx.chatId, "Открой Chexar внутри Telegram, чтобы связать профиль.", mainMenuMarkup(ctx.config));
+    await sendMessage(ctx.config, ctx.chatId, "Открой Chexar внутри Telegram, чтобы связать профиль.", messagePanelMarkup(ctx.config));
     return;
   }
 
   if (!isBotEnabled(ctx.settings)) {
-    await sendMessage(ctx.config, ctx.chatId, "Бот выключен в профиле Chexar. Включи его в настройках профиля.", openChexarMarkup(ctx.config));
+    await sendMessage(ctx.config, ctx.chatId, "Бот выключен в профиле Chexar. Включи его в настройках профиля.", messagePanelMarkup(ctx.config));
     return;
   }
 
@@ -1363,7 +1363,7 @@ async function handleActionText(ctx: BotContext, text: string): Promise<void> {
   const created = await createItemsFromDrafts(ctx.config, ctx.user.id, drafts);
 
   if (created.length === 0) {
-    await sendMessage(ctx.config, ctx.chatId, "Не разобрал сообщение. Попробуй: «Создай задачу выпить воду» или открой /help.", secondaryMenuMarkup(ctx.config));
+    await sendMessage(ctx.config, ctx.chatId, "Не разобрал сообщение. Попробуй: «Создай задачу выпить воду» или нажми «Помощь».", messagePanelMarkup(ctx.config));
     return;
   }
 
@@ -1371,7 +1371,7 @@ async function handleActionText(ctx: BotContext, text: string): Promise<void> {
     ctx.config,
     ctx.chatId,
     [`✨ Создал в Chexar:`, "", ...created.map((item) => `${getEmoji(item)} ${item.title}`)].join("\n"),
-    secondaryMenuMarkup(ctx.config),
+    messagePanelMarkup(ctx.config),
   );
 }
 
@@ -1505,6 +1505,16 @@ export async function handleTelegramWebhook(update: TelegramUpdate): Promise<voi
 
     if (normalized === "помощь" || normalized === "help") {
       await sendHelp(ctx);
+      return;
+    }
+
+    if (normalized === "создать" || normalized === "create") {
+      await sendCreateGuide(ctx);
+      return;
+    }
+
+    if (normalized === "профиль" || normalized === "настройки" || normalized === "settings") {
+      await sendSettingsGuide(ctx);
       return;
     }
 
