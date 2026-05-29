@@ -62,6 +62,36 @@ function logError(message: string, details?: unknown): void {
   console.error(`[telegram:webhook] ${message}`, safeLogPayload(details));
 }
 
+function getTelegramEnvDiagnostics(): Record<string, unknown> {
+  const env = process.env ?? {};
+  const telegramEnvKeys = Object.keys(env)
+    .filter((key) => key.toUpperCase().includes("TELEGRAM"))
+    .sort();
+
+  return {
+    telegramEnvKeys,
+    hasExactTelegramBotToken: Boolean(env.TELEGRAM_BOT_TOKEN),
+    vercelEnv: env.VERCEL_ENV ?? null,
+    nodeEnv: env.NODE_ENV ?? null,
+  };
+}
+
+function readTelegramBotToken(): string | undefined {
+  const exactToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
+  if (exactToken) {
+    return exactToken;
+  }
+
+  const fallbackKey = Object.keys(process.env).find((key) => key.trim().toUpperCase() === "TELEGRAM_BOT_TOKEN");
+  const fallbackToken = fallbackKey ? process.env[fallbackKey]?.trim() : undefined;
+  if (fallbackToken) {
+    logInfo("Using fallback TELEGRAM_BOT_TOKEN env key", { fallbackKey });
+    return fallbackToken;
+  }
+
+  return undefined;
+}
+
 function sendJson(res: ApiResponse, statusCode: number, body: Record<string, unknown>): void {
   res.setHeader?.("Content-Type", "application/json; charset=utf-8");
 
@@ -175,6 +205,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
     if (method === "GET") {
       logInfo("GET alive check");
+      logInfo("Telegram env diagnostics", getTelegramEnvDiagnostics());
       sendText(res, 200, ALIVE_REPLY);
       return;
     }
@@ -184,9 +215,12 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       return;
     }
 
-    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const envDiagnostics = getTelegramEnvDiagnostics();
+    logInfo("Telegram env diagnostics", envDiagnostics);
+
+    const token = readTelegramBotToken();
     if (!token) {
-      logError("Missing TELEGRAM_BOT_TOKEN");
+      logError("Missing TELEGRAM_BOT_TOKEN", envDiagnostics);
       sendJson(res, 500, { ok: false, error: "TELEGRAM_BOT_TOKEN is not configured" });
       return;
     }
