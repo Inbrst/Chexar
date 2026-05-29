@@ -1,18 +1,7 @@
+import { handleTelegramWebhook, type TelegramUpdate } from "../../server/telegramBot.js";
+
 declare const process: {
   env: Record<string, string | undefined>;
-};
-
-type TelegramChat = {
-  id?: number | string;
-};
-
-type TelegramMessage = {
-  chat?: TelegramChat;
-  text?: string;
-};
-
-type TelegramUpdate = {
-  message?: TelegramMessage;
 };
 
 type ApiRequest = {
@@ -31,9 +20,6 @@ type ApiResponse = {
   status: (code: number) => JsonResponder;
 };
 
-const TELEGRAM_API_BASE = "https://api.telegram.org";
-const CHEXAR_APP_URL = "https://chexar.vercel.app";
-const START_REPLY = "Chexar connected ✅";
 const ALIVE_REPLY = "Telegram webhook alive";
 
 function safeLogPayload(value: unknown): string {
@@ -74,22 +60,6 @@ function getTelegramEnvDiagnostics(): Record<string, unknown> {
     vercelEnv: env.VERCEL_ENV ?? null,
     nodeEnv: env.NODE_ENV ?? null,
   };
-}
-
-function readTelegramBotToken(): string | undefined {
-  const exactToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
-  if (exactToken) {
-    return exactToken;
-  }
-
-  const fallbackKey = Object.keys(process.env).find((key) => key.trim().toUpperCase() === "TELEGRAM_BOT_TOKEN");
-  const fallbackToken = fallbackKey ? process.env[fallbackKey]?.trim() : undefined;
-  if (fallbackToken) {
-    logInfo("Using fallback TELEGRAM_BOT_TOKEN env key", { fallbackKey });
-    return fallbackToken;
-  }
-
-  return undefined;
 }
 
 function sendJson(res: ApiResponse, statusCode: number, body: Record<string, unknown>): void {
@@ -147,7 +117,11 @@ function parseUpdate(body: unknown): TelegramUpdate {
   return asRecord(body) as TelegramUpdate;
 }
 
-function getCommand(text: string | undefined): string | null {
+function getCommand(text: unknown): string | null {
+  if (typeof text !== "string") {
+    return null;
+  }
+
   const firstToken = text?.trim().split(/\s+/, 1)[0] ?? "";
   if (!firstToken.startsWith("/")) {
     return null;
@@ -156,47 +130,19 @@ function getCommand(text: string | undefined): string | null {
   return firstToken.slice(1).split("@", 1)[0]?.toLowerCase() ?? null;
 }
 
-function openChexarKeyboard(): Record<string, unknown> {
+function getParsedUpdateInfo(update: TelegramUpdate): Record<string, unknown> {
+  const message = update.message;
+  const callback = update.callback_query;
+  const chatId = message?.chat?.id ?? callback?.message?.chat?.id ?? null;
+  const text = message?.text ?? null;
+
   return {
-    inline_keyboard: [
-      [
-        {
-          text: "Open Chexar",
-          url: CHEXAR_APP_URL,
-        },
-      ],
-    ],
+    chatId,
+    text,
+    command: getCommand(text),
+    hasCallback: Boolean(callback),
+    callbackData: callback?.data ?? null,
   };
-}
-
-async function sendTelegramMessage(token: string, chatId: number | string, text: string, replyMarkup?: Record<string, unknown>): Promise<void> {
-  const response = await fetch(`${TELEGRAM_API_BASE}/bot${token}/sendMessage`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      disable_web_page_preview: true,
-      ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
-    }),
-  });
-  const responseText = await response.text().catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
-    return `Failed to read Telegram response body: ${message}`;
-  });
-
-  logInfo("Telegram API response", {
-    method: "sendMessage",
-    status: response.status,
-    ok: response.ok,
-    body: responseText.slice(0, 1200),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Telegram sendMessage failed with status ${response.status}: ${responseText.slice(0, 300)}`);
-  }
 }
 
 export default async function handler(req: ApiRequest, res: ApiResponse) {
@@ -218,40 +164,18 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     const envDiagnostics = getTelegramEnvDiagnostics();
     logInfo("Telegram env diagnostics", envDiagnostics);
 
-    const token = readTelegramBotToken();
-    if (!token) {
-      logError("Missing TELEGRAM_BOT_TOKEN", envDiagnostics);
-      sendJson(res, 500, { ok: false, error: "TELEGRAM_BOT_TOKEN is not configured" });
-      return;
-    }
-
     const update = parseUpdate(req.body);
-    const message = update.message;
-    const chatId = message?.chat?.id;
-    const text = message?.text;
-    const command = getCommand(message?.text);
-
     logInfo("Incoming update", update);
-    logInfo("Parsed message", {
-      chatId,
-      text,
-      command,
-      hasToken: Boolean(token),
-    });
+    const parsed = getParsedUpdateInfo(update);
+    logInfo("Parsed update", parsed);
 
-    if (command === "start") {
-      if (chatId === undefined || chatId === null) {
-        logError("Missing chat id for /start", update);
-        sendJson(res, 200, { ok: true, handled: false, reason: "Missing chat id" });
-        return;
-      }
-
-      await sendTelegramMessage(token, chatId, START_REPLY, openChexarKeyboard());
-      sendJson(res, 200, { ok: true, handled: true, command: "start" });
+    if (!update.message && !update.callback_query) {
+      sendJson(res, 200, { ok: true, handled: false });
       return;
     }
 
-    sendJson(res, 200, { ok: true, handled: false });
+    await handleTelegramWebhook(update);
+    sendJson(res, 200, { ok: true, handled: true, command: parsed.command ?? undefined });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Telegram webhook failed";
     logError("Unhandled webhook error", {

@@ -3,8 +3,8 @@
 ## Required environment variable
 
 - `TELEGRAM_BOT_TOKEN`
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_URL` / `VITE_SUPABASE_URL` for the same Supabase project used by the Mini App
+- `SUPABASE_SERVICE_ROLE_KEY` or `VITE_SUPABASE_ANON_KEY`
 - `OPENAI_API_KEY` for AI task creation in Telegram. If it is missing, the bot uses a local fallback parser.
 
 Optional:
@@ -18,19 +18,19 @@ Apply the Supabase migration:
 
 ## Webhook URL
 
-https://doperday.vercel.app/api/telegram/webhook
+https://chexar.vercel.app/api/telegram/webhook
 
 ## Set webhook
 
 Open this URL after replacing `<TELEGRAM_BOT_TOKEN>` with the bot token:
 
-https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=https://doperday.vercel.app/api/telegram/webhook
+https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=https://chexar.vercel.app/api/telegram/webhook
 
 ## Test /start
 
 1. Open the Telegram bot chat.
 2. Send `/start`.
-3. Confirm the bot replies with `Chexar — ежедневный дашборд ритма.` and shows the `Open Chexar` button.
+3. Confirm the bot replies with `Chexar connected ✅` and shows the `Open Chexar` Mini App button.
 
 ## Test bot actions
 
@@ -46,6 +46,6 @@ https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=https://doperday
 
 Vercel Cron calls:
 
-https://doperday.vercel.app/api/telegram/reminders
+https://chexar.vercel.app/api/telegram/reminders
 
 The schedule is configured in `vercel.json` as `0 6 * * *`.

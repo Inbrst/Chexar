@@ -121,8 +121,8 @@ type RequestLike = {
   headers?: Record<string, string | string[] | undefined>;
 };
 
-export const WELCOME_MESSAGE = "Chexar — ежедневный дашборд ритма.";
-const DEFAULT_APP_URL = "https://doperday.vercel.app/";
+export const WELCOME_MESSAGE = "Chexar connected ✅";
+const DEFAULT_APP_URL = "https://chexar.vercel.app";
 const MAX_CREATED_ACTIONS = 8;
 
 const emojiRules: Array<[string[], string]> = [
@@ -140,17 +140,62 @@ const emojiRules: Array<[string[], string]> = [
   [["учеб", "курс", "lesson", "study"], "🎓"],
 ];
 
+function safeLogPayload(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function logInfo(message: string, details?: unknown): void {
+  if (details === undefined) {
+    console.log(`[telegram:bot] ${message}`);
+    return;
+  }
+
+  console.log(`[telegram:bot] ${message}`, safeLogPayload(details));
+}
+
+function readEnv(names: string[]): string | undefined {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) {
+      return value;
+    }
+  }
+
+  const normalizedNames = new Set(names.map((name) => name.trim().toUpperCase()));
+  const fallbackKey = Object.keys(process.env).find((key) => normalizedNames.has(key.trim().toUpperCase()));
+  const fallbackValue = fallbackKey ? process.env[fallbackKey]?.trim() : undefined;
+
+  return fallbackValue || undefined;
+}
+
 function getConfig(): BotConfig {
-  const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
+  const telegramToken = readEnv(["TELEGRAM_BOT_TOKEN"]);
   if (!telegramToken) {
     throw new Error("TELEGRAM_BOT_TOKEN is not configured");
   }
 
-  const supabaseUrl = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
-  const supabaseKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ??
-    process.env.SUPABASE_ANON_KEY ??
-    process.env.VITE_SUPABASE_ANON_KEY;
+  const supabaseUrl = readEnv([
+    "SUPABASE_URL",
+    "VITE_SUPABASE_URL",
+    "NEXT_PUBLIC_Chexar_SUPABASE_URL",
+    "Chexar_SUPABASE_URL",
+  ]);
+  const supabaseKey = readEnv([
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "SUPABASE_ANON_KEY",
+    "VITE_SUPABASE_ANON_KEY",
+    "NEXT_PUBLIC_Chexar_SUPABASE_ANON_KEY",
+    "NEXT_PUBLIC_Chexar_SUPABASE_PUBLISHABLE_KEY",
+    "Chexar_SUPABASE_SERVICE_ROLE_KEY",
+    "Chexar_SUPABASE_SECRET_KEY",
+    "Chexar_SUPABASE_ANON_KEY",
+    "Chexar_SUPABASE_PUBLISHABLE_KEY",
+  ]);
+  const appUrl = readEnv(["CHEXAR_APP_URL", "VITE_CHEXAR_APP_URL", "NEXT_PUBLIC_CHEXAR_APP_URL"]) ?? DEFAULT_APP_URL;
 
   if (!supabaseUrl) {
     throw new Error("SUPABASE_URL or VITE_SUPABASE_URL is not configured");
@@ -164,8 +209,8 @@ function getConfig(): BotConfig {
     telegramToken,
     supabaseUrl: supabaseUrl.replace(/\/+$/, ""),
     supabaseKey,
-    appUrl: process.env.CHEXAR_APP_URL ?? DEFAULT_APP_URL,
-    timeZone: process.env.CHEXAR_TIME_ZONE ?? "Europe/Berlin",
+    appUrl: appUrl.replace(/\/+$/, ""),
+    timeZone: readEnv(["CHEXAR_TIME_ZONE"]) ?? "Europe/Berlin",
   };
 }
 
@@ -882,9 +927,20 @@ async function sendTelegram(config: BotConfig, method: string, body: Record<stri
     },
     body: JSON.stringify(body),
   });
+  const responseText = await response.text().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    return `Failed to read Telegram response body: ${message}`;
+  });
+
+  logInfo("Telegram API response", {
+    method,
+    status: response.status,
+    ok: response.ok,
+    body: responseText.slice(0, 1200),
+  });
 
   if (!response.ok) {
-    throw new Error(`Telegram ${method} failed with status ${response.status}`);
+    throw new Error(`Telegram ${method} failed with status ${response.status}: ${responseText.slice(0, 300)}`);
   }
 }
 

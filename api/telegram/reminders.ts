@@ -1,4 +1,4 @@
-import { isCronAuthorized, sendDailyReminders } from "../../server/telegramBot";
+import { isCronAuthorized, sendDailyReminders } from "../../server/telegramBot.js";
 
 type ApiRequest = {
   method?: string;
