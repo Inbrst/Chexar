@@ -920,7 +920,20 @@ async function createItemsFromDrafts(config: BotConfig, userId: string, drafts: 
   );
 }
 
-async function sendTelegram(config: BotConfig, method: string, body: Record<string, unknown>): Promise<void> {
+function readTelegramMessageResult(value: unknown): TelegramMessage | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const response = value as { ok?: unknown; result?: unknown };
+  if (response.ok !== true || !response.result || typeof response.result !== "object") {
+    return null;
+  }
+
+  return response.result as TelegramMessage;
+}
+
+async function sendTelegram(config: BotConfig, method: string, body: Record<string, unknown>): Promise<unknown> {
   const response = await fetch(`https://api.telegram.org/bot${config.telegramToken}/${method}`, {
     method: "POST",
     headers: {
@@ -943,15 +956,22 @@ async function sendTelegram(config: BotConfig, method: string, body: Record<stri
   if (!response.ok) {
     throw new Error(`Telegram ${method} failed with status ${response.status}: ${responseText.slice(0, 300)}`);
   }
+
+  try {
+    return JSON.parse(responseText) as unknown;
+  } catch {
+    return null;
+  }
 }
 
-async function sendMessage(config: BotConfig, chatId: number | string, text: string, replyMarkup?: Record<string, unknown>): Promise<void> {
-  await sendTelegram(config, "sendMessage", {
+async function sendMessage(config: BotConfig, chatId: number | string, text: string, replyMarkup?: Record<string, unknown>): Promise<TelegramMessage | null> {
+  const response = await sendTelegram(config, "sendMessage", {
     chat_id: chatId,
     text,
     disable_web_page_preview: true,
     ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
   });
+  return readTelegramMessageResult(response);
 }
 
 async function sendChatAction(config: BotConfig, chatId: number | string, action = "typing"): Promise<void> {
@@ -1186,7 +1206,8 @@ function getLanguage(settings: RemoteSettings | null): string {
 }
 
 async function sendWelcome(ctx: BotContext): Promise<void> {
-  await sendMessage(ctx.config, ctx.chatId, "Кнопки вернулись в чат.", removeMessagePanelMarkup());
+  const cleanupMessage = await sendMessage(ctx.config, ctx.chatId, "Кнопки вернулись в чат.", removeMessagePanelMarkup());
+  await deleteMessage(ctx.config, ctx.chatId, cleanupMessage?.message_id);
   await sendMessage(
     ctx.config,
     ctx.chatId,
