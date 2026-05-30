@@ -146,6 +146,46 @@ const onboardingQuestSteps: OnboardingQuestStep[] = [
   "questTaskCreated",
 ];
 
+const onboardingQuestStepGroups: OnboardingQuestStep[][] = [
+  ["questTaskCompleted"],
+  ["questTaskDeleted"],
+  ["questPairTimerSet", "questPairEmojiChanged", "questPairReordered"],
+  ["questMiniListOpened", "questMiniListCompleted"],
+  ["questProgressEntered"],
+  ["questTaskCreated"],
+];
+
+const onboardingQuestStepPrerequisites: Partial<Record<OnboardingQuestStep, OnboardingQuestStep[]>> = {
+  questPairReordered: ["questPairTimerSet", "questPairEmojiChanged"],
+  questMiniListCompleted: ["questMiniListOpened"],
+};
+
+function canCompleteOnboardingQuestStep(step: OnboardingQuestStep, completedSteps: OnboardingQuestStep[]): boolean {
+  const completed = new Set(completedSteps);
+
+  if (completed.has(step)) {
+    return false;
+  }
+
+  const groupIndex = onboardingQuestStepGroups.findIndex((group) => group.includes(step));
+
+  if (groupIndex === -1) {
+    return false;
+  }
+
+  const previousGroupsCompleted = onboardingQuestStepGroups
+    .slice(0, groupIndex)
+    .every((group) => group.every((groupStep) => completed.has(groupStep)));
+
+  if (!previousGroupsCompleted) {
+    return false;
+  }
+
+  const prerequisites = onboardingQuestStepPrerequisites[step] ?? [];
+
+  return prerequisites.every((requiredStep) => completed.has(requiredStep));
+}
+
 type OnboardingQuestScenarioCopy = {
   title: string;
   meta: string;
@@ -3131,9 +3171,7 @@ export default function App() {
 
   function completeOnboardingQuestStep(step: OnboardingQuestStep) {
     setOnboardingQuest((current) => {
-      const stepIndex = onboardingQuestSteps.indexOf(step);
-
-      if (stepIndex === -1 || stepIndex > current.completedSteps.length || !current.enabled || current.hidden || current.finished || current.completedSteps.includes(step)) {
+      if (!current.enabled || current.hidden || current.finished || !canCompleteOnboardingQuestStep(step, current.completedSteps)) {
         return current;
       }
 
@@ -5647,6 +5685,51 @@ function AiCreationSheet({
   );
 }
 
+type RhythmCardMode = "percent" | "bars" | "compact";
+
+const RHYTHM_CARD_MODE_STORAGE_KEY = "chexar.rhythmCardMode";
+
+function isRhythmCardMode(value: string | null): value is RhythmCardMode {
+  return value === "percent" || value === "bars" || value === "compact";
+}
+
+function loadRhythmCardMode(): RhythmCardMode {
+  if (typeof window === "undefined") {
+    return "percent";
+  }
+
+  try {
+    const storedMode = window.localStorage.getItem(RHYTHM_CARD_MODE_STORAGE_KEY);
+    return isRhythmCardMode(storedMode) ? storedMode : "percent";
+  } catch {
+    return "percent";
+  }
+}
+
+function saveRhythmCardMode(mode: RhythmCardMode): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(RHYTHM_CARD_MODE_STORAGE_KEY, mode);
+  } catch {
+    // Ignore storage errors in private or restricted browser contexts.
+  }
+}
+
+function getNextRhythmCardMode(mode: RhythmCardMode): RhythmCardMode {
+  if (mode === "percent") {
+    return "bars";
+  }
+
+  if (mode === "bars") {
+    return "compact";
+  }
+
+  return "percent";
+}
+
 function RhythmCard({
   daily,
   trend,
@@ -5662,7 +5745,9 @@ function RhythmCard({
   activeDate: string;
   language: AppSettings["language"];
 }) {
-  const [showWeeklyBars, setShowWeeklyBars] = useState(false);
+  const [mode, setMode] = useState<RhythmCardMode>(() => loadRhythmCardMode());
+  const showWeeklyBars = mode === "bars";
+  const isCompact = mode === "compact";
   const dailyPercent = clampPercent(daily.percent);
   const cardStyle = {
     "--daily-percent": `${dailyPercent}%`,
@@ -5670,14 +5755,18 @@ function RhythmCard({
     ...getFillToneStyle(dailyPercent),
   } as CSSProperties;
 
+  useEffect(() => {
+    saveRhythmCardMode(mode);
+  }, [mode]);
+
   return (
     <button
       type="button"
-      className={`rhythm-card ${showWeeklyBars ? "is-bars-view" : "is-percent-view"}`}
+      className={`rhythm-card is-${mode}-view`}
       style={cardStyle}
       aria-label={`${showWeeklyBars ? copy.rhythmTrendAria : copy.rhythmAria}: ${dailyPercent}%`}
-      aria-pressed={showWeeklyBars}
-      onClick={() => setShowWeeklyBars((value) => !value)}
+      aria-pressed={showWeeklyBars || isCompact}
+      onClick={() => setMode((currentMode) => getNextRhythmCardMode(currentMode))}
     >
       <div className="rhythm-fill" />
       {showWeeklyBars ? (
@@ -5687,6 +5776,8 @@ function RhythmCard({
           </span>
           <RhythmWeekBars values={weekTrend} activeDate={activeDate} language={language} ariaLabel={copy.rhythmTrendAria} />
         </div>
+      ) : isCompact ? (
+        <span className="rhythm-compact-line" aria-hidden="true" />
       ) : (
         <>
           <strong className="rhythm-percent">{dailyPercent}%</strong>
