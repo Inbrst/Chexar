@@ -23,6 +23,7 @@ type TelegramMessage = {
   chat?: TelegramChat;
   from?: TelegramUser;
   text?: string;
+  successful_payment?: TelegramSuccessfulPayment;
 };
 
 type TelegramCallbackQuery = {
@@ -32,9 +33,26 @@ type TelegramCallbackQuery = {
   data?: string;
 };
 
+type TelegramPreCheckoutQuery = {
+  id?: string;
+  from?: TelegramUser;
+  currency?: string;
+  total_amount?: number;
+  invoice_payload?: string;
+};
+
+type TelegramSuccessfulPayment = {
+  currency?: string;
+  total_amount?: number;
+  invoice_payload?: string;
+  telegram_payment_charge_id?: string;
+  provider_payment_charge_id?: string;
+};
+
 export type TelegramUpdate = {
   message?: TelegramMessage;
   callback_query?: TelegramCallbackQuery;
+  pre_checkout_query?: TelegramPreCheckoutQuery;
 };
 
 type RemoteUser = {
@@ -125,6 +143,7 @@ type RequestLike = {
 export const WELCOME_MESSAGE = "Chexar connected ✅";
 const DEFAULT_APP_URL = "https://chexar.vercel.app";
 const MAX_CREATED_ACTIONS = 8;
+const DONATION_AMOUNTS = [10, 25, 50, 100];
 
 const emojiRules: Array<[string[], string]> = [
   [["заряд", "трениров", "спорт", "workout", "gym"], "🏋️"],
@@ -742,6 +761,24 @@ async function getSettings(config: BotConfig, userId: string): Promise<RemoteSet
   return rows[0] ?? null;
 }
 
+async function updateSettings(config: BotConfig, userId: string, patch: Partial<RemoteSettings>): Promise<RemoteSettings | null> {
+  const rows = await supabaseFetch<RemoteSettings[]>(
+    config,
+    queryPath("settings", { on_conflict: "user_id" }),
+    {
+      method: "POST",
+      headers: getSupabaseHeaders(config, "resolution=merge-duplicates,return=representation"),
+      body: JSON.stringify({
+        user_id: userId,
+        ...patch,
+        updated_at: new Date().toISOString(),
+      }),
+    },
+  );
+
+  return rows[0] ?? null;
+}
+
 async function updateBotChatId(config: BotConfig, userId: string, chatId: number | string): Promise<void> {
   try {
     await supabaseFetch(
@@ -1008,6 +1045,52 @@ async function answerCallback(config: BotConfig, callbackId: string | undefined,
   });
 }
 
+async function answerPreCheckout(config: BotConfig, queryId: string | undefined, ok: boolean, errorMessage?: string): Promise<void> {
+  if (!queryId) {
+    return;
+  }
+
+  await sendTelegram(config, "answerPreCheckoutQuery", {
+    pre_checkout_query_id: queryId,
+    ok,
+    ...(ok ? {} : { error_message: errorMessage ?? "Платеж временно недоступен." }),
+  });
+}
+
+async function sendDonationInvoice(ctx: BotContext, amount: number): Promise<void> {
+  const safeAmount = DONATION_AMOUNTS.includes(amount) ? amount : DONATION_AMOUNTS[0];
+  await sendTelegram(ctx.config, "sendInvoice", {
+    chat_id: ctx.chatId,
+    title: "Поддержать Chexar",
+    description: "Донат звездами на развитие Chexar.",
+    payload: `chexar_donation:${ctx.telegramId}:${safeAmount}:${Date.now()}`,
+    provider_token: "",
+    currency: "XTR",
+    prices: [
+      {
+        label: "Chexar support",
+        amount: safeAmount,
+      },
+    ],
+    reply_markup: {
+      inline_keyboard: [
+        [
+          {
+            text: `Оплатить ${safeAmount} ⭐`,
+            pay: true,
+          },
+        ],
+        [
+          {
+            text: "🏠 Меню",
+            callback_data: "menu:home",
+          },
+        ],
+      ],
+    },
+  });
+}
+
 function openChexarButton(config: BotConfig) {
   return {
     text: "Open Chexar",
@@ -1034,12 +1117,16 @@ function mainMenuMarkup(config: BotConfig) {
         openChexarButton(config),
       ],
       [
-        { text: "📋 Сегодня", callback_data: "menu:today" },
+        { text: "📋 План", callback_data: "menu:today" },
         { text: "✨ Создать", callback_data: "menu:create" },
       ],
       [
+        { text: "🔔 Напоминания", callback_data: "menu:reminders" },
+        { text: "⭐ Донат", callback_data: "donate:menu" },
+      ],
+      [
         { text: "❔ Помощь", callback_data: "menu:help" },
-        { text: "⚙️ Профиль", callback_data: "menu:settings" },
+        { text: "⚙️ Настройки", callback_data: "menu:settings" },
       ],
     ],
   };
@@ -1055,8 +1142,51 @@ function secondaryMenuMarkup(config: BotConfig) {
   return {
     inline_keyboard: [
       [
-        { text: "📋 Сегодня", callback_data: "menu:today" },
+        { text: "📋 План", callback_data: "menu:today" },
         { text: "🏠 Меню", callback_data: "menu:home" },
+      ],
+      [
+        { text: "⭐ Донат", callback_data: "donate:menu" },
+        { text: "🔔 Напоминания", callback_data: "menu:reminders" },
+      ],
+      [
+        openChexarButton(config),
+      ],
+    ],
+  };
+}
+
+function donationMenuMarkup() {
+  return {
+    inline_keyboard: [
+      DONATION_AMOUNTS.slice(0, 2).map((amount) => ({
+        text: `${amount} ⭐`,
+        callback_data: `donate:${amount}`,
+      })),
+      DONATION_AMOUNTS.slice(2, 4).map((amount) => ({
+        text: `${amount} ⭐`,
+        callback_data: `donate:${amount}`,
+      })),
+      [
+        { text: "🏠 Меню", callback_data: "menu:home" },
+      ],
+    ],
+  };
+}
+
+function settingsMenuMarkup(config: BotConfig, settings: RemoteSettings | null) {
+  const remindersEnabled = settings?.telegram_reminders_enabled !== false;
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: remindersEnabled ? "🔕 Отключить напоминания" : "🔔 Включить напоминания",
+          callback_data: remindersEnabled ? "settings:reminders:off" : "settings:reminders:on",
+        },
+      ],
+      [
+        { text: "📋 План", callback_data: "menu:today" },
+        { text: "⭐ Донат", callback_data: "donate:menu" },
       ],
       [
         openChexarButton(config),
@@ -1094,7 +1224,7 @@ function todayListMarkup(config: BotConfig, items: RemoteItem[]) {
 
     rows.push([
       {
-        text: `✓ Отметить · ${getEmoji(item)} ${title}`,
+        text: `✓ ${getEmoji(item)} ${title}`,
         callback_data: `done:${item.id}`,
       },
     ]);
@@ -1138,7 +1268,7 @@ async function getQuantityStatus(config: BotConfig, userId: string, item: Remote
 
 async function formatTodayList(config: BotConfig, userId: string, items: RemoteItem[], entries: RemoteDailyEntry[], dateKey: string): Promise<{ text: string; actionable: RemoteItem[] }> {
   const entriesMap = entryByItem(entries);
-  const lines = [`📋 Сегодня · ${dateKey}`, ""];
+  const lines = [`📋 Сегодня · ${dateKey}`, "Выбери задачу ниже, чтобы отметить прогресс.", ""];
   const actionable: RemoteItem[] = [];
 
   for (const item of items) {
@@ -1157,7 +1287,7 @@ async function formatTodayList(config: BotConfig, userId: string, items: RemoteI
     const target = Number(item.target_value ?? 0);
     const done = target > 0 && status.remaining <= 0;
     lines.push(
-      `${done ? "✅" : "□"} ${getEmoji(item)} ${item.title}: ${status.loggedToday}/${status.requiredToday || 0} ${item.unit ?? ""} сегодня`,
+      `${done ? "✅" : "□"} ${getEmoji(item)} ${item.title} · ${status.loggedToday}/${status.requiredToday || 0} ${item.unit ?? ""}`,
     );
     if (!done) {
       actionable.push(item);
@@ -1166,7 +1296,7 @@ async function formatTodayList(config: BotConfig, userId: string, items: RemoteI
 
   if (items.length === 0) {
     return {
-      text: "📋 Сегодня пусто.\n\nМожно написать: «Создай задачу выпить воду» или открыть Chexar.",
+      text: "📋 Сегодня пусто.\n\nНапиши задачу текстом или открой Chexar.",
       actionable: [],
     };
   }
@@ -1212,9 +1342,13 @@ async function sendWelcome(ctx: BotContext): Promise<void> {
     ctx.config,
     ctx.chatId,
     [
-      WELCOME_MESSAGE,
+      "⚡ Chexar",
       "",
-      "Выбери действие в сообщении или напиши задачу обычным текстом.",
+      WELCOME_MESSAGE,
+      "План, прогресс и AI-команды прямо в Telegram.",
+      "",
+      "Напиши: «создай немецкий 50 уроков на месяц»",
+      "или выбери действие ниже.",
     ].join("\n"),
     mainMenuMarkup(ctx.config),
   );
@@ -1227,9 +1361,12 @@ async function sendHelp(ctx: BotContext): Promise<void> {
     [
       "❔ Chexar bot",
       "",
-      "/menu — открыть кнопки",
-      "/today — задачи на сегодня",
-      "/help — подсказки",
+      "/menu — меню",
+      "/today — план",
+      "/create — создать через AI",
+      "/reminders — напоминания",
+      "/donate — донат Stars",
+      "/paysupport — платежи",
       "",
       "Примеры:",
       "• Отметь вода",
@@ -1248,7 +1385,7 @@ async function sendCreateGuide(ctx: BotContext): Promise<void> {
     ctx.config,
     ctx.chatId,
     [
-      "✨ Создание через чат",
+      "✨ AI-создание",
       "",
       "Напиши задачу обычным текстом. Я разберу название, эмодзи, период и формат.",
       "",
@@ -1262,15 +1399,69 @@ async function sendCreateGuide(ctx: BotContext): Promise<void> {
 }
 
 async function sendSettingsGuide(ctx: BotContext): Promise<void> {
+  const remindersEnabled = ctx.settings?.telegram_reminders_enabled !== false;
   await sendMessage(
     ctx.config,
     ctx.chatId,
     [
-      "⚙️ Профиль",
+      "⚙️ Настройки бота",
       "",
-      "Настройки бота, напоминания и связь аккаунта находятся в профиле Chexar.",
+      `Бот: ${isBotEnabled(ctx.settings) ? "включен" : "выключен"}`,
+      `Напоминания: ${remindersEnabled ? "включены" : "выключены"}`,
+      "",
+      "Можно переключить напоминания здесь или в профиле Chexar.",
+    ].join("\n"),
+    settingsMenuMarkup(ctx.config, ctx.settings),
+  );
+}
+
+async function sendDonationMenu(ctx: BotContext): Promise<void> {
+  await sendMessage(
+    ctx.config,
+    ctx.chatId,
+    [
+      "⭐ Поддержать Chexar",
+      "",
+      "Донат проходит через Telegram Stars.",
+      "Выбери сумму:",
+    ].join("\n"),
+    donationMenuMarkup(),
+  );
+}
+
+async function sendPaymentSupport(ctx: BotContext): Promise<void> {
+  await sendMessage(
+    ctx.config,
+    ctx.chatId,
+    [
+      "🧾 Платежи",
+      "",
+      "Донаты принимаются в Telegram Stars.",
+      "Если платеж прошел не так, напиши сюда: сумма, время и что произошло.",
     ].join("\n"),
     secondaryMenuMarkup(ctx.config),
+  );
+}
+
+async function setRemindersEnabled(ctx: BotContext, enabled: boolean): Promise<void> {
+  if (!ctx.user) {
+    await sendMessage(ctx.config, ctx.chatId, "Открой Chexar внутри Telegram, чтобы связать профиль.", openChexarMarkup(ctx.config));
+    return;
+  }
+
+  const settings = await updateSettings(ctx.config, ctx.user.id, {
+    telegram_reminders_enabled: enabled,
+  });
+  ctx.settings = settings ?? {
+    ...(ctx.settings ?? { user_id: ctx.user.id, language: "ru" }),
+    telegram_reminders_enabled: enabled,
+  };
+
+  await sendMessage(
+    ctx.config,
+    ctx.chatId,
+    enabled ? "🔔 Напоминания включены." : "🔕 Напоминания отключены.",
+    settingsMenuMarkup(ctx.config, ctx.settings),
   );
 }
 
@@ -1399,6 +1590,40 @@ async function handleActionText(ctx: BotContext, text: string): Promise<void> {
   );
 }
 
+async function handlePreCheckout(config: BotConfig, query: TelegramPreCheckoutQuery): Promise<void> {
+  const payload = query.invoice_payload ?? "";
+  const isDonation = query.currency === "XTR" && payload.startsWith("chexar_donation:");
+  await answerPreCheckout(
+    config,
+    query.id,
+    isDonation,
+    "Этот платеж не похож на донат Chexar. Попробуй открыть донат из меню бота.",
+  );
+}
+
+async function handleSuccessfulPayment(ctx: BotContext, payment: TelegramSuccessfulPayment): Promise<void> {
+  logInfo("Successful Telegram Stars payment", {
+    telegramId: ctx.telegramId,
+    userId: ctx.user?.id ?? null,
+    currency: payment.currency ?? null,
+    totalAmount: payment.total_amount ?? null,
+    payload: payment.invoice_payload ?? null,
+    telegramChargeId: payment.telegram_payment_charge_id ?? null,
+  });
+
+  await sendMessage(
+    ctx.config,
+    ctx.chatId,
+    [
+      "⭐ Спасибо за поддержку.",
+      "",
+      `Получено: ${payment.total_amount ?? 0} Stars.`,
+      "Это помогает быстрее доводить Chexar до нормального продукта.",
+    ].join("\n"),
+    secondaryMenuMarkup(ctx.config),
+  );
+}
+
 async function handleCallback(config: BotConfig, callback: TelegramCallbackQuery): Promise<void> {
   const chatId = callback.message?.chat?.id;
   if (chatId === undefined) {
@@ -1408,6 +1633,29 @@ async function handleCallback(config: BotConfig, callback: TelegramCallbackQuery
 
   const ctx = await getContext(config, chatId, callback.from ?? null);
   const [kind, itemId, rawAmount] = (callback.data ?? "").split(":");
+
+  if (kind === "donate") {
+    await answerCallback(config, callback.id);
+    await sendChatAction(config, chatId);
+    await deleteMessage(config, chatId, callback.message?.message_id);
+
+    if (itemId === "menu") {
+      await sendDonationMenu(ctx);
+      return;
+    }
+
+    const amount = Number(itemId);
+    await sendDonationInvoice(ctx, Number.isFinite(amount) ? amount : DONATION_AMOUNTS[0]);
+    return;
+  }
+
+  if (kind === "settings" && itemId === "reminders") {
+    await answerCallback(config, callback.id);
+    await sendChatAction(config, chatId);
+    await deleteMessage(config, chatId, callback.message?.message_id);
+    await setRemindersEnabled(ctx, rawAmount === "on");
+    return;
+  }
 
   if (kind === "menu") {
     await answerCallback(config, callback.id);
@@ -1430,6 +1678,11 @@ async function handleCallback(config: BotConfig, callback: TelegramCallbackQuery
     }
 
     if (itemId === "settings") {
+      await sendSettingsGuide(ctx);
+      return;
+    }
+
+    if (itemId === "reminders") {
       await sendSettingsGuide(ctx);
       return;
     }
@@ -1475,6 +1728,11 @@ async function handleCallback(config: BotConfig, callback: TelegramCallbackQuery
 export async function handleTelegramWebhook(update: TelegramUpdate): Promise<void> {
   const config = getConfig();
 
+  if (update.pre_checkout_query) {
+    await handlePreCheckout(config, update.pre_checkout_query);
+    return;
+  }
+
   if (update.callback_query) {
     await handleCallback(config, update.callback_query);
     return;
@@ -1487,6 +1745,12 @@ export async function handleTelegramWebhook(update: TelegramUpdate): Promise<voi
   }
 
   const ctx = await getContext(config, chatId, message?.from ?? null);
+
+  if (message?.successful_payment) {
+    await handleSuccessfulPayment(ctx, message.successful_payment);
+    return;
+  }
+
   const command = getCommand(message?.text);
 
   if (command === "start" || command === "menu") {
@@ -1506,6 +1770,21 @@ export async function handleTelegramWebhook(update: TelegramUpdate): Promise<voi
 
   if (command === "settings") {
     await sendSettingsGuide(ctx);
+    return;
+  }
+
+  if (command === "reminders") {
+    await sendSettingsGuide(ctx);
+    return;
+  }
+
+  if (command === "donate" || command === "support") {
+    await sendDonationMenu(ctx);
+    return;
+  }
+
+  if (command === "paysupport") {
+    await sendPaymentSupport(ctx);
     return;
   }
 
@@ -1539,6 +1818,26 @@ export async function handleTelegramWebhook(update: TelegramUpdate): Promise<voi
 
     if (normalized === "профиль" || normalized === "настройки" || normalized === "settings") {
       await sendSettingsGuide(ctx);
+      return;
+    }
+
+    if (normalized === "напоминания" || normalized === "reminders") {
+      await sendSettingsGuide(ctx);
+      return;
+    }
+
+    if (normalized.includes("напомин") && /\b(выкл|отключ|off|stop)\b/i.test(normalized)) {
+      await setRemindersEnabled(ctx, false);
+      return;
+    }
+
+    if (normalized.includes("напомин") && /\b(вкл|включ|on|start)\b/i.test(normalized)) {
+      await setRemindersEnabled(ctx, true);
+      return;
+    }
+
+    if (normalized === "донат" || normalized === "поддержать" || normalized === "звезды" || normalized === "stars" || normalized === "support") {
+      await sendDonationMenu(ctx);
       return;
     }
 

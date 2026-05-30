@@ -133,6 +133,7 @@ function getCommand(text: unknown): string | null {
 function getParsedUpdateInfo(update: TelegramUpdate): Record<string, unknown> {
   const message = update.message;
   const callback = update.callback_query;
+  const preCheckout = update.pre_checkout_query;
   const chatId = message?.chat?.id ?? callback?.message?.chat?.id ?? null;
   const text = message?.text ?? null;
 
@@ -142,6 +143,9 @@ function getParsedUpdateInfo(update: TelegramUpdate): Record<string, unknown> {
     command: getCommand(text),
     hasCallback: Boolean(callback),
     callbackData: callback?.data ?? null,
+    hasPreCheckout: Boolean(preCheckout),
+    preCheckoutPayload: preCheckout?.invoice_payload ?? null,
+    hasSuccessfulPayment: Boolean(message?.successful_payment),
   };
 }
 
@@ -169,7 +173,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     const parsed = getParsedUpdateInfo(update);
     logInfo("Parsed update", parsed);
 
-    if (!update.message && !update.callback_query) {
+    if (!update.message && !update.callback_query && !update.pre_checkout_query) {
       sendJson(res, 200, { ok: true, handled: false });
       return;
     }
