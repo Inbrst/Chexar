@@ -1601,6 +1601,29 @@ async function handlePreCheckout(config: BotConfig, query: TelegramPreCheckoutQu
   );
 }
 
+async function recordStarDonation(ctx: BotContext, payment: TelegramSuccessfulPayment): Promise<void> {
+  try {
+    await supabaseFetch(ctx.config, "telegram_star_donations", {
+      method: "POST",
+      headers: getSupabaseHeaders(ctx.config, "return=minimal"),
+      body: JSON.stringify({
+        user_id: ctx.user?.id ?? null,
+        telegram_id: ctx.telegramId,
+        chat_id: String(ctx.chatId),
+        currency: payment.currency ?? "XTR",
+        total_amount: payment.total_amount ?? 0,
+        invoice_payload: payment.invoice_payload ?? null,
+        telegram_payment_charge_id: payment.telegram_payment_charge_id ?? null,
+        provider_payment_charge_id: payment.provider_payment_charge_id ?? null,
+      }),
+    });
+  } catch (error) {
+    logInfo("Could not persist Telegram Stars donation", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 async function handleSuccessfulPayment(ctx: BotContext, payment: TelegramSuccessfulPayment): Promise<void> {
   logInfo("Successful Telegram Stars payment", {
     telegramId: ctx.telegramId,
@@ -1610,6 +1633,7 @@ async function handleSuccessfulPayment(ctx: BotContext, payment: TelegramSuccess
     payload: payment.invoice_payload ?? null,
     telegramChargeId: payment.telegram_payment_charge_id ?? null,
   });
+  await recordStarDonation(ctx, payment);
 
   await sendMessage(
     ctx.config,
