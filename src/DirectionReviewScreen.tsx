@@ -1,6 +1,5 @@
 import { ChevronDown, Compass, Minus, TrendingDown, TrendingUp } from "lucide-react";
 import { useMemo, useState } from "react";
-import { parseDateKey } from "./dateUtils";
 import {
   buildDirectionReview,
   builtInLifeAreas,
@@ -9,6 +8,7 @@ import {
   type DirectionLifeArea,
   type DirectionReviewPeriod,
 } from "./directionReview";
+import { formatDirectionReviewRange, pluralizeRussian } from "./directionReviewPresentation";
 import type { AppLanguage, AppState, LifeAreaKey } from "./types";
 
 type DirectionReviewScreenProps = {
@@ -119,7 +119,8 @@ const directionCopy = {
     basedOn: (opportunities: number, items: number, areas: number) =>
       `Расчёт по ${opportunities} запланированным отметкам, ${items} действиям и ${areas} сферам.`,
     comparable: (areas: number) => `Для сравнения хватает истории в ${areas} сферах.`,
-    tentative: (items: number) => `Автоклассификация ${items} действий пока предварительная.`,
+    tentative: (items: number) =>
+      `Автоклассификация пока предварительная: ${items} ${pluralizeRussian(items, "действие", "действия", "действий")}.`,
     period: {
       "7d": "7 дн.",
       "30d": "30 дн.",
@@ -156,13 +157,6 @@ const areaEmoji: Record<LifeAreaKey, string> = {
   custom: "✨",
 };
 
-function formatRange(startDate: string, endDate: string, language: AppLanguage): string {
-  const locale = language === "ru" ? "ru-RU" : "en-US";
-  const formatter = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" });
-
-  return `${formatter.format(parseDateKey(startDate))} – ${formatter.format(parseDateKey(endDate))}`;
-}
-
 export function DirectionReviewScreen({ appState, today, language, onAreaChange }: DirectionReviewScreenProps) {
   const copy = directionCopy[language];
   const [period, setPeriod] = useState<DirectionReviewPeriod>("30d");
@@ -198,7 +192,7 @@ export function DirectionReviewScreen({ appState, today, language, onAreaChange 
         <div>
           <span>Chexar</span>
           <h1>{copy.title}</h1>
-          <p>{formatRange(review.currentRange.startDate, review.currentRange.endDate, language)}</p>
+          <p>{formatDirectionReviewRange(review.currentRange.startDate, review.currentRange.endDate, language)}</p>
         </div>
         <Compass size={24} aria-hidden="true" />
       </header>

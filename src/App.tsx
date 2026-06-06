@@ -1944,7 +1944,19 @@ function parseQuickValues(value: string, unit: string): number[] {
   return getDefaultQuickValues(unit);
 }
 
+function isDateKey(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
+  return toDateKey(parseDateKey(value)) === value;
+}
+
 function formatDateLabel(dateKey: string): string {
+  if (!isDateKey(dateKey)) {
+    return "—";
+  }
+
   return new Intl.DateTimeFormat("ru-RU", {
     day: "2-digit",
     month: "2-digit",
@@ -8852,6 +8864,11 @@ function AddSheet({
   const selectedEmoji = emoji ?? getIconEmoji(iconKey) ?? inferEmojiFromTitle(title);
   const subitemCopy = getSubitemCopy(language);
   const dates = getPeriodDates(today, period, startDate, endDate);
+  const hasValidDateRange =
+    isDateKey(dates.startDate) &&
+    isDateKey(dates.endDate) &&
+    dates.endDate >= dates.startDate;
+  const previewDates = hasValidDateRange ? dates : { startDate: today, endDate: today };
   const numericTarget = Number(targetValue);
   const numericCurrent = Number(currentValue) || 0;
   const normalizedDueTime = dueTimeEnabled ? normalizeDueTimeInput(dueTime) : undefined;
@@ -8861,8 +8878,8 @@ function AddSheet({
     targetValue: numericTarget || 0,
     currentValue: numericCurrent,
     unit,
-    startDate: dates.startDate,
-    endDate: dates.endDate,
+    startDate: previewDates.startDate,
+    endDate: previewDates.endDate,
     repeatMode,
     selectedDays: activeSelectedDays,
   });
@@ -9454,7 +9471,7 @@ function getGoalValidationErrors(goal: {
     errors.push(copy.validationCurrent);
   }
 
-  if (goal.endDate < goal.startDate) {
+  if (!isDateKey(goal.startDate) || !isDateKey(goal.endDate) || goal.endDate < goal.startDate) {
     errors.push(copy.validationDate);
   }
 
@@ -9478,7 +9495,7 @@ function getTaskValidationErrors(task: {
     errors.push(copy.validationTitle);
   }
 
-  if (task.endDate < task.startDate) {
+  if (!isDateKey(task.startDate) || !isDateKey(task.endDate) || task.endDate < task.startDate) {
     errors.push(copy.validationDate);
   }
 
@@ -9667,6 +9684,10 @@ function getPeriodSummary(period: GoalPeriod | TaskPeriod, startDate: string, en
 
   if (period === "forever") {
     return language === "en" ? "Always" : "Всегда";
+  }
+
+  if (!isDateKey(startDate) || !isDateKey(endDate)) {
+    return "—";
   }
 
   return `${formatDateLabel(startDate)} — ${formatDateLabel(endDate)}`;

@@ -1,5 +1,6 @@
 import { addDays } from "../src/dateUtils.js";
 import { buildDirectionReview, classifyLifeArea } from "../src/directionReview.js";
+import { formatDirectionReviewRange, pluralizeRussian } from "../src/directionReviewPresentation.js";
 import type { AppState, TaskItem } from "../src/types.js";
 
 function assert(condition: boolean, label: string): void {
@@ -95,3 +96,11 @@ const carryItem = carryReview.areas.flatMap((area) => area.items).find((item) =>
 
 assert(carryReview.coverage.scheduledOpportunities === 1, "carry-over replaces the original opportunity");
 assert(carryItem?.currentSuccesses === 1, "carry-over completion is counted on the destination date");
+
+assert(
+  formatDirectionReviewRange("2025-06-07", "2026-06-06", "ru") === "7 июн. 2025 – 6 июн. 2026",
+  "year range includes both years when it crosses a calendar year",
+);
+assert(pluralizeRussian(1, "действие", "действия", "действий") === "действие", "Russian singular form is correct");
+assert(pluralizeRussian(2, "действие", "действия", "действий") === "действия", "Russian paucal form is correct");
+assert(pluralizeRussian(5, "действие", "действия", "действий") === "действий", "Russian plural form is correct");
