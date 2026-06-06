@@ -1,4 +1,4 @@
-import type { ActionSubitem, ActionSubitemStateByDate, AppSettings, AppState, DailyRecord, GoalPeriodType, OnboardingQuestState, OnboardingQuestStep, TaskOccurrence } from "./types";
+import type { ActionSubitem, ActionSubitemStateByDate, AppSettings, AppState, DailyRecord, GoalPeriodType, LifeAreaKey, OnboardingQuestState, OnboardingQuestStep, TaskOccurrence } from "./types";
 import { addDays, todayKey } from "./dateUtils";
 import { mergeDuplicateActions } from "./actionMerge";
 
@@ -199,6 +199,8 @@ function migrateAppState(state: AppState): AppState {
         lateDates: Array.isArray(goal.lateDates) ? Array.from(new Set(goal.lateDates)).sort() : undefined,
         sortOrder: normalizeSortOrder(goal.sortOrder, goalIndex + 1),
         quickAddValues: Array.isArray(goal.quickAddValues) ? goal.quickAddValues : [],
+        lifeAreaOverride: normalizeLifeAreaOverride(goal.lifeAreaOverride),
+        lifeAreaCustomLabel: normalizeLifeAreaCustomLabel(goal.lifeAreaCustomLabel),
       };
     }),
     tasks: state.tasks.map((task) => {
@@ -233,6 +235,8 @@ function migrateAppState(state: AppState): AppState {
         subitemStateByDate: Object.keys(subitemStateByDate).length > 0 ? subitemStateByDate : undefined,
         sortOrder: normalizeSortOrder(task.sortOrder, taskIndex + 1),
         completed: mergedCompletedDates.includes(today),
+        lifeAreaOverride: normalizeLifeAreaOverride(task.lifeAreaOverride),
+        lifeAreaCustomLabel: normalizeLifeAreaCustomLabel(task.lifeAreaCustomLabel),
       };
     }),
     occurrences: normalizeOccurrences((state as AppState & { occurrences?: unknown }).occurrences),
@@ -419,6 +423,22 @@ function normalizeSortOrder(value: unknown, fallback: number): number {
   const parsed = Number(value);
 
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+const lifeAreaKeys = new Set<LifeAreaKey>(["learning", "health", "work", "personal", "finance", "creativity", "custom"]);
+
+function normalizeLifeAreaOverride(value: unknown): LifeAreaKey | undefined {
+  return typeof value === "string" && lifeAreaKeys.has(value as LifeAreaKey) ? value as LifeAreaKey : undefined;
+}
+
+function normalizeLifeAreaCustomLabel(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const label = value.trim().slice(0, 40);
+
+  return label || undefined;
 }
 
 function normalizeDateStringMap(value: unknown): Record<string, string> | undefined {

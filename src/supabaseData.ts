@@ -2,7 +2,7 @@ import { supabase } from "./lib/supabase";
 import { getTelegramUser, isBrowserFallbackAllowed, isTelegramUserMissing } from "./lib/telegram";
 import { getDailyCompletionPercent } from "./calculations";
 import { addDays, parseDateKey, todayKey } from "./dateUtils";
-import type { ActionSubitem, ActionSubitemStateByDate, ActionSubitemState, AppSettings, AppState, DailyRecord, GoalPeriodType, GoalRepeatMode, ProgressEntry, ProgressGoal, TaskItem, TaskOccurrence, TaskRepeatMode } from "./types";
+import type { ActionSubitem, ActionSubitemStateByDate, ActionSubitemState, AppSettings, AppState, DailyRecord, GoalPeriodType, GoalRepeatMode, LifeAreaKey, ProgressEntry, ProgressGoal, TaskItem, TaskOccurrence, TaskRepeatMode } from "./types";
 
 const BROWSER_USER_KEY = "chexar:browser-user-id";
 
@@ -37,6 +37,8 @@ type RemoteItem = {
   subitems?: unknown;
   sort_order?: number | null;
   archived: boolean | null;
+  life_area_override?: string | null;
+  life_area_custom_label?: string | null;
 };
 
 type RemoteTaskOccurrence = {
@@ -308,6 +310,8 @@ const OPTIONAL_ITEM_COLUMNS = new Set([
   "subitems",
   "sort_order",
   "due_time",
+  "life_area_override",
+  "life_area_custom_label",
 ]);
 const optionalSchemaWarnings = new Set<string>();
 const knownIconKeys = new Set([
@@ -577,6 +581,8 @@ function rowsToAppState(items: RemoteItem[], entries: RemoteDailyEntry[], occurr
         completedAtByDate: getCompletedAtByDate(itemEntries),
         lateDates: getLateDates(itemEntries),
         sortOrder: normalizeRemoteSortOrder(item.sort_order),
+        lifeAreaOverride: normalizeRemoteLifeArea(item.life_area_override),
+        lifeAreaCustomLabel: normalizeRemoteLifeAreaCustomLabel(item.life_area_custom_label),
       });
 
       return;
@@ -615,6 +621,8 @@ function rowsToAppState(items: RemoteItem[], entries: RemoteDailyEntry[], occurr
       subitems: subitems.length > 0 ? subitems : undefined,
       subitemStateByDate: Object.keys(subitemStateByDate).length > 0 ? subitemStateByDate : undefined,
       sortOrder: normalizeRemoteSortOrder(item.sort_order),
+      lifeAreaOverride: normalizeRemoteLifeArea(item.life_area_override),
+      lifeAreaCustomLabel: normalizeRemoteLifeAreaCustomLabel(item.life_area_custom_label),
     });
   });
 
@@ -647,6 +655,8 @@ function appStateToItemRows(userId: string, appState: AppState) {
         subitems: null,
         sort_order: goal.sortOrder ?? index + 1,
         archived: false,
+        life_area_override: goal.lifeAreaOverride ?? null,
+        life_area_custom_label: goal.lifeAreaOverride === "custom" ? goal.lifeAreaCustomLabel?.trim() || null : null,
         updated_at: new Date().toISOString(),
       };
     }),
@@ -674,6 +684,8 @@ function appStateToItemRows(userId: string, appState: AppState) {
         subitems: normalizeRemoteSubitems(task.subitems),
         sort_order: task.sortOrder ?? index + 1,
         archived: false,
+        life_area_override: task.lifeAreaOverride ?? null,
+        life_area_custom_label: task.lifeAreaOverride === "custom" ? task.lifeAreaCustomLabel?.trim() || null : null,
         updated_at: new Date().toISOString(),
       };
     }),
@@ -989,6 +1001,22 @@ function normalizeRemoteSortOrder(value: unknown, fallback = 0): number {
   const parsed = Number(value);
 
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+const remoteLifeAreaKeys = new Set<LifeAreaKey>(["learning", "health", "work", "personal", "finance", "creativity", "custom"]);
+
+function normalizeRemoteLifeArea(value: unknown): LifeAreaKey | undefined {
+  return typeof value === "string" && remoteLifeAreaKeys.has(value as LifeAreaKey) ? value as LifeAreaKey : undefined;
+}
+
+function normalizeRemoteLifeAreaCustomLabel(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const label = value.trim().slice(0, 40);
+
+  return label || undefined;
 }
 
 function getCompletedAtByDate(entries: RemoteDailyEntry[]): Record<string, string> | undefined {

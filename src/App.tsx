@@ -42,6 +42,7 @@ import {
   upsertDailyRecord,
 } from "./calculations";
 import { addDays, daysInclusive, parseDateKey, todayKey, toDateKey } from "./dateUtils";
+import { DirectionReviewScreen } from "./DirectionReviewScreen";
 import { normalizeSemanticQuantityUnit } from "./semanticUnits";
 import {
   createEmptyDailyRecords,
@@ -57,7 +58,7 @@ import {
   saveOnboardingQuestState,
   saveSettings,
 } from "./storage";
-import type { ActionSubitem, ActionSubitemState, AppScreen, AppSettings, AppState, GoalPeriodType, GoalRepeatMode, OnboardingQuestState, OnboardingQuestStep, Priority, ProgressEntry, ProgressGoal, TaskItem, TaskOccurrence, TaskRepeatMode } from "./types";
+import type { ActionSubitem, ActionSubitemState, AppScreen, AppSettings, AppState, GoalPeriodType, GoalRepeatMode, LifeAreaKey, OnboardingQuestState, OnboardingQuestStep, Priority, ProgressEntry, ProgressGoal, TaskItem, TaskOccurrence, TaskRepeatMode } from "./types";
 import { mergeDuplicateActions, normalizeActionTitle } from "./actionMerge";
 import { hasRemotePersistence, loadRemoteData, saveRemoteSnapshot } from "./supabaseData";
 import {
@@ -406,14 +407,14 @@ const navCopy = {
   en: {
     today: "Today",
     calendar: "Calendar",
-    progress: "Progress",
+    progress: "Direction",
     profile: "Profile",
     aria: "Main navigation",
   },
   ru: {
     today: "Сегодня",
     calendar: "Календарь",
-    progress: "Прогресс",
+    progress: "Направление",
     profile: "Профиль",
     aria: "Основная навигация",
   },
@@ -4166,6 +4167,38 @@ export default function App() {
     }
   }
 
+  function updateLifeArea(
+    itemType: "goal" | "task",
+    itemId: string,
+    area: LifeAreaKey | undefined,
+    customLabel?: string,
+  ) {
+    const lifeAreaCustomLabel = area === "custom" ? customLabel?.trim().slice(0, 40) || undefined : undefined;
+
+    setAppState((state) => {
+      if (itemType === "goal") {
+        return {
+          ...state,
+          goals: state.goals.map((goal) =>
+            goal.id === itemId
+              ? { ...goal, lifeAreaOverride: area, lifeAreaCustomLabel }
+              : goal,
+          ),
+        };
+      }
+
+      return {
+        ...state,
+        tasks: state.tasks.map((task) =>
+          task.id === itemId
+            ? { ...task, lifeAreaOverride: area, lifeAreaCustomLabel }
+            : task,
+        ),
+      };
+    });
+    telegramSelectionChanged();
+  }
+
   function openSelectedDate(dateKey: string) {
     previousScreenRef.current = activeScreen;
     telegramSelectionChanged();
@@ -4233,12 +4266,11 @@ export default function App() {
               onSelectDate={openSelectedDate}
             />
           ) : activeScreen === "progress" ? (
-            <ProgressScreen
+            <DirectionReviewScreen
               appState={appState}
-              dayRecords={dayRecords}
               today={today}
-              todayPercent={actualTodayDaily.percent}
               language={settings.language}
+              onAreaChange={updateLifeArea}
             />
           ) : (
             <main className="today-screen">
