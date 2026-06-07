@@ -6,6 +6,7 @@ export type Priority = "low" | "medium" | "high";
 export type AppLanguage = "ru" | "en";
 export type ThemePreference = "light" | "dark" | "system";
 export type AppScreen = "today" | "calendar" | "progress" | "profile";
+export type LifeAreaKey = "learning" | "health" | "work" | "personal" | "finance" | "creativity" | "custom";
 
 export type ProgressEntry = {
   id: string;
@@ -51,6 +52,8 @@ export type ProgressGoal = {
   completedAtByDate?: Record<string, string>;
   lateDates?: string[];
   sortOrder?: number;
+  lifeAreaOverride?: LifeAreaKey;
+  lifeAreaCustomLabel?: string;
 };
 
 export type TaskItem = {
@@ -76,6 +79,8 @@ export type TaskItem = {
   subitems?: ActionSubitem[];
   subitemStateByDate?: ActionSubitemStateByDate;
   sortOrder?: number;
+  lifeAreaOverride?: LifeAreaKey;
+  lifeAreaCustomLabel?: string;
 };
 
 export type TaskOccurrence = {

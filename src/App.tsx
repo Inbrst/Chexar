@@ -42,6 +42,7 @@ import {
   upsertDailyRecord,
 } from "./calculations";
 import { addDays, daysInclusive, parseDateKey, todayKey, toDateKey } from "./dateUtils";
+import { DirectionReviewScreen } from "./DirectionReviewScreen";
 import { normalizeSemanticQuantityUnit } from "./semanticUnits";
 import {
   createEmptyDailyRecords,
@@ -57,7 +58,7 @@ import {
   saveOnboardingQuestState,
   saveSettings,
 } from "./storage";
-import type { ActionSubitem, ActionSubitemState, AppScreen, AppSettings, AppState, GoalPeriodType, GoalRepeatMode, OnboardingQuestState, OnboardingQuestStep, Priority, ProgressEntry, ProgressGoal, TaskItem, TaskOccurrence, TaskRepeatMode } from "./types";
+import type { ActionSubitem, ActionSubitemState, AppScreen, AppSettings, AppState, GoalPeriodType, GoalRepeatMode, LifeAreaKey, OnboardingQuestState, OnboardingQuestStep, Priority, ProgressEntry, ProgressGoal, TaskItem, TaskOccurrence, TaskRepeatMode } from "./types";
 import { mergeDuplicateActions, normalizeActionTitle } from "./actionMerge";
 import { hasRemotePersistence, loadRemoteData, saveRemoteSnapshot } from "./supabaseData";
 import {
@@ -406,14 +407,14 @@ const navCopy = {
   en: {
     today: "Today",
     calendar: "Calendar",
-    progress: "Progress",
+    progress: "Direction",
     profile: "Profile",
     aria: "Main navigation",
   },
   ru: {
     today: "Сегодня",
     calendar: "Календарь",
-    progress: "Прогресс",
+    progress: "Направление",
     profile: "Профиль",
     aria: "Основная навигация",
   },
@@ -1943,7 +1944,19 @@ function parseQuickValues(value: string, unit: string): number[] {
   return getDefaultQuickValues(unit);
 }
 
+function isDateKey(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
+  return toDateKey(parseDateKey(value)) === value;
+}
+
 function formatDateLabel(dateKey: string): string {
+  if (!isDateKey(dateKey)) {
+    return "—";
+  }
+
   return new Intl.DateTimeFormat("ru-RU", {
     day: "2-digit",
     month: "2-digit",
@@ -4166,6 +4179,38 @@ export default function App() {
     }
   }
 
+  function updateLifeArea(
+    itemType: "goal" | "task",
+    itemId: string,
+    area: LifeAreaKey | undefined,
+    customLabel?: string,
+  ) {
+    const lifeAreaCustomLabel = area === "custom" ? customLabel?.trim().slice(0, 40) || undefined : undefined;
+
+    setAppState((state) => {
+      if (itemType === "goal") {
+        return {
+          ...state,
+          goals: state.goals.map((goal) =>
+            goal.id === itemId
+              ? { ...goal, lifeAreaOverride: area, lifeAreaCustomLabel }
+              : goal,
+          ),
+        };
+      }
+
+      return {
+        ...state,
+        tasks: state.tasks.map((task) =>
+          task.id === itemId
+            ? { ...task, lifeAreaOverride: area, lifeAreaCustomLabel }
+            : task,
+        ),
+      };
+    });
+    telegramSelectionChanged();
+  }
+
   function openSelectedDate(dateKey: string) {
     previousScreenRef.current = activeScreen;
     telegramSelectionChanged();
@@ -4233,12 +4278,11 @@ export default function App() {
               onSelectDate={openSelectedDate}
             />
           ) : activeScreen === "progress" ? (
-            <ProgressScreen
+            <DirectionReviewScreen
               appState={appState}
-              dayRecords={dayRecords}
               today={today}
-              todayPercent={actualTodayDaily.percent}
               language={settings.language}
+              onAreaChange={updateLifeArea}
             />
           ) : (
             <main className="today-screen">
@@ -8820,6 +8864,11 @@ function AddSheet({
   const selectedEmoji = emoji ?? getIconEmoji(iconKey) ?? inferEmojiFromTitle(title);
   const subitemCopy = getSubitemCopy(language);
   const dates = getPeriodDates(today, period, startDate, endDate);
+  const hasValidDateRange =
+    isDateKey(dates.startDate) &&
+    isDateKey(dates.endDate) &&
+    dates.endDate >= dates.startDate;
+  const previewDates = hasValidDateRange ? dates : { startDate: today, endDate: today };
   const numericTarget = Number(targetValue);
   const numericCurrent = Number(currentValue) || 0;
   const normalizedDueTime = dueTimeEnabled ? normalizeDueTimeInput(dueTime) : undefined;
@@ -8829,8 +8878,8 @@ function AddSheet({
     targetValue: numericTarget || 0,
     currentValue: numericCurrent,
     unit,
-    startDate: dates.startDate,
-    endDate: dates.endDate,
+    startDate: previewDates.startDate,
+    endDate: previewDates.endDate,
     repeatMode,
     selectedDays: activeSelectedDays,
   });
@@ -9422,7 +9471,7 @@ function getGoalValidationErrors(goal: {
     errors.push(copy.validationCurrent);
   }
 
-  if (goal.endDate < goal.startDate) {
+  if (!isDateKey(goal.startDate) || !isDateKey(goal.endDate) || goal.endDate < goal.startDate) {
     errors.push(copy.validationDate);
   }
 
@@ -9446,7 +9495,7 @@ function getTaskValidationErrors(task: {
     errors.push(copy.validationTitle);
   }
 
-  if (task.endDate < task.startDate) {
+  if (!isDateKey(task.startDate) || !isDateKey(task.endDate) || task.endDate < task.startDate) {
     errors.push(copy.validationDate);
   }
 
@@ -9635,6 +9684,10 @@ function getPeriodSummary(period: GoalPeriod | TaskPeriod, startDate: string, en
 
   if (period === "forever") {
     return language === "en" ? "Always" : "Всегда";
+  }
+
+  if (!isDateKey(startDate) || !isDateKey(endDate)) {
+    return "—";
   }
 
   return `${formatDateLabel(startDate)} — ${formatDateLabel(endDate)}`;
