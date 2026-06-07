@@ -405,6 +405,74 @@ html[data-resolved-theme="dark"] .app-shell {
   background: linear-gradient(180deg, rgba(124, 92, 255, 0.055), transparent 78%);
 }
 
+.direction-learning-state {
+  padding: 6px 0 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(180deg, rgba(124, 92, 255, 0.055), transparent 68%);
+}
+
+.direction-learning-copy h2 {
+  margin: 8px 0 10px;
+  max-width: 24ch;
+  color: var(--text);
+  font-size: 1.3rem;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.direction-learning-copy > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.48;
+}
+
+.direction-learning-copy .direction-learning-coverage {
+  margin-top: 16px;
+  color: var(--text);
+  font-size: 0.76rem;
+}
+
+.direction-learning-copy .direction-learning-guidance {
+  margin-top: 5px;
+  font-size: 0.76rem;
+}
+
+.direction-learning-areas {
+  margin-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.direction-learning-areas > h3 {
+  margin: 0;
+  padding: 14px 0 8px;
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 760;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.direction-learning-area + .direction-learning-area {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 6px;
+}
+
+.direction-learning-area-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0 5px;
+  color: var(--text);
+  font-size: 0.78rem;
+}
+
+.direction-learning-area .direction-area-item {
+  padding-inline: 0;
+  border: 0;
+  background: transparent;
+}
+
 .direction-check-in {
   padding: 22px 0 2px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -822,6 +890,7 @@ html[data-resolved-theme="light"] .direction-insight {
 }
 
 html[data-resolved-theme="light"] .direction-summary,
+html[data-resolved-theme="light"] .direction-learning-state,
 html[data-resolved-theme="light"] .direction-check-in,
 html[data-resolved-theme="light"] .direction-area-list,
 html[data-resolved-theme="light"] .direction-area,
@@ -829,6 +898,11 @@ html[data-resolved-theme="light"] .direction-area-item,
 html[data-resolved-theme="light"] .direction-empty,
 html[data-resolved-theme="light"] .direction-coverage {
   border-color: rgba(17, 19, 24, 0.1);
+}
+
+html[data-resolved-theme="light"] .direction-learning-areas,
+html[data-resolved-theme="light"] .direction-learning-area + .direction-learning-area {
+  border-color: rgba(17, 19, 24, 0.08);
 }
 
 html[data-resolved-theme="light"] .direction-check-in-prompt {

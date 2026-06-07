@@ -8,7 +8,7 @@ import {
   type DirectionLifeArea,
   type DirectionReviewPeriod,
 } from "./directionReview";
-import { formatDirectionReviewRange, pluralizeRussian } from "./directionReviewPresentation";
+import { formatDirectionReviewRange, getDirectionLearningStateMode } from "./directionReviewPresentation";
 import {
   buildDirectionCheckInCandidate,
   buildDirectionCheckInOutcome,
@@ -16,6 +16,12 @@ import {
   type DirectionCheckInRecord,
 } from "./directionCheckIn";
 import { DirectionCheckInCard } from "./DirectionCheckInCard";
+import {
+  formatDirectionReviewCoverage,
+  formatMarkedOccurrences,
+  formatProductCount,
+  productLanguage,
+} from "./productLanguage";
 import type { AppLanguage, AppState, LifeAreaKey } from "./types";
 
 type DirectionReviewScreenProps = {
@@ -36,7 +42,7 @@ type DirectionReviewScreenProps = {
 
 const directionCopy = {
   en: {
-    title: "Direction Review",
+    title: productLanguage.en.labels.directionReview,
     whereMoving: "Where you're moving",
     lifeAreas: "Life areas",
     insights: "Insights",
@@ -49,9 +55,7 @@ const directionCopy = {
     consistency: "Consistency",
     momentum: "Momentum",
     noComparison: "No comparison yet",
-    noAreas: "Complete a few scheduled actions to see your life areas.",
     noInsights: "No strong changes yet. Your review will become clearer with more history.",
-    learningSummary: "Chexar is still learning your rhythm.",
     steadySummary: "Your direction stayed broadly steady.",
     growthSummary: (area: string) => `Your rhythm is strengthening in ${area}.`,
     declineSummary: (area: string) => `Your rhythm is weakening in ${area}.`,
@@ -59,7 +63,7 @@ const directionCopy = {
     comparisonUp: (value: number) => `Up ${value} points`,
     comparisonDown: (value: number) => `Down ${Math.abs(value)} points`,
     comparisonSteady: "Stable",
-    opportunities: (successes: number, total: number) => `${successes} of ${total} scheduled check-ins`,
+    opportunities: (successes: number, total: number) => formatMarkedOccurrences("en", successes, total),
     areaGrowthTitle: (area: string) => `${area} gained momentum`,
     areaDeclineTitle: (area: string) => `${area} lost momentum`,
     areaEvidence: (previous: number, current: number, total: number) => `Consistency moved from ${previous}% to ${current}% across ${total} check-ins.`,
@@ -68,9 +72,9 @@ const directionCopy = {
     fadingEvidence: (previous: number, current: number, successes: number, total: number) =>
       `Consistency fell from ${previous}% to ${current}% with ${successes} of ${total} check-ins completed.`,
     basedOn: (opportunities: number, items: number, areas: number) =>
-      `Based on ${opportunities} scheduled check-ins across ${items} actions and ${areas} life areas.`,
+      formatDirectionReviewCoverage("en", opportunities, items, areas),
     comparable: (areas: number) => `${areas} areas have enough history for comparison.`,
-    tentative: (items: number) => `${items} automatic classifications are tentative.`,
+    tentative: (items: number) => `${formatProductCount("en", items, "commitment")} have a tentative automatic area.`,
     period: {
       "7d": "7d",
       "30d": "30d",
@@ -96,7 +100,7 @@ const directionCopy = {
     },
   },
   ru: {
-    title: "Обзор направления",
+    title: productLanguage.ru.labels.directionReview,
     whereMoving: "Куда движется твой ритм",
     lifeAreas: "Сферы жизни",
     insights: "Наблюдения",
@@ -109,9 +113,7 @@ const directionCopy = {
     consistency: "Стабильность",
     momentum: "Динамика",
     noComparison: "Пока без сравнения",
-    noAreas: "Отметь несколько запланированных действий, чтобы увидеть сферы жизни.",
     noInsights: "Заметных изменений пока нет. Обзор станет яснее, когда накопится история.",
-    learningSummary: "Chexar пока изучает твой ритм.",
     steadySummary: "Общее направление осталось стабильным.",
     growthSummary: (area: string) => `Ритм укрепляется в сфере «${area}».`,
     declineSummary: (area: string) => `Ритм ослабевает в сфере «${area}».`,
@@ -119,7 +121,7 @@ const directionCopy = {
     comparisonUp: (value: number) => `Рост на ${value} п.`,
     comparisonDown: (value: number) => `Снижение на ${Math.abs(value)} п.`,
     comparisonSteady: "Без заметных изменений",
-    opportunities: (successes: number, total: number) => `${successes} из ${total} запланированных отметок`,
+    opportunities: (successes: number, total: number) => formatMarkedOccurrences("ru", successes, total),
     areaGrowthTitle: (area: string) => `${area}: ритм усилился`,
     areaDeclineTitle: (area: string) => `${area}: ритм ослаб`,
     areaEvidence: (previous: number, current: number, total: number) => `Стабильность изменилась с ${previous}% до ${current}% за ${total} отметок.`,
@@ -128,10 +130,10 @@ const directionCopy = {
     fadingEvidence: (previous: number, current: number, successes: number, total: number) =>
       `Стабильность снизилась с ${previous}% до ${current}%: выполнено ${successes} из ${total}.`,
     basedOn: (opportunities: number, items: number, areas: number) =>
-      `Расчёт по ${opportunities} запланированным отметкам, ${items} действиям и ${areas} сферам.`,
+      formatDirectionReviewCoverage("ru", opportunities, items, areas),
     comparable: (areas: number) => `Для сравнения хватает истории в ${areas} сферах.`,
     tentative: (items: number) =>
-      `Автоклассификация пока предварительная: ${items} ${pluralizeRussian(items, "действие", "действия", "действий")}.`,
+      `${formatProductCount("ru", items, "commitment")} пока имеют предварительно определённую сферу.`,
     period: {
       "7d": "7 дн.",
       "30d": "30 дн.",
@@ -182,6 +184,10 @@ export function DirectionReviewScreen({
   const [period, setPeriod] = useState<DirectionReviewPeriod>("30d");
   const [expandedAreaId, setExpandedAreaId] = useState<string | null>(null);
   const review = useMemo(() => buildDirectionReview(appState, period, today), [appState, period, today]);
+  const isLearning = review.summary.kind === "learning";
+  const learningMode = getDirectionLearningStateMode(review.coverage);
+  const learningCopy = productLanguage[language].learningState;
+  const detectedAreas = review.areas.filter((area) => area.currentOpportunities > 0);
   const checkInCandidate = useMemo(
     () => buildDirectionCheckInCandidate(appState, today, checkInRecords),
     [appState, checkInRecords, today],
@@ -204,7 +210,7 @@ export function DirectionReviewScreen({
           ? copy.declineSummary(getAreaLabel(primaryArea))
           : review.summary.kind === "steady"
             ? copy.steadySummary
-            : copy.learningSummary;
+            : learningCopy.title;
   const summaryMomentum =
     review.summary.momentum === null
       ? copy.noComparison
@@ -239,112 +245,151 @@ export function DirectionReviewScreen({
         ))}
       </div>
 
-      <section className="direction-summary" aria-labelledby="direction-summary-title">
-        <div className="direction-section-label" id="direction-summary-title">{copy.whereMoving}</div>
-        <h2>{summaryText}</h2>
-        <div className="direction-summary-signals">
-          <div>
-            <span>{copy.consistency}</span>
-            <strong>{review.summary.consistency === null ? "—" : `${review.summary.consistency}%`}</strong>
+      {isLearning ? (
+        <section className="direction-learning-state" aria-labelledby="direction-learning-title">
+          <div className="direction-learning-copy">
+            <span className="direction-section-label">{copy.title}</span>
+            <h2 id="direction-learning-title">{learningCopy.title}</h2>
+            <p>{learningCopy.body}</p>
+            <p className="direction-learning-coverage">
+              {learningCopy.coverage(review.coverage.activeItems, review.coverage.areasWithData)}
+            </p>
+            <p className="direction-learning-guidance">
+              {learningMode === "empty" ? learningCopy.noData : learningCopy.sparse}
+            </p>
           </div>
-          <div>
-            <span>{copy.momentum}</span>
-            <strong>{summaryMomentum}</strong>
-          </div>
-        </div>
-        <small className={`direction-confidence ${review.summary.confidence}`}>
-          {review.summary.confidence === "clear" ? copy.clearSignal : copy.tentativeSignal}
-        </small>
-      </section>
 
-      <DirectionCheckInCard
-        candidate={checkInCandidate}
-        outcome={checkInOutcome}
-        language={language}
-        onFits={onCheckInFits}
-        onDismiss={onCheckInDismiss}
-        onAdjust={onCheckInAdjust}
-      />
+          {detectedAreas.length > 0 && (
+            <div className="direction-learning-areas">
+              <h3>{learningCopy.detectedAreas}</h3>
+              {detectedAreas.map((area) => (
+                <div className="direction-learning-area" key={area.id}>
+                  <div className="direction-learning-area-heading">
+                    <span aria-hidden="true">{areaEmoji[area.areaKey]}</span>
+                    <strong>{getAreaLabel(area)}</strong>
+                  </div>
+                  {area.items
+                    .filter((item) => item.currentOpportunities > 0)
+                    .map((item) => (
+                      <DirectionAreaItem
+                        key={`${item.itemType}:${item.id}`}
+                        item={item}
+                        language={language}
+                        onAreaChange={onAreaChange}
+                        showEvidence={false}
+                      />
+                    ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      ) : (
+        <>
+          <section className="direction-summary" aria-labelledby="direction-summary-title">
+            <div className="direction-section-label" id="direction-summary-title">{copy.whereMoving}</div>
+            <h2>{summaryText}</h2>
+            <div className="direction-summary-signals">
+              <div>
+                <span>{copy.consistency}</span>
+                <strong>{review.summary.consistency === null ? "—" : `${review.summary.consistency}%`}</strong>
+              </div>
+              <div>
+                <span>{copy.momentum}</span>
+                <strong>{summaryMomentum}</strong>
+              </div>
+            </div>
+            <small className={`direction-confidence ${review.summary.confidence}`}>
+              {review.summary.confidence === "clear" ? copy.clearSignal : copy.tentativeSignal}
+            </small>
+          </section>
 
-      <section className="direction-areas" aria-labelledby="direction-areas-title">
-        <div className="direction-section-heading">
-          <h2 id="direction-areas-title">{copy.lifeAreas}</h2>
-          <span>{review.areas.length}</span>
-        </div>
-        {review.areas.length === 0 ? (
-          <p className="direction-empty">{copy.noAreas}</p>
-        ) : (
-          <div className="direction-area-list">
-            {review.areas.map((area) => {
-              const expanded = expandedAreaId === area.id;
-              const momentum =
-                area.momentum === null ? copy.noComparison : `${area.momentum > 0 ? "+" : ""}${area.momentum} p.`;
+          <DirectionCheckInCard
+            candidate={checkInCandidate}
+            outcome={checkInOutcome}
+            language={language}
+            onFits={onCheckInFits}
+            onDismiss={onCheckInDismiss}
+            onAdjust={onCheckInAdjust}
+          />
 
-              return (
-                <article className={`direction-area ${expanded ? "expanded" : ""}`} key={area.id}>
-                  <button
-                    type="button"
-                    className="direction-area-trigger"
-                    aria-expanded={expanded}
-                    onClick={() => setExpandedAreaId((current) => current === area.id ? null : area.id)}
-                  >
-                    <span className="direction-area-emoji" aria-hidden="true">{areaEmoji[area.areaKey]}</span>
-                    <span className="direction-area-main">
-                      <strong>{getAreaLabel(area)}</strong>
-                      <small>{copy.states[area.state]}</small>
-                    </span>
-                    <span className={`direction-area-momentum ${area.momentum !== null && area.momentum < 0 ? "negative" : ""}`}>
-                      {area.consistency === null ? "—" : `${area.consistency}%`}
-                      <small>{momentum}</small>
-                    </span>
-                    <ChevronDown size={17} aria-hidden="true" />
-                  </button>
-                  {expanded && (
-                    <div className="direction-area-details">
-                      {area.items.map((item) => (
-                        <DirectionAreaItem
-                          key={`${item.itemType}:${item.id}`}
-                          item={item}
-                          language={language}
-                          onAreaChange={onAreaChange}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </section>
+          <section className="direction-areas" aria-labelledby="direction-areas-title">
+            <div className="direction-section-heading">
+              <h2 id="direction-areas-title">{copy.lifeAreas}</h2>
+              <span>{review.areas.length}</span>
+            </div>
+            <div className="direction-area-list">
+              {review.areas.map((area) => {
+                const expanded = expandedAreaId === area.id;
+                const momentum =
+                  area.momentum === null ? copy.noComparison : `${area.momentum > 0 ? "+" : ""}${area.momentum} p.`;
 
-      <section className="direction-insights" aria-labelledby="direction-insights-title">
-        <div className="direction-section-heading">
-          <h2 id="direction-insights-title">{copy.insights}</h2>
-          <span>{review.insights.length}</span>
-        </div>
-        {review.insights.length === 0 ? (
-          <p className="direction-empty">{copy.noInsights}</p>
-        ) : (
-          <div className="direction-insight-list">
-            {review.insights.map((insight, index) => (
-              <DirectionInsightRow
-                key={`${insight.kind}-${"itemId" in insight ? insight.itemId : insight.areaId}-${index}`}
-                insight={insight}
-                areas={areaMap}
-                language={language}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+                return (
+                  <article className={`direction-area ${expanded ? "expanded" : ""}`} key={area.id}>
+                    <button
+                      type="button"
+                      className="direction-area-trigger"
+                      aria-expanded={expanded}
+                      onClick={() => setExpandedAreaId((current) => current === area.id ? null : area.id)}
+                    >
+                      <span className="direction-area-emoji" aria-hidden="true">{areaEmoji[area.areaKey]}</span>
+                      <span className="direction-area-main">
+                        <strong>{getAreaLabel(area)}</strong>
+                        <small>{copy.states[area.state]}</small>
+                      </span>
+                      <span className={`direction-area-momentum ${area.momentum !== null && area.momentum < 0 ? "negative" : ""}`}>
+                        {area.consistency === null ? "—" : `${area.consistency}%`}
+                        <small>{momentum}</small>
+                      </span>
+                      <ChevronDown size={17} aria-hidden="true" />
+                    </button>
+                    {expanded && (
+                      <div className="direction-area-details">
+                        {area.items.map((item) => (
+                          <DirectionAreaItem
+                            key={`${item.itemType}:${item.id}`}
+                            item={item}
+                            language={language}
+                            onAreaChange={onAreaChange}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          </section>
 
-      <footer className="direction-coverage">
-        <strong>{copy.coverage}</strong>
-        <p>{copy.basedOn(review.coverage.scheduledOpportunities, review.coverage.activeItems, review.coverage.areasWithData)}</p>
-        <p>{copy.comparable(review.coverage.comparableAreas)}</p>
-        {review.coverage.tentativeItems > 0 && <p>{copy.tentative(review.coverage.tentativeItems)}</p>}
-      </footer>
+          <section className="direction-insights" aria-labelledby="direction-insights-title">
+            <div className="direction-section-heading">
+              <h2 id="direction-insights-title">{copy.insights}</h2>
+              <span>{review.insights.length}</span>
+            </div>
+            {review.insights.length === 0 ? (
+              <p className="direction-empty">{copy.noInsights}</p>
+            ) : (
+              <div className="direction-insight-list">
+                {review.insights.map((insight, index) => (
+                  <DirectionInsightRow
+                    key={`${insight.kind}-${"itemId" in insight ? insight.itemId : insight.areaId}-${index}`}
+                    insight={insight}
+                    areas={areaMap}
+                    language={language}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+
+          <footer className="direction-coverage">
+            <strong>{copy.coverage}</strong>
+            <p>{copy.basedOn(review.coverage.scheduledOpportunities, review.coverage.activeItems, review.coverage.areasWithData)}</p>
+            <p>{copy.comparable(review.coverage.comparableAreas)}</p>
+            {review.coverage.tentativeItems > 0 && <p>{copy.tentative(review.coverage.tentativeItems)}</p>}
+          </footer>
+        </>
+      )}
     </main>
   );
 }
@@ -353,10 +398,12 @@ function DirectionAreaItem({
   item,
   language,
   onAreaChange,
+  showEvidence = true,
 }: {
   item: DirectionActionStats;
   language: AppLanguage;
   onAreaChange: DirectionReviewScreenProps["onAreaChange"];
+  showEvidence?: boolean;
 }) {
   const copy = directionCopy[language];
   const selectValue = item.area.source === "manual" ? item.area.areaKey : "auto";
@@ -370,7 +417,7 @@ function DirectionAreaItem({
         <span aria-hidden="true">{item.emoji || areaEmoji[item.area.areaKey]}</span>
         <div>
           <strong>{item.title}</strong>
-          <small>{copy.opportunities(item.currentSuccesses, item.currentOpportunities)}</small>
+          {showEvidence && <small>{copy.opportunities(item.currentSuccesses, item.currentOpportunities)}</small>}
         </div>
       </div>
       <label className="direction-area-select">
