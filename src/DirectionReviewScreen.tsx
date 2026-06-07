@@ -9,6 +9,13 @@ import {
   type DirectionReviewPeriod,
 } from "./directionReview";
 import { formatDirectionReviewRange, pluralizeRussian } from "./directionReviewPresentation";
+import {
+  buildDirectionCheckInCandidate,
+  buildDirectionCheckInOutcome,
+  type DirectionCheckInCandidate,
+  type DirectionCheckInRecord,
+} from "./directionCheckIn";
+import { DirectionCheckInCard } from "./DirectionCheckInCard";
 import type { AppLanguage, AppState, LifeAreaKey } from "./types";
 
 type DirectionReviewScreenProps = {
@@ -21,6 +28,10 @@ type DirectionReviewScreenProps = {
     area: LifeAreaKey | undefined,
     customLabel?: string,
   ) => void;
+  checkInRecords: DirectionCheckInRecord[];
+  onCheckInFits: (candidate: DirectionCheckInCandidate) => void;
+  onCheckInDismiss: (candidate: DirectionCheckInCandidate) => void;
+  onCheckInAdjust?: (candidate: DirectionCheckInCandidate) => void;
 };
 
 const directionCopy = {
@@ -157,11 +168,28 @@ const areaEmoji: Record<LifeAreaKey, string> = {
   custom: "✨",
 };
 
-export function DirectionReviewScreen({ appState, today, language, onAreaChange }: DirectionReviewScreenProps) {
+export function DirectionReviewScreen({
+  appState,
+  today,
+  language,
+  onAreaChange,
+  checkInRecords,
+  onCheckInFits,
+  onCheckInDismiss,
+  onCheckInAdjust,
+}: DirectionReviewScreenProps) {
   const copy = directionCopy[language];
   const [period, setPeriod] = useState<DirectionReviewPeriod>("30d");
   const [expandedAreaId, setExpandedAreaId] = useState<string | null>(null);
   const review = useMemo(() => buildDirectionReview(appState, period, today), [appState, period, today]);
+  const checkInCandidate = useMemo(
+    () => buildDirectionCheckInCandidate(appState, today, checkInRecords),
+    [appState, checkInRecords, today],
+  );
+  const checkInOutcome = useMemo(
+    () => buildDirectionCheckInOutcome(appState, today, checkInRecords),
+    [appState, checkInRecords, today],
+  );
   const areaMap = useMemo(() => new Map(review.areas.map((area) => [area.id, area])), [review.areas]);
   const getAreaLabel = (area: Pick<DirectionLifeArea, "areaKey" | "customLabel"> | undefined) =>
     area?.areaKey === "custom" ? area.customLabel || copy.areas.custom : area ? copy.areas[area.areaKey] : copy.areas.personal;
@@ -228,6 +256,15 @@ export function DirectionReviewScreen({ appState, today, language, onAreaChange 
           {review.summary.confidence === "clear" ? copy.clearSignal : copy.tentativeSignal}
         </small>
       </section>
+
+      <DirectionCheckInCard
+        candidate={checkInCandidate}
+        outcome={checkInOutcome}
+        language={language}
+        onFits={onCheckInFits}
+        onDismiss={onCheckInDismiss}
+        onAdjust={onCheckInAdjust}
+      />
 
       <section className="direction-areas" aria-labelledby="direction-areas-title">
         <div className="direction-section-heading">

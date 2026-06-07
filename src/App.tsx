@@ -43,18 +43,26 @@ import {
 } from "./calculations";
 import { addDays, daysInclusive, parseDateKey, todayKey, toDateKey } from "./dateUtils";
 import { DirectionReviewScreen } from "./DirectionReviewScreen";
+import {
+  createDirectionCheckInRecord,
+  upsertDirectionCheckInRecord,
+  type DirectionCheckInCandidate,
+  type DirectionCheckInDecision,
+} from "./directionCheckIn";
 import { normalizeSemanticQuantityUnit } from "./semanticUnits";
 import {
   createEmptyDailyRecords,
   createEmptyState,
   loadAppState,
   loadDailyRecords,
+  loadDirectionCheckIns,
   loadOnboardingQuestState,
   loadSettings,
   createOnboardingQuestState,
   resetChexarStorage,
   saveAppState,
   saveDailyRecords,
+  saveDirectionCheckIns,
   saveOnboardingQuestState,
   saveSettings,
 } from "./storage";
@@ -872,6 +880,21 @@ type EditState =
     }
   | null;
 
+type EditActionUpdate = {
+  title: string;
+  groupName?: string;
+  note?: string;
+  emoji?: string;
+  iconKey?: string;
+  repeatMode: TaskRepeatMode;
+  selectedDays?: number[];
+  dueTime?: string;
+  targetValue?: number;
+  currentValue?: number;
+  unit?: string;
+  quickAddValues?: number[];
+};
+
 type ActionSheetState =
   | {
       type: "goal";
@@ -882,6 +905,36 @@ type ActionSheetState =
       task: TaskItem;
     }
   | null;
+
+function hasEditActionChanges(state: Exclude<EditState, null>, update: EditActionUpdate): boolean {
+  const action = state.type === "goal" ? state.goal : state.task;
+  const nextSelectedDays = update.repeatMode === "selectedDays" ? update.selectedDays ?? [] : [];
+  const currentSelectedDays = action.repeatMode === "selectedDays" ? action.selectedDays ?? [] : [];
+
+  if (
+    update.title.trim() !== action.title ||
+    (update.groupName?.trim() || undefined) !== action.groupName ||
+    (update.note?.trim() || undefined) !== action.note ||
+    update.emoji !== action.emoji ||
+    update.iconKey !== action.iconKey ||
+    update.repeatMode !== action.repeatMode ||
+    nextSelectedDays.join(",") !== currentSelectedDays.join(",") ||
+    update.dueTime !== action.dueTime
+  ) {
+    return true;
+  }
+
+  if (state.type !== "goal") {
+    return false;
+  }
+
+  return (
+    (update.targetValue ?? state.goal.targetValue) !== state.goal.targetValue ||
+    (update.currentValue ?? state.goal.currentValue) !== state.goal.currentValue ||
+    (update.unit?.trim() ?? state.goal.unit) !== state.goal.unit ||
+    (update.quickAddValues ?? state.goal.quickAddValues).join(",") !== state.goal.quickAddValues.join(",")
+  );
+}
 
 type TodayActionItem =
   | {
@@ -2637,6 +2690,8 @@ export default function App() {
   const [today, setToday] = useState(() => todayKey());
   const [appState, setAppState] = useState<AppState>(() => loadAppState());
   const [dayRecords, setDayRecords] = useState(() => loadDailyRecords());
+  const [directionCheckIns, setDirectionCheckIns] = useState(() => loadDirectionCheckIns());
+  const [pendingDirectionAdjustment, setPendingDirectionAdjustment] = useState<DirectionCheckInCandidate | null>(null);
     const [progressSheet, setProgressSheet] = useState<ProgressSheetState>(null);
     const [actionSheet, setActionSheet] = useState<ActionSheetState>(null);
     const [deleteState, setDeleteState] = useState<DeleteState>(null);
@@ -3101,6 +3156,10 @@ export default function App() {
   }, [dayRecords]);
 
   useEffect(() => {
+    saveDirectionCheckIns(directionCheckIns);
+  }, [directionCheckIns]);
+
+  useEffect(() => {
     saveSettings(settings);
     document.documentElement.dataset.themePreference = settings.theme;
     document.documentElement.lang = settings.language === "ru" ? "ru" : "en";
@@ -3253,6 +3312,7 @@ export default function App() {
       void showTelegramConfirm(settings.language === "en" ? "Discard unsaved changes?" : "Закрыть без сохранения?").then((confirmed) => {
         if (confirmed) {
           setEditState(null);
+          setPendingDirectionAdjustment(null);
         }
       });
       return true;
@@ -3293,6 +3353,7 @@ export default function App() {
     resetChexarStorage();
     setAppState(emptyState);
     setDayRecords(emptyRecords);
+    setDirectionCheckIns([]);
     saveAppState(emptyState);
     saveDailyRecords(emptyRecords);
     setSettings((current) => ({
@@ -3306,6 +3367,7 @@ export default function App() {
     setProgressSheet(null);
       setDeleteState(null);
       setEditState(null);
+      setPendingDirectionAdjustment(null);
       setActionSheet(null);
       setViewAllSheet(null);
       setCarryOverOpen(false);
@@ -4211,6 +4273,43 @@ export default function App() {
     telegramSelectionChanged();
   }
 
+  function recordDirectionCheckIn(
+    candidate: DirectionCheckInCandidate,
+    decision: DirectionCheckInDecision,
+  ) {
+    const record = createDirectionCheckInRecord(
+      candidate,
+      decision,
+      createId("direction-check-in"),
+      new Date().toISOString(),
+    );
+
+    setDirectionCheckIns((records) => upsertDirectionCheckInRecord(records, record));
+  }
+
+  function openDirectionCheckInAdjustment(candidate: DirectionCheckInCandidate) {
+    if (candidate.itemType === "goal") {
+      const goal = appState.goals.find((item) => item.id === candidate.itemId);
+
+      if (!goal) {
+        return;
+      }
+
+      setPendingDirectionAdjustment(candidate);
+      setEditState({ type: "goal", goal });
+      return;
+    }
+
+    const task = appState.tasks.find((item) => item.id === candidate.itemId);
+
+    if (!task) {
+      return;
+    }
+
+    setPendingDirectionAdjustment(candidate);
+    setEditState({ type: "task", task });
+  }
+
   function openSelectedDate(dateKey: string) {
     previousScreenRef.current = activeScreen;
     telegramSelectionChanged();
@@ -4283,6 +4382,10 @@ export default function App() {
               today={today}
               language={settings.language}
               onAreaChange={updateLifeArea}
+              checkInRecords={directionCheckIns}
+              onCheckInFits={(candidate) => recordDirectionCheckIn(candidate, "fits")}
+              onCheckInDismiss={(candidate) => recordDirectionCheckIn(candidate, "dismissed")}
+              onCheckInAdjust={openDirectionCheckInAdjustment}
             />
           ) : (
             <main className="today-screen">
@@ -4512,12 +4615,27 @@ export default function App() {
                 state={editState}
                 copy={activeUiCopy}
                 language={settings.language}
-                onClose={() => setEditState(null)}
+                onClose={() => {
+                  setEditState(null);
+                  setPendingDirectionAdjustment(null);
+                }}
                 onDelete={() => {
                   setDeleteState(editState);
                   setEditState(null);
+                  setPendingDirectionAdjustment(null);
                 }}
                 onSave={(update) => {
+                  const adjustedCandidate =
+                    pendingDirectionAdjustment &&
+                    pendingDirectionAdjustment.itemType === editState.type &&
+                    pendingDirectionAdjustment.itemId ===
+                      (editState.type === "goal" ? editState.goal.id : editState.task.id)
+                      ? pendingDirectionAdjustment
+                      : null;
+                  const adjustmentWasChanged = adjustedCandidate
+                    ? hasEditActionChanges(editState, update)
+                    : false;
+
                   if (editState.type === "goal") {
                     updateGoal(editState.goal.id, {
                       title: update.title,
@@ -4546,7 +4664,12 @@ export default function App() {
                     });
                   }
 
+                  if (adjustedCandidate && adjustmentWasChanged) {
+                    recordDirectionCheckIn(adjustedCandidate, "adjusted");
+                  }
+
                   setEditState(null);
+                  setPendingDirectionAdjustment(null);
                 }}
               />
             )}
@@ -7019,20 +7142,7 @@ function EditActionSheet({
   language: AppSettings["language"];
   onClose: () => void;
   onDelete?: () => void;
-  onSave: (update: {
-    title: string;
-    groupName?: string;
-    note?: string;
-    emoji?: string;
-    iconKey?: string;
-    repeatMode: TaskRepeatMode;
-    selectedDays?: number[];
-    dueTime?: string;
-    targetValue?: number;
-    currentValue?: number;
-    unit?: string;
-    quickAddValues?: number[];
-  }) => void;
+  onSave: (update: EditActionUpdate) => void;
 }) {
   const isGoal = state.type === "goal";
   const action = isGoal ? state.goal : state.task;
