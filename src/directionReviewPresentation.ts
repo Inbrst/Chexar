@@ -1,4 +1,5 @@
 import { parseDateKey } from "./dateUtils";
+import type { DirectionCoverage } from "./directionReview";
 import type { AppLanguage } from "./types";
 
 export function formatDirectionReviewRange(
@@ -20,28 +21,12 @@ export function formatDirectionReviewRange(
   return `${formatDate(start)} – ${formatDate(end)}`;
 }
 
-export function pluralizeRussian(
-  value: number,
-  one: string,
-  few: string,
-  many: string,
-): string {
-  const absolute = Math.abs(value);
-  const lastTwoDigits = absolute % 100;
+export type DirectionLearningStateMode = "empty" | "sparse";
 
-  if (lastTwoDigits >= 11 && lastTwoDigits <= 14) {
-    return many;
-  }
-
-  const lastDigit = absolute % 10;
-
-  if (lastDigit === 1) {
-    return one;
-  }
-
-  if (lastDigit >= 2 && lastDigit <= 4) {
-    return few;
-  }
-
-  return many;
+export function getDirectionLearningStateMode(
+  coverage: Pick<DirectionCoverage, "scheduledOpportunities" | "activeItems">,
+): DirectionLearningStateMode {
+  return coverage.scheduledOpportunities === 0 && coverage.activeItems === 0
+    ? "empty"
+    : "sparse";
 }

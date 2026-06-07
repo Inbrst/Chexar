@@ -1,6 +1,6 @@
 import { addDays } from "../src/dateUtils.js";
 import { buildDirectionReview, classifyLifeArea } from "../src/directionReview.js";
-import { formatDirectionReviewRange, pluralizeRussian } from "../src/directionReviewPresentation.js";
+import { formatDirectionReviewRange, getDirectionLearningStateMode } from "../src/directionReviewPresentation.js";
 import type { AppState, TaskItem } from "../src/types.js";
 
 function assert(condition: boolean, label: string): void {
@@ -101,6 +101,33 @@ assert(
   formatDirectionReviewRange("2025-06-07", "2026-06-06", "ru") === "7 июн. 2025 – 6 июн. 2026",
   "year range includes both years when it crosses a calendar year",
 );
-assert(pluralizeRussian(1, "действие", "действия", "действий") === "действие", "Russian singular form is correct");
-assert(pluralizeRussian(2, "действие", "действия", "действий") === "действия", "Russian paucal form is correct");
-assert(pluralizeRussian(5, "действие", "действия", "действий") === "действий", "Russian plural form is correct");
+
+const emptyReview = buildDirectionReview({ goals: [], tasks: [], occurrences: [] }, "30d", "2026-06-07");
+assert(emptyReview.summary.kind === "learning", "empty review uses the learning summary");
+assert(getDirectionLearningStateMode(emptyReview.coverage) === "empty", "empty coverage selects the no-data learning state");
+
+const sparseReview = buildDirectionReview(
+  {
+    goals: [],
+    tasks: [
+      {
+        id: "sparse-learning",
+        title: "Evening walk",
+        startDate: "2026-06-01",
+        endDate: "2026-06-06",
+        repeatMode: "everyDay",
+        date: "2026-06-01",
+        completed: false,
+        completedDates: ["2026-06-01"],
+        lifeAreaOverride: "health",
+      },
+    ],
+    occurrences: [],
+  },
+  "30d",
+  "2026-06-07",
+);
+
+assert(sparseReview.summary.kind === "learning", "sparse history stays in the learning state");
+assert(getDirectionLearningStateMode(sparseReview.coverage) === "sparse", "scheduled history selects the sparse learning state");
+assert(sparseReview.coverage.areasWithData === 1, "sparse learning state keeps detected life areas available");
