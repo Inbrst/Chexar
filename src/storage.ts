@@ -1,4 +1,5 @@
 import type { ActionSubitem, ActionSubitemStateByDate, AppSettings, AppState, DailyRecord, GoalPeriodType, LifeAreaKey, OnboardingQuestState, OnboardingQuestStep, TaskOccurrence } from "./types";
+import { normalizeDirectionCheckInRecords, type DirectionCheckInRecord } from "./directionCheckIn";
 import { addDays, todayKey } from "./dateUtils";
 import { mergeDuplicateActions } from "./actionMerge";
 
@@ -6,6 +7,7 @@ export const PERDAY_APP_STATE_KEY = "perday:today-app-state:v1";
 export const PERDAY_DAILY_RECORDS_KEY = "perday:daily-records:v1";
 export const PERDAY_SETTINGS_KEY = "perday:settings:v1";
 export const CHEXAR_ONBOARDING_KEY = "chexar:onboarding:v1";
+export const CHEXAR_DIRECTION_CHECK_INS_KEY = "chexar:direction-check-ins:v1";
 
 const defaultSettings: AppSettings = {
   language: "ru",
@@ -557,8 +559,30 @@ export function saveOnboardingQuestState(state: OnboardingQuestState): void {
   localStorage.setItem(CHEXAR_ONBOARDING_KEY, JSON.stringify(state));
 }
 
+export function loadDirectionCheckIns(): DirectionCheckInRecord[] {
+  const stored = localStorage.getItem(CHEXAR_DIRECTION_CHECK_INS_KEY);
+
+  if (!stored) {
+    return [];
+  }
+
+  try {
+    return normalizeDirectionCheckInRecords(JSON.parse(stored));
+  } catch {
+    return [];
+  }
+}
+
+export function saveDirectionCheckIns(records: DirectionCheckInRecord[]): void {
+  localStorage.setItem(
+    CHEXAR_DIRECTION_CHECK_INS_KEY,
+    JSON.stringify(normalizeDirectionCheckInRecords(records)),
+  );
+}
+
 export function resetChexarStorage(): void {
   localStorage.removeItem(PERDAY_APP_STATE_KEY);
   localStorage.removeItem(PERDAY_DAILY_RECORDS_KEY);
   localStorage.removeItem(CHEXAR_ONBOARDING_KEY);
+  localStorage.removeItem(CHEXAR_DIRECTION_CHECK_INS_KEY);
 }

@@ -11,6 +11,8 @@
   "include": [
     "src/calculations.ts",
     "src/dateUtils.ts",
+    "src/directionCheckIn.ts",
+    "src/directionReview.ts",
     "src/semanticUnits.ts",
     "src/types.ts",
     "tests/**/*.ts"
