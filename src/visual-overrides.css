@@ -6214,6 +6214,229 @@ html[data-resolved-theme="light"] .today-screen .task-row.completed .task-check:
   line-height: 1 !important;
 }
 
+/* Today CSS polish: calmer orientation, generous hit areas, lighter empty state. */
+.today-screen > .rhythm-card.is-orientation-view {
+  height: 60px !important;
+  min-height: 60px !important;
+  border: 1px solid color-mix(in srgb, var(--text) 5.5%, transparent) !important;
+  border-radius: 15px !important;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--text) 2.8%, transparent), transparent 58%),
+    color-mix(in srgb, var(--card-strong) 92%, #050506 8%) !important;
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 color-mix(in srgb, var(--text) 2.8%, transparent) !important;
+}
+
+.today-screen > .rhythm-card.is-orientation-view:focus-visible {
+  border-color: color-mix(in srgb, var(--telegram-button-color, #7c5cff) 42%, transparent) !important;
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.16),
+    0 0 0 3px color-mix(in srgb, var(--telegram-button-color, #7c5cff) 12%, transparent) !important;
+}
+
+.today-screen > .rhythm-card.is-orientation-view .rhythm-orientation {
+  padding: 9px 14px 10px !important;
+  gap: 4px !important;
+}
+
+.today-screen > .rhythm-card.is-orientation-view .rhythm-orientation strong {
+  color: color-mix(in srgb, var(--text) 92%, transparent) !important;
+  font-size: 0.92rem !important;
+  font-weight: 710 !important;
+  line-height: 1.12 !important;
+}
+
+.today-screen > .rhythm-card.is-orientation-view .rhythm-orientation small {
+  color: color-mix(in srgb, var(--text) 52%, transparent) !important;
+  font-size: 0.66rem !important;
+  font-weight: 560 !important;
+  line-height: 1.12 !important;
+}
+
+.today-quick-menu-wrap {
+  margin-top: 6px !important;
+  margin-bottom: 8px !important;
+}
+
+.today-quick-menu {
+  min-height: 30px !important;
+  gap: 1px !important;
+  overflow: visible !important;
+}
+
+.today-quick-menu .today-menu-button {
+  position: relative !important;
+  z-index: 0 !important;
+  display: inline-grid !important;
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  height: 42px !important;
+  min-height: 42px !important;
+  margin-block: -6px !important;
+  padding: 0 !important;
+  place-items: center !important;
+  overflow: visible !important;
+  border: 0 !important;
+  border-radius: 12px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.today-quick-menu .today-menu-button::before {
+  content: "" !important;
+  position: absolute !important;
+  z-index: -1 !important;
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 9px !important;
+  background: transparent !important;
+  transition: background 140ms ease, box-shadow 140ms ease, transform 120ms ease !important;
+}
+
+.today-quick-menu .today-menu-button:hover::before,
+.today-quick-menu .today-menu-button.is-active::before {
+  background: color-mix(in srgb, var(--text) 7%, transparent) !important;
+}
+
+.today-quick-menu .today-menu-button:active {
+  transform: none !important;
+}
+
+.today-quick-menu .today-menu-button:active::before {
+  background: color-mix(in srgb, var(--text) 10%, transparent) !important;
+  transform: scale(0.96) !important;
+}
+
+.today-quick-menu .today-menu-button:focus-visible {
+  outline: none !important;
+}
+
+.today-quick-menu .today-menu-button:focus-visible::before {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--telegram-button-color, #7c5cff) 34%, transparent) !important;
+}
+
+.today-quick-menu .today-menu-button svg {
+  position: relative !important;
+  z-index: 1 !important;
+  width: 16px !important;
+  height: 16px !important;
+  color: color-mix(in srgb, var(--text) 74%, transparent) !important;
+  stroke-width: 2 !important;
+}
+
+.today-quick-menu .today-menu-period {
+  width: 50px !important;
+  min-width: 50px !important;
+  max-width: 50px !important;
+  color: color-mix(in srgb, var(--text) 76%, transparent) !important;
+  font-size: 0.68rem !important;
+  font-weight: 700 !important;
+}
+
+.today-quick-menu .today-menu-period::before {
+  width: 44px !important;
+}
+
+.today-quick-menu .today-menu-ai span {
+  position: relative !important;
+  z-index: 1 !important;
+  font-size: 0.92rem !important;
+  line-height: 1 !important;
+}
+
+.today-quick-menu .today-menu-add {
+  width: 44px !important;
+  min-width: 44px !important;
+  max-width: 44px !important;
+  height: 42px !important;
+  min-height: 42px !important;
+  margin-block: -6px !important;
+  margin-left: 2px !important;
+  color: color-mix(in srgb, var(--text) 94%, transparent) !important;
+}
+
+.today-quick-menu .today-menu-add::before {
+  width: 36px !important;
+  height: 28px !important;
+  border-radius: 10px !important;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--text) 4%, transparent), transparent),
+    color-mix(in srgb, var(--telegram-button-color, #7c5cff) 46%, var(--card-strong) 54%) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 4%, transparent) !important;
+}
+
+.today-quick-menu .today-menu-add:hover::before,
+.today-quick-menu .today-menu-add:active::before {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--text) 5%, transparent), transparent),
+    color-mix(in srgb, var(--telegram-button-color, #7c5cff) 50%, var(--card-strong) 50%) !important;
+}
+
+.today-screen .empty-section-card {
+  gap: 8px !important;
+  padding: 13px 2px 8px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.today-screen .empty-section-card strong {
+  color: color-mix(in srgb, var(--text) 88%, transparent) !important;
+  font-size: 0.92rem !important;
+  font-weight: 700 !important;
+  line-height: 1.16 !important;
+}
+
+.today-screen .empty-section-card p {
+  max-width: 292px !important;
+  margin-top: 4px !important;
+  color: color-mix(in srgb, var(--text) 50%, transparent) !important;
+  font-size: 0.76rem !important;
+  line-height: 1.3 !important;
+}
+
+.today-screen .empty-section-card button {
+  min-height: 40px !important;
+  padding-inline: 12px !important;
+  border: 0 !important;
+  border-radius: 11px !important;
+  color: color-mix(in srgb, var(--text) 90%, transparent) !important;
+  background: color-mix(in srgb, var(--telegram-button-color, #7c5cff) 18%, transparent) !important;
+  box-shadow: none !important;
+  font-size: 0.8rem !important;
+}
+
+html[data-resolved-theme="light"] .today-screen > .rhythm-card.is-orientation-view {
+  border-color: rgba(17, 19, 24, 0.065) !important;
+  background:
+    linear-gradient(180deg, rgba(17, 19, 24, 0.018), transparent 58%),
+    rgba(255, 255, 255, 0.86) !important;
+  box-shadow:
+    0 9px 22px rgba(17, 19, 24, 0.055),
+    inset 0 1px 0 rgba(255, 255, 255, 0.62) !important;
+}
+
+html[data-resolved-theme="light"] .today-quick-menu .today-menu-add {
+  color: rgba(255, 255, 255, 0.96) !important;
+}
+
+html[data-resolved-theme="light"] .today-quick-menu .today-menu-add::before {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent),
+    color-mix(in srgb, var(--telegram-button-color, #7c5cff) 62%, #343742 38%) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12) !important;
+}
+
+html[data-resolved-theme="light"] .today-screen .empty-section-card button {
+  color: color-mix(in srgb, var(--telegram-button-color, #7c5cff) 82%, #111318 18%) !important;
+  background: color-mix(in srgb, var(--telegram-button-color, #7c5cff) 11%, transparent) !important;
+}
+
 /* Start quest audit: keep the two-task training block in the same dark card palette. */
 .start-quest-pair {
   border: 0 !important;
@@ -6593,4 +6816,20 @@ html[data-resolved-theme="light"] .today-screen .action-list:not(.with-period) .
   font-size: 0.58rem !important;
   font-weight: 720 !important;
   line-height: 1 !important;
+}
+
+/* Keep the add command's hit area aligned with the other polished toolbar controls. */
+.today-quick-menu .today-menu-add {
+  width: 44px !important;
+  min-width: 44px !important;
+  max-width: 44px !important;
+  height: 42px !important;
+  min-height: 42px !important;
+  margin-block: -6px !important;
+  margin-left: 2px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
 }
