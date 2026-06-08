@@ -322,6 +322,8 @@ const profileCopy = {
     browserModeTitle: "Test user",
     browserModeSubtitle: "Open through Telegram Mini App to link your account",
     browserModeStatus: "Browser mode",
+    behavior: "Behavior",
+    dangerZone: "Danger Zone",
     interface: "Interface",
     language: "Language",
     english: "English",
@@ -343,7 +345,7 @@ const profileCopy = {
     later: "Later",
     about: "About",
     version: "Version",
-    telegram: "Telegram Mini App",
+    telegram: "Telegram",
     connected: "Connected",
     notFound: "Not found",
     browserMode: "Browser mode",
@@ -373,6 +375,8 @@ const profileCopy = {
     browserModeTitle: "Тестовый пользователь",
     browserModeSubtitle: "Открой через Telegram Mini App, чтобы привязать аккаунт",
     browserModeStatus: "Браузерный режим",
+    behavior: "Поведение",
+    dangerZone: "Опасная зона",
     interface: "Интерфейс",
     language: "Язык",
     english: "English",
@@ -394,7 +398,7 @@ const profileCopy = {
     later: "Позже",
     about: "О приложении",
     version: "Версия",
-    telegram: "Telegram Mini App",
+    telegram: "Telegram",
     connected: "Подключено",
     notFound: "Не найдено",
     browserMode: "Браузерный режим",
@@ -8100,7 +8104,27 @@ function ProfileScreen({
         language={settings.language}
       />
 
-      <ProfileCard title={copy.interface}>
+      <ProfileCard title={copy.telegram} className="profile-telegram-group">
+        <button
+          type="button"
+          className={`hints-card profile-telegram-toggle ${settings.telegramBotEnabled ? "enabled" : ""}`}
+          aria-pressed={settings.telegramBotEnabled}
+          onClick={() => onSettingsChange({ telegramBotEnabled: !settings.telegramBotEnabled })}
+        >
+          <span className="profile-row-icon accent-cyan" aria-hidden="true">
+            🤖
+          </span>
+          <span>
+            <strong>{settings.telegramBotEnabled ? copy.telegramBotOn : copy.telegramBotOff}</strong>
+            <small>{copy.telegramBotText}</small>
+          </span>
+          <span className="toggle-switch" aria-hidden="true">
+            <span>{settings.telegramBotEnabled && <Check size={18} />}</span>
+          </span>
+        </button>
+      </ProfileCard>
+
+      <ProfileCard title={copy.behavior} className="profile-behavior-group">
         <div className="profile-setting-block">
           <div className="profile-setting-heading">
             <span className="profile-row-icon accent-violet" aria-hidden="true">
@@ -8134,81 +8158,64 @@ function ProfileScreen({
             onChange={(value) => onSettingsChange({ theme: value as AppSettings["theme"] })}
           />
         </div>
+
+        <button
+          type="button"
+          className={`hints-card profile-behavior-toggle ${settings.carryOversEnabled ? "enabled" : ""}`}
+          aria-pressed={settings.carryOversEnabled}
+          onClick={() => onSettingsChange({ carryOversEnabled: !settings.carryOversEnabled })}
+        >
+          <span className="profile-row-icon accent-violet" aria-hidden="true">
+            ↩
+          </span>
+          <span>
+            <strong>{settings.carryOversEnabled ? copy.carryOversOn : copy.carryOversOff}</strong>
+            <small>{copy.carryOversText}</small>
+          </span>
+          <span className="toggle-switch" aria-hidden="true">
+            <span>{settings.carryOversEnabled && <Check size={18} />}</span>
+          </span>
+        </button>
+
+        <button
+          type="button"
+          className={`hints-card profile-behavior-toggle ${settings.hintsEnabled ? "enabled" : ""}`}
+          aria-pressed={settings.hintsEnabled}
+          onClick={() => onSettingsChange({ hintsEnabled: !settings.hintsEnabled })}
+        >
+          <span className="profile-row-icon accent-violet" aria-hidden="true">
+            💡
+          </span>
+          <span>
+            <strong>{settings.hintsEnabled ? copy.hintsOn : copy.hintsOff}</strong>
+            <small>{copy.hintsText}</small>
+          </span>
+          <span className="toggle-switch" aria-hidden="true">
+            <span>{settings.hintsEnabled && <Check size={18} />}</span>
+          </span>
+        </button>
       </ProfileCard>
 
-      <button
-        type="button"
-        className={`hints-card ${settings.telegramBotEnabled ? "enabled" : ""}`}
-        aria-pressed={settings.telegramBotEnabled}
-        onClick={() => onSettingsChange({ telegramBotEnabled: !settings.telegramBotEnabled })}
-      >
-        <span className="profile-row-icon accent-cyan" aria-hidden="true">
-          🤖
-        </span>
-        <span>
-          <strong>{settings.telegramBotEnabled ? copy.telegramBotOn : copy.telegramBotOff}</strong>
-          <small>{copy.telegramBotText}</small>
-        </span>
-        <span className="toggle-switch" aria-hidden="true">
-          <span>{settings.telegramBotEnabled && <Check size={18} />}</span>
-        </span>
-      </button>
-
-      <button
-        type="button"
-        className={`hints-card ${settings.carryOversEnabled ? "enabled" : ""}`}
-        aria-pressed={settings.carryOversEnabled}
-        onClick={() => onSettingsChange({ carryOversEnabled: !settings.carryOversEnabled })}
-      >
-        <span className="profile-row-icon accent-violet" aria-hidden="true">
-          ↩
-        </span>
-        <span>
-          <strong>{settings.carryOversEnabled ? copy.carryOversOn : copy.carryOversOff}</strong>
-          <small>{copy.carryOversText}</small>
-        </span>
-        <span className="toggle-switch" aria-hidden="true">
-          <span>{settings.carryOversEnabled && <Check size={18} />}</span>
-        </span>
-      </button>
-
-      <ProfileCard title={copy.about}>
+      <ProfileCard title={copy.about} className="profile-about-group">
         <ProfileRow icon="ℹ️" label={copy.version} value={APP_VERSION} accent="violet" />
+        <button type="button" className="profile-row profile-row-button profile-about-action" onClick={onRestartOnboarding}>
+          <span className="profile-row-icon accent-violet" aria-hidden="true">
+            ✨
+          </span>
+          <span className="profile-row-copy">
+            <strong>{copy.restartQuest}</strong>
+            <small>{copy.restartQuestText}</small>
+          </span>
+          <ChevronRight size={18} aria-hidden="true" />
+        </button>
       </ProfileCard>
 
-      <button type="button" className="danger-reset-button" onClick={onResetRequest}>
-        <span className="profile-row-icon danger" aria-hidden="true">🗑️</span>
-        <span>{copy.resetData}</span>
-      </button>
-
-      <button
-        type="button"
-        className={`hints-card ${settings.hintsEnabled ? "enabled" : ""}`}
-        aria-pressed={settings.hintsEnabled}
-        onClick={() => onSettingsChange({ hintsEnabled: !settings.hintsEnabled })}
-      >
-        <span className="profile-row-icon accent-violet" aria-hidden="true">
-          💡
-        </span>
-        <span>
-          <strong>{settings.hintsEnabled ? copy.hintsOn : copy.hintsOff}</strong>
-          <small>{copy.hintsText}</small>
-        </span>
-        <span className="toggle-switch" aria-hidden="true">
-          <span>{settings.hintsEnabled && <Check size={18} />}</span>
-        </span>
-      </button>
-
-      <button type="button" className="hints-card start-quest-reopen-card" onClick={onRestartOnboarding}>
-        <span className="profile-row-icon accent-violet" aria-hidden="true">
-          ✨
-        </span>
-        <span>
-          <strong>{copy.restartQuest}</strong>
-          <small>{copy.restartQuestText}</small>
-        </span>
-        <ChevronRight size={18} aria-hidden="true" />
-      </button>
+      <ProfileCard title={copy.dangerZone} className="profile-danger-group">
+        <button type="button" className="danger-reset-button" onClick={onResetRequest}>
+          <span className="profile-row-icon danger" aria-hidden="true">🗑️</span>
+          <span>{copy.resetData}</span>
+        </button>
+      </ProfileCard>
     </main>
   );
 }
@@ -8238,20 +8245,23 @@ function ProfileHeader({
         : copy.browserModeStatus;
 
   return (
-    <header className="profile-header">
-      <div className="profile-header-copy">
-        <strong>{title}</strong>
-        <span>{subtitle}</span>
-      </div>
-      <ProfileHeaderAvatar telegramUser={telegramUser} label={copy.profileAria} />
-      <span className={`profile-account-status ${isConnected ? "connected" : "browser"}`}>{status}</span>
-    </header>
+    <section className="profile-account-group" aria-labelledby="profile-account-title">
+      <h2 id="profile-account-title">{copy.account}</h2>
+      <header className="profile-header">
+        <ProfileHeaderAvatar telegramUser={telegramUser} label={copy.profileAria} />
+        <div className="profile-header-copy">
+          <strong title={title}>{title}</strong>
+          <span title={subtitle}>{subtitle}</span>
+        </div>
+        <span className={`profile-account-status ${isConnected ? "connected" : "browser"}`}>{status}</span>
+      </header>
+    </section>
   );
 }
 
-function ProfileCard({ title, children }: { title: string; children: React.ReactNode }) {
+function ProfileCard({ title, children, className = "" }: { title: string; children: React.ReactNode; className?: string }) {
   return (
-    <section className="profile-card">
+    <section className={`profile-card ${className}`}>
       <h2>{title}</h2>
       <div className="profile-card-rows">{children}</div>
     </section>
