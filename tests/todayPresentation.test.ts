@@ -72,9 +72,13 @@ const futurePlanned = build("2026-06-09", 0, 3, 0);
 assert(futurePlanned.state === "future-planned", "Future day with actions uses the planned state");
 assert(futurePlanned.percentage === null, "Planned future day never shows a completion percentage");
 
-assert(build(today, 0, 1, 0, "ru").metadata === "1 действие запланировано", "Russian singular action form is correct");
-assert(build(today, 0, 2, 0, "ru").metadata === "2 действия запланировано", "Russian paucal action form is correct");
-assert(build(today, 0, 5, 0, "ru").metadata === "5 действий запланировано", "Russian plural action form is correct");
+assert(build(today, 0, 1, 0, "ru").metadata === "Запланировано 1 действие", "Russian singular planned metadata is correct");
+assert(build(today, 0, 2, 0, "ru").metadata === "Запланировано 2 действия", "Russian paucal planned metadata is correct");
+assert(build(today, 0, 5, 0, "ru").metadata === "Запланировано 5 действий", "Russian plural planned metadata is correct");
+assert(build(today, 1, 1, 100, "ru").metadata === "Отмечено 1 из 1", "Russian singular marked metadata is correct");
+assert(build(today, 2, 2, 100, "ru").metadata === "Отмечено 2 из 2", "Russian paucal marked metadata is correct");
+assert(build(today, 5, 5, 100, "ru").metadata === "Отмечено 5 из 5", "Russian plural marked metadata is correct");
+assert(build(today, 1, 2, 50, "ru").metadata === "Отмечено 1 из 2 · 50%", "Russian partial marked metadata is correct");
 
 assert(mapRhythmCardModePreference(null) === "orientation", "Missing preference maps to orientation");
 assert(mapRhythmCardModePreference("percent") === "orientation", "Legacy percent preference maps to orientation");

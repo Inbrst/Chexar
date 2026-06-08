@@ -158,7 +158,7 @@ export const productLanguage = {
       pastComplete: "В этот день всё было отмечено",
       futureNoActions: "На этот день ничего не запланировано",
       futurePlanned: "На этот день есть план",
-      scheduled: (count: string) => `${count} запланировано`,
+      scheduled: (count: string) => `Запланировано ${count}`,
       marked: (completed: number, total: number) => `Отмечено ${completed} из ${total}`,
       partial: (completed: number, total: number, percent: number) => `Отмечено ${completed} из ${total} · ${percent}%`,
       emptyListTitle: "Добавь действие",
