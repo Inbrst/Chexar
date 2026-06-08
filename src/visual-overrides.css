@@ -6859,3 +6859,70 @@ html[data-resolved-theme="light"] .today-screen .action-list:not(.with-period) .
   box-shadow: none !important;
   transform: none !important;
 }
+
+/* Edit sheet actions: keep Save primary and separate destructive deletion. */
+.edit-action-form > .sheet-actions {
+  grid-template-columns: minmax(0, 1fr) !important;
+  align-items: stretch !important;
+  gap: 7px !important;
+}
+
+.edit-action-form > .sheet-actions > .primary-sheet-button:not(.danger-action) {
+  order: 1 !important;
+  width: 100% !important;
+  min-height: 44px !important;
+}
+
+.edit-action-form > .sheet-actions > .ghost-sheet-button {
+  order: 2 !important;
+  width: 100% !important;
+  min-height: 44px !important;
+  border-color: color-mix(in srgb, var(--text) 8%, transparent) !important;
+  color: color-mix(in srgb, var(--text) 72%, transparent) !important;
+  background: color-mix(in srgb, var(--text) 4%, transparent) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.edit-action-form > .sheet-actions > .danger-action {
+  order: 3 !important;
+  justify-self: center !important;
+  width: max-content !important;
+  min-width: 0 !important;
+  min-height: 44px !important;
+  margin-top: 7px !important;
+  padding: 0 14px !important;
+  border: 0 !important;
+  border-radius: 11px !important;
+  color: #ff718c !important;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.edit-action-form > .sheet-actions > .danger-action:hover,
+.edit-action-form > .sheet-actions > .danger-action:active {
+  color: #ff8299 !important;
+  background: rgba(255, 113, 140, 0.08) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.edit-action-form > .sheet-actions > .danger-action:focus-visible {
+  outline: 2px solid rgba(255, 113, 140, 0.5) !important;
+  outline-offset: 2px !important;
+  color: #ff8299 !important;
+  background: rgba(255, 113, 140, 0.07) !important;
+  box-shadow: none !important;
+}
+
+html[data-resolved-theme="light"] .edit-action-form > .sheet-actions > .danger-action {
+  color: #c83f5c !important;
+}
+
+html[data-resolved-theme="light"] .edit-action-form > .sheet-actions > .danger-action:hover,
+html[data-resolved-theme="light"] .edit-action-form > .sheet-actions > .danger-action:active,
+html[data-resolved-theme="light"] .edit-action-form > .sheet-actions > .danger-action:focus-visible {
+  color: #b8324e !important;
+  background: rgba(200, 63, 92, 0.07) !important;
+}
