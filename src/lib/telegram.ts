@@ -437,11 +437,12 @@ export function telegramNotification(type: "error" | "success" | "warning"): voi
 
 export function showTelegramConfirm(message: string): Promise<boolean> {
   const webApp = getTelegramWebApp();
+  const nativeShowConfirm = webApp?.showConfirm;
 
-  if (webApp?.showConfirm) {
+  if (typeof nativeShowConfirm === "function" && isTelegramVersionAtLeast(webApp, "6.2")) {
     return new Promise((resolve) => {
       try {
-        webApp.showConfirm?.(message, resolve);
+        nativeShowConfirm.call(webApp, message, resolve);
       } catch (error) {
         console.warn("[telegram] showConfirm failed", error);
         resolve(typeof window !== "undefined" ? window.confirm(message) : false);
@@ -470,8 +471,9 @@ export function showTelegramPopup({
   }>;
 }): Promise<string | null> {
   const webApp = getTelegramWebApp();
+  const nativeShowPopup = webApp?.showPopup;
 
-  if (!webApp?.showPopup) {
+  if (typeof nativeShowPopup !== "function" || !isTelegramVersionAtLeast(webApp, "6.2")) {
     if (typeof window !== "undefined") {
       window.alert(title ? `${title}\n\n${message}` : message);
     }
@@ -481,9 +483,12 @@ export function showTelegramPopup({
 
   return new Promise((resolve) => {
     try {
-      webApp.showPopup?.({ title, message, buttons }, (buttonId) => resolve(buttonId));
+      nativeShowPopup.call(webApp, { title, message, buttons }, (buttonId) => resolve(buttonId));
     } catch (error) {
       console.warn("[telegram] showPopup failed", error);
+      if (typeof window !== "undefined") {
+        window.alert(title ? `${title}\n\n${message}` : message);
+      }
       resolve(null);
     }
   });
