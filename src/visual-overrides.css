@@ -5239,6 +5239,48 @@ html[data-resolved-theme="light"] .app-shell.is-compact-shell .bottom-nav button
   transition: width 180ms ease, opacity 180ms ease, transform 180ms ease !important;
 }
 
+.today-screen > .rhythm-card.is-orientation-view {
+  background:
+    radial-gradient(circle at 82% 22%, color-mix(in srgb, var(--telegram-button-color, #7c5cff) 14%, transparent), transparent 7.5rem),
+    linear-gradient(105deg, color-mix(in srgb, var(--card) 94%, #15131d 6%), color-mix(in srgb, var(--card) 98%, #090a0f 2%)) !important;
+}
+
+.rhythm-orientation {
+  position: relative !important;
+  z-index: 1 !important;
+  display: grid !important;
+  width: 100% !important;
+  height: 100% !important;
+  padding: 8px 13px !important;
+  align-content: center !important;
+  gap: 3px !important;
+  pointer-events: none !important;
+  animation: rhythmSoftIn 220ms ease both !important;
+}
+
+.rhythm-orientation strong {
+  display: -webkit-box !important;
+  overflow: hidden !important;
+  color: color-mix(in srgb, var(--text) 94%, transparent) !important;
+  font-size: 0.91rem !important;
+  font-weight: 720 !important;
+  line-height: 1.12 !important;
+  letter-spacing: 0 !important;
+  text-overflow: ellipsis !important;
+  -webkit-box-orient: vertical !important;
+  -webkit-line-clamp: 2 !important;
+}
+
+.rhythm-orientation small {
+  overflow: hidden !important;
+  color: color-mix(in srgb, var(--text) 56%, transparent) !important;
+  font-size: 0.64rem !important;
+  line-height: 1.1 !important;
+  letter-spacing: 0 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
 .today-screen > .rhythm-card .rhythm-percent {
   font-size: clamp(1.72rem, 8.4vw, 2.16rem) !important;
   animation: rhythmFadeIn 180ms ease both !important;

@@ -29,7 +29,6 @@ import {
   getGoalSchedulePreview,
   getGoalProgressPercent,
   getGoalDailyMetrics,
-  getLastNDaysCompletionTrend,
   getMonthRange,
   getRequiredToday,
   getTaskSubitemProgress,
@@ -83,6 +82,13 @@ import {
   telegramSelectionChanged,
 } from "./lib/telegram";
 import type { TelegramConnectionStatus, TelegramUser } from "./lib/telegram";
+import { productLanguage } from "./productLanguage";
+import {
+  buildTodayOrientation,
+  getNextRhythmCardMode,
+  mapRhythmCardModePreference,
+  type RhythmCardMode,
+} from "./todayPresentation";
 
 declare global {
   interface Window {
@@ -2745,6 +2751,7 @@ export default function App() {
   } ${bottomNavSuppressed ? "has-nav-suppressed" : ""}`;
   const activeProfileCopy = profileCopy[settings.language];
   const activeUiCopy = uiCopy[settings.language];
+  const activeTodayOrientationCopy = productLanguage[settings.language].todayOrientation;
   const activeDate = getActiveDate(selectedDate, today);
   const activeDateDate = useMemo(() => parseDateKey(activeDate), [activeDate]);
   const activeDateState = useMemo(() => getEffectiveStateForDate(appState, activeDate), [activeDate, appState]);
@@ -3008,10 +3015,6 @@ export default function App() {
   const carryOverCandidates = useMemo(
     () => (activeDate === today && settings.carryOversEnabled ? getCarryOverCandidates(appState, today, settings.language) : []),
     [activeDate, appState, settings.carryOversEnabled, settings.language, today],
-  );
-  const rhythmTrend = useMemo(
-    () => getLastNDaysCompletionTrend(7, dayRecords, daily.percent, activeDate),
-    [activeDate, daily.percent, dayRecords],
   );
   const rhythmWeekTrend = useMemo(() => {
     const recordMap = new Map(dayRecords.map((record) => [record.date, clampPercent(record.percent)]));
@@ -4401,10 +4404,10 @@ export default function App() {
               />
               <RhythmCard
                 daily={daily}
-                trend={rhythmTrend}
                 weekTrend={rhythmWeekTrend}
                 copy={activeUiCopy}
                 activeDate={activeDate}
+                today={today}
                 language={settings.language}
               />
               <TodayQuickMenu
@@ -4538,8 +4541,8 @@ export default function App() {
                   ))}
                   {!hasDisplayedTodayItems && (
                     <EmptySectionCard
-                      title={hasActiveDateItems ? (settings.language === "en" ? "Nothing found" : "Ничего не найдено") : activeUiCopy.emptySelectedDayTitle}
-                      text={hasActiveDateItems ? (settings.language === "en" ? "Try another search query." : "Попробуй другой запрос.") : activeUiCopy.emptySelectedDayText}
+                      title={hasActiveDateItems ? (settings.language === "en" ? "Nothing found" : "Ничего не найдено") : activeTodayOrientationCopy.emptyListTitle}
+                      text={hasActiveDateItems ? (settings.language === "en" ? "Try another search query." : "Попробуй другой запрос.") : activeTodayOrientationCopy.emptyListBody}
                       buttonLabel={activeUiCopy.add}
                       onAdd={() => setAddSheetOpen(true)}
                     />
@@ -5852,24 +5855,18 @@ function AiCreationSheet({
   );
 }
 
-type RhythmCardMode = "percent" | "bars" | "compact";
-
 const RHYTHM_CARD_MODE_STORAGE_KEY = "chexar.rhythmCardMode";
-
-function isRhythmCardMode(value: string | null): value is RhythmCardMode {
-  return value === "percent" || value === "bars" || value === "compact";
-}
 
 function loadRhythmCardMode(): RhythmCardMode {
   if (typeof window === "undefined") {
-    return "percent";
+    return "orientation";
   }
 
   try {
     const storedMode = window.localStorage.getItem(RHYTHM_CARD_MODE_STORAGE_KEY);
-    return isRhythmCardMode(storedMode) ? storedMode : "percent";
+    return mapRhythmCardModePreference(storedMode);
   } catch {
-    return "percent";
+    return "orientation";
   }
 }
 
@@ -5885,37 +5882,38 @@ function saveRhythmCardMode(mode: RhythmCardMode): void {
   }
 }
 
-function getNextRhythmCardMode(mode: RhythmCardMode): RhythmCardMode {
-  if (mode === "percent") {
-    return "bars";
-  }
-
-  if (mode === "bars") {
-    return "compact";
-  }
-
-  return "percent";
-}
-
 function RhythmCard({
   daily,
-  trend,
   weekTrend,
   copy,
   activeDate,
+  today,
   language,
 }: {
   daily: ReturnType<typeof calculateDailyProgress>;
-  trend: number[];
   weekTrend: number[];
   copy: UiCopy;
   activeDate: string;
+  today: string;
   language: AppSettings["language"];
 }) {
   const [mode, setMode] = useState<RhythmCardMode>(() => loadRhythmCardMode());
   const showWeeklyBars = mode === "bars";
   const isCompact = mode === "compact";
+  const isOrientation = mode === "orientation";
   const dailyPercent = clampPercent(daily.percent);
+  const orientation = buildTodayOrientation({
+    activeDate,
+    today,
+    language,
+    completed: daily.completedTodayItems,
+    total: daily.totalTodayItems,
+    percent: dailyPercent,
+  });
+  const orientationCopy = productLanguage[language].todayOrientation;
+  const orientationAriaLabel = [orientationCopy.aria, orientation.title, orientation.metadata]
+    .filter(Boolean)
+    .join(". ");
   const cardStyle = {
     "--daily-percent": `${dailyPercent}%`,
     "--rhythm-ring-percent": `${dailyPercent}%`,
@@ -5931,11 +5929,11 @@ function RhythmCard({
       type="button"
       className={`rhythm-card is-${mode}-view`}
       style={cardStyle}
-      aria-label={`${showWeeklyBars ? copy.rhythmTrendAria : copy.rhythmAria}: ${dailyPercent}%`}
-      aria-pressed={showWeeklyBars || isCompact}
+      aria-label={showWeeklyBars ? `${copy.rhythmTrendAria}: ${dailyPercent}%` : orientationAriaLabel}
+      aria-pressed={!isOrientation}
       onClick={() => setMode((currentMode) => getNextRhythmCardMode(currentMode))}
     >
-      <div className="rhythm-fill" />
+      {!isOrientation && <div className="rhythm-fill" />}
       {showWeeklyBars ? (
         <div className="rhythm-bars-layout">
           <span className="rhythm-ring" aria-hidden="true">
@@ -5946,10 +5944,10 @@ function RhythmCard({
       ) : isCompact ? (
         <span className="rhythm-compact-line" aria-hidden="true" />
       ) : (
-        <>
-          <strong className="rhythm-percent">{dailyPercent}%</strong>
-          <MiniRhythmChart values={trend} ariaLabel={copy.rhythmTrendAria} />
-        </>
+        <span className="rhythm-orientation">
+          <strong>{orientation.title}</strong>
+          {orientation.metadata && <small>{orientation.metadata}</small>}
+        </span>
       )}
     </button>
   );
