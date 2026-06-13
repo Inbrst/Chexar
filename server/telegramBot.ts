@@ -1,3 +1,5 @@
+import { getCronAuthorization } from "./requestSecurity.js";
+
 declare const process: {
   env: Record<string, string | undefined>;
 };
@@ -160,21 +162,8 @@ const emojiRules: Array<[string[], string]> = [
   [["учеб", "курс", "lesson", "study"], "🎓"],
 ];
 
-function safeLogPayload(value: unknown): string {
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
-
-function logInfo(message: string, details?: unknown): void {
-  if (details === undefined) {
-    console.log(`[telegram:bot] ${message}`);
-    return;
-  }
-
-  console.log(`[telegram:bot] ${message}`, safeLogPayload(details));
+function logInfo(message: string, details: Record<string, unknown>): void {
+  console.log(`[telegram:bot] ${message}`, details);
 }
 
 function readEnv(names: string[]): string | undefined {
@@ -978,20 +967,16 @@ async function sendTelegram(config: BotConfig, method: string, body: Record<stri
     },
     body: JSON.stringify(body),
   });
-  const responseText = await response.text().catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
-    return `Failed to read Telegram response body: ${message}`;
-  });
+  const responseText = await response.text().catch(() => "");
 
   logInfo("Telegram API response", {
     method,
     status: response.status,
     ok: response.ok,
-    body: responseText.slice(0, 1200),
   });
 
   if (!response.ok) {
-    throw new Error(`Telegram ${method} failed with status ${response.status}: ${responseText.slice(0, 300)}`);
+    throw new Error(`Telegram ${method} failed with status ${response.status}`);
   }
 
   try {
@@ -1026,10 +1011,10 @@ async function deleteMessage(config: BotConfig, chatId: number | string, message
   await sendTelegram(config, "deleteMessage", {
     chat_id: chatId,
     message_id: messageId,
-  }).catch((error: unknown) => {
+  }).catch(() => {
     logInfo("Could not delete Telegram message", {
-      messageId,
-      error: error instanceof Error ? error.message : String(error),
+      method: "deleteMessage",
+      status: "failed",
     });
   });
 }
@@ -1617,21 +1602,20 @@ async function recordStarDonation(ctx: BotContext, payment: TelegramSuccessfulPa
         provider_payment_charge_id: payment.provider_payment_charge_id ?? null,
       }),
     });
-  } catch (error) {
+  } catch {
     logInfo("Could not persist Telegram Stars donation", {
-      error: error instanceof Error ? error.message : String(error),
+      eventType: "payment_persistence",
+      status: "failed",
     });
   }
 }
 
 async function handleSuccessfulPayment(ctx: BotContext, payment: TelegramSuccessfulPayment): Promise<void> {
   logInfo("Successful Telegram Stars payment", {
-    telegramId: ctx.telegramId,
-    userId: ctx.user?.id ?? null,
+    eventType: "successful_payment",
+    status: "received",
     currency: payment.currency ?? null,
     totalAmount: payment.total_amount ?? null,
-    payload: payment.invoice_payload ?? null,
-    telegramChargeId: payment.telegram_payment_charge_id ?? null,
   });
   await recordStarDonation(ctx, payment);
 
@@ -1870,14 +1854,7 @@ export async function handleTelegramWebhook(update: TelegramUpdate): Promise<voi
 }
 
 export function isCronAuthorized(req: RequestLike): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) {
-    return true;
-  }
-
-  const rawHeader = req.headers?.authorization ?? req.headers?.Authorization;
-  const header = Array.isArray(rawHeader) ? rawHeader[0] : rawHeader;
-  return header === `Bearer ${secret}`;
+  return getCronAuthorization(req.headers, process.env.CRON_SECRET) === "authorized";
 }
 
 async function getReminderSettings(config: BotConfig): Promise<RemoteSettings[]> {
