@@ -15,6 +15,7 @@
     "src/directionReview.ts",
     "src/semanticUnits.ts",
     "src/types.ts",
+    "server/requestSecurity.ts",
     "tests/**/*.ts"
   ]
 }

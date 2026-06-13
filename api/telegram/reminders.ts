@@ -27,8 +27,18 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
   try {
     const result = await sendDailyReminders();
+    console.log("[telegram:cron] Request completed", {
+      method: (req.method ?? "GET").toUpperCase(),
+      status: 200,
+      sent: result.sent,
+      skipped: result.skipped,
+    });
     res.status(200).json({ ok: true, ...result });
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : "Failed to send Telegram reminders" });
+  } catch {
+    console.error("[telegram:cron] Request failed", {
+      method: (req.method ?? "GET").toUpperCase(),
+      status: 500,
+    });
+    res.status(500).json({ error: "Reminder request failed" });
   }
 }

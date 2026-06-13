@@ -1,4 +1,9 @@
 import { handleTelegramWebhook, type TelegramUpdate } from "../../server/telegramBot.js";
+import {
+  getSafeTelegramUpdateLog,
+  getTelegramWebhookAuthorization,
+  type RequestHeaders,
+} from "../../server/requestSecurity.js";
 
 declare const process: {
   env: Record<string, string | undefined>;
@@ -6,6 +11,7 @@ declare const process: {
 
 type ApiRequest = {
   method?: string;
+  headers?: RequestHeaders;
   body?: unknown;
 };
 
@@ -22,44 +28,12 @@ type ApiResponse = {
 
 const ALIVE_REPLY = "Telegram webhook alive";
 
-function safeLogPayload(value: unknown): string {
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
+function logInfo(message: string, details: Record<string, unknown>): void {
+  console.log(`[telegram:webhook] ${message}`, details);
 }
 
-function logInfo(message: string, details?: unknown): void {
-  if (details === undefined) {
-    console.log(`[telegram:webhook] ${message}`);
-    return;
-  }
-
-  console.log(`[telegram:webhook] ${message}`, safeLogPayload(details));
-}
-
-function logError(message: string, details?: unknown): void {
-  if (details === undefined) {
-    console.error(`[telegram:webhook] ${message}`);
-    return;
-  }
-
-  console.error(`[telegram:webhook] ${message}`, safeLogPayload(details));
-}
-
-function getTelegramEnvDiagnostics(): Record<string, unknown> {
-  const env = process.env ?? {};
-  const telegramEnvKeys = Object.keys(env)
-    .filter((key) => key.toUpperCase().includes("TELEGRAM"))
-    .sort();
-
-  return {
-    telegramEnvKeys,
-    hasExactTelegramBotToken: Boolean(env.TELEGRAM_BOT_TOKEN),
-    vercelEnv: env.VERCEL_ENV ?? null,
-    nodeEnv: env.NODE_ENV ?? null,
-  };
+function logError(message: string, details: Record<string, unknown>): void {
+  console.error(`[telegram:webhook] ${message}`, details);
 }
 
 function sendJson(res: ApiResponse, statusCode: number, body: Record<string, unknown>): void {
@@ -130,32 +104,12 @@ function getCommand(text: unknown): string | null {
   return firstToken.slice(1).split("@", 1)[0]?.toLowerCase() ?? null;
 }
 
-function getParsedUpdateInfo(update: TelegramUpdate): Record<string, unknown> {
-  const message = update.message;
-  const callback = update.callback_query;
-  const preCheckout = update.pre_checkout_query;
-  const chatId = message?.chat?.id ?? callback?.message?.chat?.id ?? null;
-  const text = message?.text ?? null;
-
-  return {
-    chatId,
-    text,
-    command: getCommand(text),
-    hasCallback: Boolean(callback),
-    callbackData: callback?.data ?? null,
-    hasPreCheckout: Boolean(preCheckout),
-    preCheckoutPayload: preCheckout?.invoice_payload ?? null,
-    hasSuccessfulPayment: Boolean(message?.successful_payment),
-  };
-}
-
 export default async function handler(req: ApiRequest, res: ApiResponse) {
-  try {
-    const method = (req.method ?? "GET").toUpperCase();
+  const method = (req.method ?? "GET").toUpperCase();
 
+  try {
     if (method === "GET") {
-      logInfo("GET alive check");
-      logInfo("Telegram env diagnostics", getTelegramEnvDiagnostics());
+      logInfo("Request completed", { method, status: 200 });
       sendText(res, 200, ALIVE_REPLY);
       return;
     }
@@ -165,27 +119,50 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       return;
     }
 
-    const envDiagnostics = getTelegramEnvDiagnostics();
-    logInfo("Telegram env diagnostics", envDiagnostics);
+    const authorization = getTelegramWebhookAuthorization(
+      req.headers,
+      process.env.TELEGRAM_WEBHOOK_SECRET,
+    );
+    if (authorization === "server_misconfigured") {
+      logError("Request rejected", { method, status: 503 });
+      sendJson(res, 503, { ok: false, error: "Webhook unavailable" });
+      return;
+    }
+    if (authorization !== "authorized") {
+      logInfo("Request rejected", { method, status: 401 });
+      sendJson(res, 401, { ok: false, error: "Unauthorized webhook request" });
+      return;
+    }
 
     const update = parseUpdate(req.body);
-    logInfo("Incoming update", update);
-    const parsed = getParsedUpdateInfo(update);
-    logInfo("Parsed update", parsed);
+    const safeUpdateLog = getSafeTelegramUpdateLog(update);
+    logInfo("Update received", safeUpdateLog);
 
     if (!update.message && !update.callback_query && !update.pre_checkout_query) {
+      logInfo("Request completed", {
+        method,
+        status: 200,
+        eventType: safeUpdateLog.eventType,
+        handled: false,
+      });
       sendJson(res, 200, { ok: true, handled: false });
       return;
     }
 
     await handleTelegramWebhook(update);
-    sendJson(res, 200, { ok: true, handled: true, command: parsed.command ?? undefined });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Telegram webhook failed";
-    logError("Unhandled webhook error", {
-      message,
-      stack: error instanceof Error ? error.stack : undefined,
+    logInfo("Request completed", {
+      method,
+      status: 200,
+      eventType: safeUpdateLog.eventType,
+      handled: true,
     });
-    sendJson(res, 500, { ok: false, error: message });
+    sendJson(res, 200, {
+      ok: true,
+      handled: true,
+      command: getCommand(update.message?.text) ?? undefined,
+    });
+  } catch {
+    logError("Request failed", { method, status: 500 });
+    sendJson(res, 500, { ok: false, error: "Webhook processing failed" });
   }
 }
